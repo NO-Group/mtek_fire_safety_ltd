@@ -5,6 +5,8 @@ if exist build_env.txt (
   for /f "usebackq eol=# tokens=1,* delims==" %%A in ("build_env.txt") do set "%%A=%%B"
 )
 where flutter >nul 2>nul || (echo Flutter is not on PATH — install Flutter SDK first. & pause & exit /b 1)
+rem The android/ platform folder ships committed in this repo, so this only
+rem runs if it's ever missing (e.g. a partial download).
 if not exist android (
   echo One-time setup: creating the Android platform...
   call flutter create --platforms=android .

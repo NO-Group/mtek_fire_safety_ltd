@@ -32,7 +32,7 @@ Flutter needs its compiler for Windows EXEs.
 Same prerequisites, then double-click **`make_exe.bat`** — nothing else.
 → Folder: `app\build\windows\x64\runner\Release\` (zip created for you:
 `M-TEK-windows.zip`). Copy the whole folder to any Windows PC and run
-`m_tek_inventory.exe` — no installation needed.
+`mtek_inventory.exe` — no installation needed.
 
 Command line equivalent:
 ```
