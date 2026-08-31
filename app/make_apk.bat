@@ -19,7 +19,8 @@ if defined SUPABASE_ANON_KEY set D=%D% --dart-define=SUPABASE_ANON_KEY=!SUPABASE
 if defined MILS_API_BASE set D=%D% --dart-define=MILS_API_BASE=!MILS_API_BASE!
 call flutter build apk --release !D!
 if errorlevel 1 (echo. & echo BUILD FAILED - read the red errors above. & pause & exit /b 1)
+copy /y "build\app\outputs\flutter-apk\app-release.apk" "MFSL Inventory.apk" >nul
 echo.
-echo DONE. Your APK:  app\build\app\outputs\flutter-apk\app-release.apk
+echo DONE. Your APK: app\MFSL Inventory.apk
 echo Copy it to the phone and install it.
 pause

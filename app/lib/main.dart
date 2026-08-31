@@ -17,7 +17,7 @@ class MtekApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'M-Tek Inventory',
+      title: 'MFSL Inventory',
       debugShowCheckedModeBanner: false,
       theme: MtekTheme.light(),
       home: AnimatedBuilder(

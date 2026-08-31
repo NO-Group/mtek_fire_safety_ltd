@@ -1,5 +1,5 @@
 name: mtek_inventory
-description: "M-Tek Fire & Safety Ltd — Inventory & Business App (Android + Windows, one codebase, one live server)."
+description: "MFSL Inventory - Inventory & Business App for M-Tek Fire & Safety Ltd (Android + Windows, one codebase, one live server)."
 publish_to: "none"
 version: 0.1.0+1
 
@@ -38,7 +38,7 @@ flutter:
     - assets/fonts/DejaVuSans-Bold.ttf
 
 msix_config:
-  display_name: M-Tek Inventory
+  display_name: MFSL Inventory
   publisher_display_name: N.O Group
   publisher: CN=N.O Group
   identity_name: com.mtek.inventory
@@ -46,7 +46,7 @@ msix_config:
   logo_path: assets/branding/logo.png
   capabilities: internetClient
   output_path: build\windows\x64\runner\Release
-  output_name: M-TEK-Inventory-Setup
+  output_name: MFSL-Inventory-Setup
   # IMPORTANT: build_windows is false because make_exe.bat already ran
   # `flutter build windows --release` itself with the baked-in server
   # --dart-defines. If the msix tool were left to rebuild on its own here,

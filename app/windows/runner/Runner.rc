@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "M-Tek Fire & Safety Ltd" "\0"
-            VALUE "FileDescription", "M-Tek Inventory" "\0"
+            VALUE "CompanyName", "N.O Group" "\0"
+            VALUE "FileDescription", "MFSL Inventory" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "M-Tek Inventory" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 M-Tek Fire & Safety Ltd. All rights reserved." "\0"
+            VALUE "InternalName", "MFSL Inventory" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 N.O Group. All rights reserved." "\0"
             VALUE "OriginalFilename", "mtek_inventory.exe" "\0"
-            VALUE "ProductName", "M-Tek Inventory" "\0"
+            VALUE "ProductName", "MFSL Inventory" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

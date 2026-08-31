@@ -3,7 +3,7 @@
          INTERNET is required in every build type, not just debug. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="M-Tek Inventory"
+        android:label="MFSL Inventory"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
