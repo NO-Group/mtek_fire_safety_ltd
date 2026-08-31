@@ -14,7 +14,7 @@ dependencies:
   pdf: ^3.10.8             # document generation (MILS/Receipt/Invoice)
   printing: ^5.12.0        # print/preview of generated PDFs
   path_provider: ^2.1.3    # local PDF cache (export pipeline)
-  share_plus: ^9.0.0       # WhatsApp/email share sheet
+  share_plus: ^12.0.2      # WhatsApp/email share sheet
   file_picker: ^8.1.2      # real device picks: TXT stock import + MILS photos
   url_launcher: ^6.2.5     # wa.me / mailto deep links (customer directory)
 
