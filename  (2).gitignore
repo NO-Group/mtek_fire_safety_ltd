@@ -1,0 +1,15 @@
+image-search/
+node_modules/
+preview/.data/
+backend/data/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Flutter build settings (contains the anon key)
+app/build_env.txt
+app/M-TEK-windows.zip

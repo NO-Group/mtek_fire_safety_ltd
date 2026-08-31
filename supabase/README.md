@@ -1,0 +1,42 @@
+# M-TEK server — Supabase + MongoDB ONLY (free tier is enough)
+
+The apps (Android APK + Windows EXE) both talk to ONE backend:
+**Supabase Auth** (sign-in) + the **`data-api` Edge Function** (all data,
+stored in MongoDB across 7 databases). Nothing else exists — no website
+hosting, no GitHub dependency.
+
+STOCK IS NEVER SEEDED by the server: the products collection starts EMPTY
+and fills through the apps' own fields (Add product / Import TXT →
+`POST /api/products/upsert`). Serial books self-provision from 000000001.
+
+## One-time setup — 4 clicks
+
+**1. MongoDB Atlas → Network Access → + ADD IP ADDRESS → "Allow access from
+anywhere" (0.0.0.0/0) → Confirm.**
+(Supabase functions connect from rotating cloud IPs.)
+
+**2. Supabase dashboard → Edge Functions → Secrets** — the pre-added
+`SUPABASE_SECRET_KEY(S)` default stays exactly as it is. Add:
+
+| Name | Value |
+|---|---|
+| `MONGODB_URI` | your Atlas connection string (`mongodb+srv://…@mfsl.w5ifd7x.mongodb.net/…`) |
+| `MTEK_CEO_SIG` | the CEO signature passcode |
+
+**3. Deploy the function — ONE file:** Edge Functions → Create a new
+function → name `data-api` → in the editor open `index.ts` → select all →
+paste the whole contents of **`supabase/functions/data-api/index.ts`** →
+**Deploy**. (It has no side files; nothing else to add.)
+
+**4. Supabase → Authentication → Users → "Add user"** → email
+`mtekfiresafetyltd@gmail.com` + the company password → tick
+"Auto-confirm user". (Staff accounts are added the same way; they get the
+`sales` role on first sign-in — the CEO is always `ceo`.)
+
+## Check it's alive
+Open `https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api/health`
+→ you should see `"ok": true` and the serial books (all zero).
+
+## Updating later
+Edit `supabase/functions/data-api/index.ts`, then re-paste it in the
+dashboard editor and hit Deploy. That's the whole update process.

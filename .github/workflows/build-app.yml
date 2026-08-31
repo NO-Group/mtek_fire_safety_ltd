@@ -1,0 +1,161 @@
+## M-Tek Inventory — CI/CD (APK · AAB · PWA · EXE)
+##
+## ⚠ ACTIVATION (one-time, on the company repo mtekfiresafetyltd/m-tek_fire_safety_ltd.org):
+##   1. Copy this file to  .github/workflows/build-app.yml  on that repo's main branch.
+##   2. Repo Settings → Pages → Source: "GitHub Actions".
+##   3. Re-run the workflow ("Run workflow" → tick deploy_pages).
+##
+## Every push that touches app/** rebuilds: PWA, Android APK, Android AAB,
+## Windows EXE (zip) — artifacts appear on the run page. Manual dispatch can
+## also deploy to GitHub Pages (APP at the site root, website under /site/)
+## and/or cut a GitHub Release.
+
+name: Build & Deploy App (PWA · APK · AAB · EXE)
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/build-app.yml"]
+  workflow_dispatch:
+    inputs:
+      deploy_pages:
+        description: "Deploy website + PWA to GitHub Pages"
+        type: boolean
+        default: true
+      create_release:
+        description: "Cut a GitHub Release with APK/AAB/EXE"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write        # needed for releases
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # Company GitHub Pages — the APP is the site root:
+  #   https://mtekfiresafetyltd.github.io/m-tek_fire_safety_ltd.org/
+  # (marketing website remains available under /site/)
+  BASE_HREF: /m-tek_fire_safety_ltd.org/
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Build PWA
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build web --release --base-href="${{ env.BASE_HREF }}" \
+            --dart-define=SUPABASE_URL="${{ vars.SUPABASE_URL }}" \
+            --dart-define=SUPABASE_ANON_KEY="${{ vars.SUPABASE_ANON_KEY }}" \
+            --dart-define=MILS_API_BASE="${{ vars.MILS_API_BASE }}"
+      - uses: actions/upload-artifact@v4
+        with: { name: mtek-pwa, path: app/build/web }
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: zulu, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Build APK + AAB
+        working-directory: app
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          MILS_API_BASE: ${{ vars.MILS_API_BASE }}
+        run: |
+          flutter pub get
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+            --dart-define=MILS_API_BASE="$MILS_API_BASE"
+          flutter build appbundle --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+            --dart-define=MILS_API_BASE="$MILS_API_BASE"
+      - uses: actions/upload-artifact@v4
+        with: { name: mtek-apk, path: app/build/app/outputs/flutter-apk/app-release.apk }
+      - uses: actions/upload-artifact@v4
+        with: { name: mtek-aab, path: app/build/app/outputs/bundle/release/app-release.aab }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Build Windows EXE
+        working-directory: app
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          MILS_API_BASE: ${{ vars.MILS_API_BASE }}
+        shell: pwsh
+        run: |
+          flutter pub get
+          flutter build windows --release `
+            --dart-define=SUPABASE_URL="$env:SUPABASE_URL" `
+            --dart-define=SUPABASE_ANON_KEY="$env:SUPABASE_ANON_KEY" `
+            --dart-define=MILS_API_BASE="$env:MILS_API_BASE"
+      - name: Zip bundle
+        shell: pwsh
+        run: Compress-Archive -Path app/build/windows/x64/runner/Release/* -DestinationPath mtek-windows.zip
+      - uses: actions/upload-artifact@v4
+        with: { name: mtek-windows, path: mtek-windows.zip }
+
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_pages }}
+    needs: web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage app at site root, website under /site/
+        run: |
+          mkdir -p staging/site
+          # marketing website under /site/
+          rsync -a --exclude '.git' --exclude 'app' --exclude 'backend' \
+                --exclude 'docs' --exclude 'seed' --exclude 'preview' \
+                --exclude 'staging' ./ staging/site/
+          touch staging/site/.nojekyll
+      - uses: actions/download-artifact@v4
+        with: { name: mtek-pwa, path: staging }
+      - run: touch staging/.nojekyll
+      - name: Publish to Pages
+        uses: actions/upload-pages-artifact@v3
+        with: { path: staging }
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: mtek-apk }
+      - uses: actions/download-artifact@v4
+        with: { name: mtek-aab }
+      - uses: actions/download-artifact@v4
+        with: { name: mtek-windows }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app-release.apk
+            app-release.aab
+            mtek-windows.zip
+          tag_name: v0.1.${{ github.run_number }}
+          generate_release_notes: true
