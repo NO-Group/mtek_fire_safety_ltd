@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 rem Read build_env.txt ONLY if you made one (optional override). Nothing is required.
 if exist build_env.txt (
@@ -16,11 +17,29 @@ set D=
 if defined SUPABASE_URL set D=%D% --dart-define=SUPABASE_URL=!SUPABASE_URL!
 if defined SUPABASE_ANON_KEY set D=%D% --dart-define=SUPABASE_ANON_KEY=!SUPABASE_ANON_KEY!
 if defined MILS_API_BASE set D=%D% --dart-define=MILS_API_BASE=!MILS_API_BASE!
-call flutter build windows --release %D%
+call flutter build windows --release !D!
 if errorlevel 1 (echo. & echo BUILD FAILED — read the red errors above. & pause & exit /b 1)
 set OUT=build\windows\x64\runner\Release
 powershell -NoProfile -Command "Compress-Archive -Path '%OUT%\*' -DestinationPath 'M-TEK-windows.zip' -Force"
+
 echo.
-echo DONE. Folder:  app\%OUT%
-echo Zipped:        app\M-TEK-windows.zip   (copy the WHOLE folder to any Windows PC)
+echo Building the Windows Installer (MSIX)... this makes a real Setup wizard
+echo showing Publisher: N.O Group. The first time, Windows may ask you to
+echo confirm installing a self-signed developer certificate — click Yes.
+call flutter pub get
+call dart run msix:create
+if errorlevel 1 (
+  echo.
+  echo MSIX packaging failed, but the plain EXE build above still succeeded.
+  echo You can still run the app from: app\%OUT%\mtek_inventory.exe
+  pause
+  exit /b 0
+)
+
+echo.
+echo DONE.
+echo Folder (plain EXE, no installer): app\%OUT%
+echo Zipped (plain EXE):                app\M-TEK-windows.zip
+echo Installer (recommended):           app\%OUT%\M-TEK-Inventory-Setup.msix
+echo   Double-click the .msix to install it like a normal Windows app.
 pause

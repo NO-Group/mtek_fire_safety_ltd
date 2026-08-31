@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 rem Read build_env.txt ONLY if you made one (optional override). Nothing is required.
 if exist build_env.txt (
@@ -16,7 +17,7 @@ set D=
 if defined SUPABASE_URL set D=%D% --dart-define=SUPABASE_URL=!SUPABASE_URL!
 if defined SUPABASE_ANON_KEY set D=%D% --dart-define=SUPABASE_ANON_KEY=!SUPABASE_ANON_KEY!
 if defined MILS_API_BASE set D=%D% --dart-define=MILS_API_BASE=!MILS_API_BASE!
-call flutter build apk --release %D%
+call flutter build apk --release !D!
 if errorlevel 1 (echo. & echo BUILD FAILED — read the red errors above. & pause & exit /b 1)
 echo.
 echo DONE. Your APK:  app\build\app\outputs\flutter-apk\app-release.apk

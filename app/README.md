@@ -30,13 +30,22 @@ edition) and tick **"Desktop development with C++"** in the installer —
 Flutter needs its compiler for Windows EXEs.
 
 Same prerequisites, then double-click **`make_exe.bat`** — nothing else.
-→ Folder: `app\build\windows\x64\runner\Release\` (zip created for you:
-`M-TEK-windows.zip`). Copy the whole folder to any Windows PC and run
-`mtek_inventory.exe` — no installation needed.
+It builds the app and then packages a Windows installer for you:
+
+→ **Installer (recommended)**: `app\build\windows\x64\runner\Release\M-TEK-Inventory-Setup.msix`.
+Double-click it to install like any normal Windows app. It shows
+**Publisher: N.O Group** in the install wizard. The very first time you
+install it, Windows will ask you to confirm trusting a self-signed
+developer certificate — click **Yes**; this only prompts once per PC.
+
+→ Plain folder (no installer, portable): `app\build\windows\x64\runner\Release\`
+(zip created for you: `M-TEK-windows.zip`). Copy the whole folder to any
+Windows PC and run `mtek_inventory.exe` directly — no installation needed.
 
 Command line equivalent:
 ```
 flutter build windows --release
+dart run msix:create
 ```
 
 ## Sign in
