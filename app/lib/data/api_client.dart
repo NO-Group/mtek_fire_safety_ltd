@@ -4,9 +4,10 @@ export 'rest_client_io.dart' if (dart.library.html) 'rest_client_web.dart'
     show RestJsonResponse;
 
 /// The M-TEK DATA API client — every business read/write goes through the
-/// Node service (backend/api) which stores in the MongoDB section databases.
-/// Requests carry the signed-in user's Supabase JWT so the server can
-/// enforce CEO/Admin/Sales authority on every endpoint.
+/// `data-api` Supabase Edge Function (supabase/functions/data-api/index.ts),
+/// which stores everything in the MongoDB section databases. Requests carry
+/// the signed-in user's Supabase JWT so the server can enforce
+/// CEO/Admin/Sales authority on every endpoint.
 class ApiClient {
   final String baseUrl;
   String? accessToken; // Supabase JWT (set after sign-in)

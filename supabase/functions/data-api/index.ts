@@ -23,6 +23,31 @@
 
 import { MongoClient } from 'npm:mongodb@6.8.0';
 
+// ---- environment (Function secrets — see header comment above) --------------
+// SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Supabase
+// Edge Runtime for every function; SUPABASE_SECRET_KEY is kept as a fallback
+// name since older projects expose the service key under that key instead.
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SERVICE_ROLE =
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
+  Deno.env.get('SUPABASE_SECRET_KEY') ??
+  Deno.env.get('SUPABASE_ANON_KEY') ??
+  '';
+// The CEO identity is locked to this email (owner directive) and, optionally,
+// a specific Supabase Auth UID if MTEK_CEO_UID is set as a secret.
+const CEO_EMAIL = 'mtekfiresafetyltd@gmail.com';
+const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
+const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
+
+// CORS: the Android/Windows apps call this function directly (no browser
+// origin to restrict to), so allow any origin but only the methods/headers
+// this API actually uses.
+const CORS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, content-type, apikey',
+};
+
 // ---- section databases (never entangled) ------------------------------------
 const DB = {
   core: 'mtek_core', inventory: 'mtek_inventory', people: 'mtek_people',
@@ -77,9 +102,10 @@ async function audit(section: string, action: string, ref: string, user: Profile
 // ---- auth: Supabase JWT → MongoDB profile ------------------------------------
 interface Profile { uid: string; email: string; name: string; role: string; sig_hash: string; sig_salt: string; }
 const hashPass = (secret: string, salt: string) => {
-  // scrypt via WebCrypto is unavailable; use the same scheme as seed/preview:
-  // HMAC-SHA512(salt+secret, key=mtek-store-salt) — deterministic, salted.
-  // Kept byte-identical with backend/api/server.js.
+  // scrypt via WebCrypto is unavailable here, so we use HMAC-SHA512
+  // (salt+secret, key='mtek-store-salt') — deterministic and salted.
+  // Kept byte-identical with backend/scripts/seed-mongo.js so a passcode
+  // seeded there verifies correctly here.
   return hmacHex(`${salt}${secret}`, 'mtek-store-salt');
 };
 async function hmacHex(message: string, key: string): Promise<string> {
@@ -88,9 +114,6 @@ async function hmacHex(message: string, key: string): Promise<string> {
   const sig = await crypto.subtle.sign('HMAC', k, enc.encode(message));
   return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
-// NOTE: backend/api/server.js uses node crypto scryptSync — this edge port
-// MUST use the same algorithm as the seed script. Both the seed script and
-// this function use HMAC-SHA512 (see seed-mongo.js) so hashes agree.
 
 const profileCache = new Map<string, { value: Profile; expires: number }>();
 async function auth(req: Request): Promise<Profile> {

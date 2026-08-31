@@ -64,9 +64,8 @@ codebase automatically updates everything.
 
 | Concern | Service |
 |---|---|
-| Money & inventory (products, stock, customers, sales, invoices, receipts, transactions) | **Supabase Postgres** (ACID, RLS) |
-| MILS maintenance documents (+ photos) | **MongoDB Atlas** via Node API (`/backend/api`) |
-| Auth & roles | **Supabase Auth** (email/OTP), role claims |
+| Everything (products, stock, customers, sales, invoices, receipts, transactions, MILS) | **MongoDB Atlas**, 7 section databases, via the `data-api` Supabase Edge Function (`supabase/functions/data-api/index.ts`) — this IS the production backend |
+| Auth & roles | **Supabase Auth** (email/password), role claims resolved server-side per request |
 | Files (PDFs, product/MILS photos) | **Supabase Storage** |
 | Offline resilience | Local Drift (SQLite) cache + sync queue — app works offline, syncs when online |
 
