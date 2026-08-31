@@ -1,5 +1,5 @@
 name: mtek_inventory
-description: M-Tek Fire & Safety Ltd — Inventory & Business App (one codebase: Android, Windows, Web/PWA).
+description: "M-Tek Fire & Safety Ltd — Inventory & Business App (Android + Windows, one codebase, one live server)."
 publish_to: "none"
 version: 0.1.0+m1
 
