@@ -175,6 +175,21 @@ class AppStore extends ChangeNotifier {
           docHistory.add(IssuedDocument.fromJson((e).cast<String, dynamic>()));
         }
       }
+      for (final e in (data['sales'] as List? ?? const [])) {
+        if (e is Map) sales.add(_saleFromServer((e).cast<String, dynamic>(), products, customers));
+      }
+      for (final e in (data['adjustments'] as List? ?? const [])) {
+        if (e is Map) {
+          final adj = _adjustmentFromServer((e).cast<String, dynamic>(), products);
+          if (adj != null) adjustments.add(adj);
+        }
+      }
+      for (final e in (data['mils'] as List? ?? const [])) {
+        if (e is Map) {
+          final log = _milsLogFromServer((e).cast<String, dynamic>(), customers);
+          if (log != null) milsLogs.add(log);
+        }
+      }
       return products.isNotEmpty;
     } catch (_) {
       return false;
@@ -358,6 +373,27 @@ class AppStore extends ChangeNotifier {
     for (final e in rawDocs) {
       if (e is Map) docHistory.add(IssuedDocument.fromJson((e).cast<String, dynamic>()));
     }
+    final rawSales = await _readList('sales');
+    for (final e in rawSales) {
+      if (e is Map) {
+        final s = _saleFromLocal((e).cast<String, dynamic>(), products, customers);
+        if (s != null) sales.add(s);
+      }
+    }
+    final rawAdjustments = await _readList('adjustments');
+    for (final e in rawAdjustments) {
+      if (e is Map) {
+        final a = _adjustmentFromLocal((e).cast<String, dynamic>(), products);
+        if (a != null) adjustments.add(a);
+      }
+    }
+    final rawMils = await _readList('mils_logs');
+    for (final e in rawMils) {
+      if (e is Map) {
+        final log = _milsLogFromLocal((e).cast<String, dynamic>(), customers);
+        if (log != null) milsLogs.add(log);
+      }
+    }
     return true;
   }
 
@@ -499,6 +535,9 @@ class AppStore extends ChangeNotifier {
     await writeStore('customers', customers.map(customerToJson).toList());
     await writeStore('settings', settings.toJson());
     await writeStore('serials', SerialService.instance.toJson());
+    await writeStore('sales', sales.map(saleToJson).toList());
+    await writeStore('adjustments', adjustments.map(adjToJson).toList());
+    await writeStore('mils_logs', milsLogs.map(milsLogToJson).toList());
   }
 
   // ------------------------------------------------------------ analytics
@@ -722,6 +761,70 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Records a completed maintenance/service job (CEO/Admin — MILS screen +
+  /// the MILS document generator both feed this). Server-first via
+  /// POST /api/mils; the local mirror keeps the MILS screen usable offline.
+  Future<MaintenanceLog> logMaintenance({
+    required String equipment,
+    String? serial,
+    required Customer client,
+    required String location,
+    required MaintenanceAction action,
+    required String findings,
+    required String technician,
+    DateTime? serviceDate,
+    DateTime? nextDue,
+    String? milsNo,
+  }) async {
+    final service = serviceDate ?? DateTime.now();
+    final due = nextDue ?? service.add(const Duration(days: 180));
+    var log = MaintenanceLog(
+      id: milsNo ?? 'MILS-${(milsLogs.length + 1).toString().padLeft(9, '0')}',
+      serviceDate: service,
+      equipment: equipment,
+      serial: serial,
+      client: client,
+      location: location,
+      action: action,
+      findings: findings,
+      technician: technician,
+      nextDue: due,
+    );
+    var serverApplied = false;
+    if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
+      try {
+        final res = await _api!.post('/api/mils', {
+          'equipment': equipment, 'serial': serial,
+          'customer_id': client.id.length > 20 ? client.id : null,
+          'customer_name': client.name, 'location': location,
+          'action': action.name, 'findings': findings, 'technician': technician,
+          'service_date': service.toIso8601String(), 'next_due': due.toIso8601String(),
+        });
+        if (res != null && res.ok && res.json is Map) {
+          final serverNo = '${(res.json as Map)['mils_no'] ?? ''}';
+          if (serverNo.isNotEmpty) {
+            log = MaintenanceLog(
+              id: serverNo, serviceDate: service, equipment: equipment, serial: serial,
+              client: client, location: location, action: action, findings: findings,
+              technician: technician, nextDue: due,
+            );
+          }
+          serverApplied = true;
+        }
+      } catch (_) {
+        serverApplied = false;
+      }
+    }
+    milsLogs.insert(0, log);
+    await writeStore('mils_logs', milsLogs.map(milsLogToJson).toList());
+    if (!serverApplied) {
+      enqueueSync('mils_logs', [milsLogToJson(log)]);
+      unawaited(flushSyncQueue());
+    }
+    notifyListeners();
+    return log;
+  }
+
   Future<void> adjustStock(Product product, int delta, AdjustmentReason reason, String note) async {
     // CEO/Admin only — enforced AGAIN server-side by the RPC (RLS + check)
     final serverApplied = await _apiPost(
@@ -881,6 +984,129 @@ Map<String, dynamic> adjToJson(StockAdjustment a) => {
     };
 
 int _asInt(dynamic v) => v is int ? v : v is num ? v.round() : int.tryParse('$v') ?? 0;
+
+// ---------------------------------------------------- server ↔ UI mapping
+// The data API's /api/bootstrap already returns `sales`, `adjustments` and
+// `mils` — these turn that server shape into the models the Insights,
+// Customers, Stock and MILS screens already read (store.sales,
+// store.adjustments, store.milsLogs).
+
+Customer _lookupCustomer(List<Customer> customers, String? id, String fallbackName) {
+  if (id != null && id.isNotEmpty) {
+    final found = customers.where((c) => c.id == id).toList();
+    if (found.isNotEmpty) return found.first;
+  }
+  return Customer(id: id ?? 'walk-in', name: fallbackName, isCorporate: false, phone: '', email: '', address: '');
+}
+
+Sale _saleFromServer(Map<String, dynamic> m, List<Product> products, List<Customer> customers) {
+  final rawItems = m['items'] as List? ?? const [];
+  final items = <SaleItem>[];
+  for (final it in rawItems) {
+    if (it is! Map) continue;
+    final pid = '${it['product_id'] ?? ''}';
+    final product = products.where((p) => p.id == pid).toList();
+    items.add(SaleItem(
+      product: product.isNotEmpty
+          ? product.first
+          : Product(id: pid, name: '${it['name'] ?? 'Item'}', category: ProductCategory.fire,
+              costPrice: 0, sellingPrice: _asInt(it['unit_price']), qtyOnHand: 0, reorderLevel: 0),
+      qty: _asInt(it['qty']),
+      unitPrice: _asInt(it['unit_price']),
+    ));
+  }
+  return Sale(
+    id: '${m['_id'] ?? ''}',
+    date: DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
+    customer: _lookupCustomer(customers, m['customer_id'] as String?, '${m['customer_name'] ?? 'Walk-in customer'}'),
+    items: items,
+    discount: _asInt(m['discount']),
+    method: PaymentMethod.values.firstWhere((t) => t.name == m['method'], orElse: () => PaymentMethod.cash),
+  );
+}
+
+Sale? _saleFromLocal(Map<String, dynamic> m, List<Product> products, List<Customer> customers) {
+  final rawItems = m['items'] as List? ?? const [];
+  final items = <SaleItem>[];
+  for (final it in rawItems) {
+    if (it is! Map) continue;
+    final pid = '${it['product'] ?? ''}';
+    final product = products.where((p) => p.id == pid).toList();
+    if (product.isEmpty) continue;
+    items.add(SaleItem(product: product.first, qty: _asInt(it['qty']), unitPrice: _asInt(it['unit_price'])));
+  }
+  if (items.isEmpty) return null;
+  return Sale(
+    id: '${m['id'] ?? ''}',
+    date: DateTime.tryParse('${m['date']}') ?? DateTime.now(),
+    customer: _lookupCustomer(customers, m['customer'] as String?, 'Walk-in customer'),
+    items: items,
+    discount: _asInt(m['discount']),
+    method: PaymentMethod.values.firstWhere((t) => t.name == m['method'], orElse: () => PaymentMethod.cash),
+  );
+}
+
+StockAdjustment? _adjustmentFromServer(Map<String, dynamic> m, List<Product> products) {
+  final pid = '${m['product_id'] ?? ''}';
+  final product = products.where((p) => p.id == pid).toList();
+  if (product.isEmpty) return null;
+  return StockAdjustment(
+    id: '${m['_id'] ?? ''}',
+    date: DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
+    product: product.first,
+    delta: _asInt(m['delta']),
+    reason: AdjustmentReason.values.firstWhere((r) => r.name == m['reason'], orElse: () => AdjustmentReason.correction),
+    note: '${m['note'] ?? ''}',
+  );
+}
+
+StockAdjustment? _adjustmentFromLocal(Map<String, dynamic> m, List<Product> products) {
+  final pid = '${m['product'] ?? ''}';
+  final product = products.where((p) => p.id == pid).toList();
+  if (product.isEmpty) return null;
+  return StockAdjustment(
+    id: '${m['id'] ?? ''}',
+    date: DateTime.tryParse('${m['date']}') ?? DateTime.now(),
+    product: product.first,
+    delta: _asInt(m['delta']),
+    reason: AdjustmentReason.values.firstWhere((r) => r.name == m['reason'], orElse: () => AdjustmentReason.correction),
+    note: '${m['note'] ?? ''}',
+  );
+}
+
+MaintenanceLog? _milsLogFromServer(Map<String, dynamic> m, List<Customer> customers) {
+  final equipment = '${m['equipment'] ?? ''}';
+  if (equipment.isEmpty) return null;
+  return MaintenanceLog(
+    id: '${m['mils_no'] ?? m['_id'] ?? ''}',
+    serviceDate: DateTime.tryParse('${m['service_date']}') ?? DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
+    equipment: equipment,
+    serial: m['serial'] as String?,
+    client: _lookupCustomer(customers, m['customer_id'] as String?, '${m['customer_name'] ?? '—'}'),
+    location: '${m['location'] ?? ''}',
+    action: MaintenanceAction.values.firstWhere((a) => a.name == m['action'], orElse: () => MaintenanceAction.refill),
+    findings: '${m['findings'] ?? ''}',
+    technician: '${m['technician'] ?? m['recorded_name'] ?? ''}',
+    nextDue: DateTime.tryParse('${m['next_due']}') ?? DateTime.now().add(const Duration(days: 180)),
+  );
+}
+
+MaintenanceLog? _milsLogFromLocal(Map<String, dynamic> m, List<Customer> customers) =>
+    _milsLogFromServer(m, customers);
+
+Map<String, dynamic> milsLogToJson(MaintenanceLog l) => {
+      'mils_no': l.id,
+      'service_date': l.serviceDate.toIso8601String(),
+      'equipment': l.equipment,
+      'serial': l.serial,
+      'customer_id': l.client.id,
+      'customer_name': l.client.name,
+      'location': l.location,
+      'action': l.action.name,
+      'findings': l.findings,
+      'technician': l.technician,
+      'next_due': l.nextDue.toIso8601String(),
+    };
 
 // ------------------------------------------------------------- settings
 class StoreSettings {

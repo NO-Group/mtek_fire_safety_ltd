@@ -471,7 +471,7 @@ Deno.serve(async (req: Request) => {
         for (const k of ['customer_id', 'customer_name', 'equipment']) {
           if (url.searchParams.get(k)) q[k] = url.searchParams.get(k);
         }
-        const logs = await (await coll.mils()).find(q).sort({ entry_date: -1 }).limit(500).toArray();
+        const logs = await (await coll.mils()).find(q).sort({ created_at: -1 }).limit(500).toArray();
         return json({ logs });
       }
       case 'POST /api/mils': {
@@ -480,7 +480,7 @@ Deno.serve(async (req: Request) => {
         const doc = { ...b, mils_no: b.mils_no || 'MILS-' + pad9(await nextSerial('mils')), recorded_by: user.uid, recorded_name: user.name, created_at: now() };
         const out = await (await coll.mils()).insertOne(doc);
         await audit('mils', 'create', String(out.insertedId), user);
-        return json({ ok: true, id: String(out.insertedId), mils_no: doc.mils_no }, 201);
+        return json({ ok: true, id: String(out.insertedId), mils_no: doc.mils_no, mils: doc }, 201);
       }
 
       case 'GET /api/audit': {

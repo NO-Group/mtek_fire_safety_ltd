@@ -891,6 +891,29 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       serverIssued: Env.backendConfigured,
     );
 
+    if (_type == DocType.mils) {
+      // A completed MILS sheet IS a maintenance job — feeds the MILS
+      // screen's overdue/upcoming tracking and Insights' serviced-by-weight.
+      final equipmentParts = <String>[
+        for (final e in _mils.servicedByWeight.entries) '${e.key}kg ×${e.value.round()}',
+        for (final c in _mils.componentQty.entries.where((e) => e.value > 0))
+          '${c.key} ×${c.value.round()}',
+      ];
+      await AppStore.instance.logMaintenance(
+        equipment: equipmentParts.isEmpty ? 'Fire extinguisher service' : equipmentParts.join(', '),
+        serial: 'MILS-${serial.toString().padLeft(9, '0')}',
+        client: Customer(id: customer, name: customer, isCorporate: false,
+            phone: _mils.phone, email: _mils.customerEmail, address: _mils.address),
+        location: _mils.address,
+        action: MaintenanceAction.refill,
+        findings: 'Serviced per MILS-${serial.toString().padLeft(9, '0')}',
+        technician: signer.name,
+        serviceDate: _mils.entryDate,
+        nextDue: _mils.nextServiceDate,
+        milsNo: 'MILS-${serial.toString().padLeft(9, '0')}',
+      );
+    }
+
     final outcome = await dispatchPdf(bytes: bytes, filename: filename);
 
     if (!mounted) return;
