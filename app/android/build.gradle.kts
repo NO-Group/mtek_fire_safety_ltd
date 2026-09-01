@@ -28,25 +28,37 @@ subprojects {
 // does not need AGP on its own compile classpath -- compile-time only,
 // does not touch any plugin's own minSdk/targetSdk or runtime behavior.
 subprojects {
-    afterEvaluate {
-        val androidExt = project.extensions.findByName("android") ?: return@afterEvaluate
-        val cls = androidExt.javaClass
-        // AGP's setter signature has changed across versions (setCompileSdk(Integer)
-        // in newer AGP, compileSdkVersion(int) as the older/deprecated form) --
-        // try each in turn so this keeps working regardless of AGP version.
-        val attempts: List<() -> Unit> = listOf(
-            { cls.getMethod("setCompileSdk", Integer::class.java).invoke(androidExt, 36) },
-            { cls.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(androidExt, 36) },
-            { cls.getMethod("compileSdkVersion", Int::class.javaPrimitiveType).invoke(androidExt, 36) },
-        )
-        for (attempt in attempts) {
-            try {
-                attempt()
-                break
-            } catch (_: NoSuchMethodException) {
-                // Try the next known setter signature.
+    val forceCompileSdk36: () -> Unit = {
+        val androidExt = project.extensions.findByName("android")
+        if (androidExt != null) {
+            val cls = androidExt.javaClass
+            // AGP's setter signature has changed across versions (setCompileSdk(Integer)
+            // in newer AGP, compileSdkVersion(int) as the older/deprecated form) --
+            // try each in turn so this keeps working regardless of AGP version.
+            val attempts: List<() -> Unit> = listOf(
+                { cls.getMethod("setCompileSdk", Integer::class.java).invoke(androidExt, 36) },
+                { cls.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(androidExt, 36) },
+                { cls.getMethod("compileSdkVersion", Int::class.javaPrimitiveType).invoke(androidExt, 36) },
+            )
+            for (attempt in attempts) {
+                try {
+                    attempt()
+                    break
+                } catch (_: NoSuchMethodException) {
+                    // Try the next known setter signature.
+                }
             }
         }
+    }
+    // :app is force-evaluated early by the evaluationDependsOn(":app") block
+    // above, so by the time this runs for :app it is already evaluated --
+    // calling afterEvaluate on an already-evaluated project throws. Skip it
+    // in that case: :app already declares its own compileSdk = 36 directly
+    // in its own build.gradle.kts, so no override is needed there anyway.
+    // For every other (plugin) subproject, defer to afterEvaluate as usual
+    // so the android{} extension exists by the time we touch it.
+    if (!project.state.executed) {
+        afterEvaluate { forceCompileSdk36() }
     }
 }
 
