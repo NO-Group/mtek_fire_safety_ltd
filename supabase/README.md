@@ -38,11 +38,17 @@ the app's "Create an account →" link on the sign-in screen — no dashboard
 work needed. It calls `POST /api/auth/signup` on the function above, which
 uses the Supabase Admin API (the `SUPABASE_SERVICE_ROLE_KEY` the Edge
 Runtime already injects automatically — nothing to add) to create a real
-Supabase Auth user and a matching MongoDB profile. New accounts always
-start as `sales`; promote someone to `admin` afterwards in Supabase →
-Authentication → Users is not enough on its own — set their role directly
-in MongoDB (`mtek_people.profiles` → that user's document → `role`) since
-roles live there, not in Supabase.
+Supabase Auth user and a matching MongoDB profile, plus their phone number
+(so it shows in Authentication → Users) and their self-chosen recovery
+phrase (≥15 characters — the only way to reset a forgotten password; there
+is no email/OTP flow). New accounts always start as `sales`. Promotion to
+`admin` is done entirely INSIDE the app now — sign in as the CEO, open the
+**Staff** screen, and tap "Make Admin"/"Demote" next to a name; nothing to
+edit in Supabase or MongoDB by hand any more. Every signed-in user (CEO,
+Admin, Sales) also sees a live **Notifications** feed of every sale,
+invoice payment, document issued, stock change, new customer/product and
+MILS job, and CEO/Admin can post announcements from there too (with a
+read-count and the list of who has read it).
 
 ## Check it's alive
 Open `https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api/health`
