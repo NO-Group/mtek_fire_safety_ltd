@@ -158,8 +158,8 @@ class ReceiptsScreen extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              const Text('Issued by: Admin — thank you for your business.',
-                  style: TextStyle(fontSize: 11, color: Mtek.gray500)),
+              Text('Issued by: ${r.issuedBy} — thank you for your business.',
+                  style: const TextStyle(fontSize: 11, color: Mtek.gray500)),
               const SizedBox(height: 18),
               Row(
                 children: [

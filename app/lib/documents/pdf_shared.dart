@@ -71,7 +71,7 @@ pw.Widget verificationFooter(String docType, int serial, String payload) {
       child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: hash, width: 30, height: 30),
     ),
     pw.SizedBox(width: 6),
-    pw.Text('Verify: $hash',
+    pw.Text('Scan to verify',
         style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600)),
   ]);
 }

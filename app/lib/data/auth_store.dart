@@ -326,10 +326,19 @@ class AuthStore extends ChangeNotifier {
     if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {
       return 'Unexpected auth response';
     }
+    // The login response's `user` object is `{uid, email, name, role}` — key
+    // it on `uid` (NOT `id`, which the response never contains; the previous
+    // code read `id`, leaving remoteSignInUid empty) and carry the role/name
+    // straight through so the client trusts the server's authoritative role.
     await _adoptSession({
       'access_token': j['access_token'],
       'refresh_token': j['refresh_token'],
-      'user': {'uid': j['user']['id'], 'email': mail},
+      'user': {
+        'uid': j['user']['uid'] ?? '',
+        'email': j['user']['email'] ?? mail,
+        'name': j['user']['name'],
+        'role': j['user']['role'],
+      },
     });
     // pull the live dataset from MongoDB for this account
     await AppStore.instance.reloadRemote();
@@ -420,17 +429,18 @@ class AuthStore extends ChangeNotifier {
       return;
     }
     final body = res.json;
-    // Only a GENUINE auth rejection signs the user out: a 4xx response that
-    // carries our own `error` field (e.g. the refresh token was revoked).
-    // Everything else — a 5xx server fault, a malformed/empty body, a
-    // 401/404/502 from a proxy — is treated as a TRANSIENT failure and must
-    // NOT wipe the saved session (that was the regression: any hiccup
-    // bounced users back to login and destroyed their session on disk).
-    final isAuthReject = !res.ok &&
-        res.status >= 400 &&
-        res.status < 500 &&
+    // Only a GENUINE session rejection signs the user out — a 401 whose
+    // `error` text comes from our refresh route's own "expired/revoked"
+    // mapping. Everything else is treated as a TRANSIENT failure and must
+    // NOT wipe the saved session. In particular, a stale server that lacks
+    // the public refresh route answers with `auth()`'s "Missing bearer
+    // token" (also a 401) — that is a server-version mismatch, NOT an
+    // expired session, so we keep the cached identity instead of destroying
+    // the session on disk.
+    final isAuthReject = res.status == 401 &&
         body is Map &&
-        body['error'] is String;
+        body['error'] is String &&
+        (body['error'] as String) != 'Missing bearer token';
     if (isAuthReject) {
       // refresh token genuinely expired/revoked — sign out cleanly.
       await localWrite('session', '');

@@ -116,7 +116,17 @@ class AppStore extends ChangeNotifier {
       if (res == null || !res.ok || res.json is! Map) return false; // offline / not signed in
       final data = (res.json as Map).cast<String, dynamic>();
       final u = data['user'];
-      if (u is Map) remoteRole = '${u['role'] ?? ''}';
+      if (u is Map) {
+        remoteRole = '${u['role'] ?? ''}';
+        // Reconcile the authoritative server role into the signed-in
+        // identity so a promoted/demoted account (e.g. the CEO) reflects
+        // immediately on the next data reload — no re-login required.
+        final cur = AuthStore.instance.current;
+        if (remoteRole.isNotEmpty && cur != null && cur.role != remoteRole) {
+          cur.role = remoteRole;
+          AuthStore.instance.ping();
+        }
+      }
 
       products.addAll(parseProducts([
         for (final e in (data['products'] as List? ?? const []))
@@ -1079,7 +1089,7 @@ class AppStore extends ChangeNotifier {
       method: method,
       forDoc: forDoc,
       signedBy: signedBy,
-      issuedBy: 'Admin',
+      issuedBy: signedBy,
       customerSignature: customerSignature ?? '',
     ));
   }

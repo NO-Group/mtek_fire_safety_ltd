@@ -286,8 +286,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final api = AppStore.instance.api;
     var ok = false;
     if (Env.apiConfigured && api != null) {
+      // ANY HTTP response — even a 4xx/5xx — proves the server is reachable
+      // (the request round-tripped). "Unreachable" is reserved for a true
+      // transport failure (offline / timeout), where httpJson returns null.
       final res = await api.get('/health');
-      ok = res != null && res.ok;
+      ok = res != null;
     }
     if (mounted) setState(() => _online = ok);
   }
