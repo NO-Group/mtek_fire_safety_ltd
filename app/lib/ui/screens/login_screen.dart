@@ -1,9 +1,26 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
 import '../signature_pad.dart';
+
+/// Desktop (Windows/macOS/Linux) builds don't enable mouse-drag scrolling
+/// by default -- only touch/stylus/mouse-wheel. On a short window the
+/// longer Create Account form can end up with fields below the fold and
+/// no obvious way to reach them, so this screen opts into mouse-drag
+/// scrolling too (in addition to the wheel, which already worked).
+class _DesktopScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.unknown,
+      };
+}
 
 /// Sign-in / create-account. Account creation REQUIRES a Signature
 /// Passcode (separate from the password) + optional drawn signature.
@@ -26,21 +43,41 @@ class _LoginScreenState extends State<LoginScreen> {
   String _role = 'admin';
   String? _signaturePng;
   bool _showPad = false;
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _email.dispose();
+    _password.dispose();
+    _name.dispose();
+    _passcode.dispose();
+    _passcode2.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Mtek.navy950,
       body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              color: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(26),
-                child: _signup ? _buildSignup() : _buildLogin(),
+        child: ScrollConfiguration(
+          behavior: _DesktopScrollBehavior(),
+          child: Scrollbar(
+            controller: _scrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Card(
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(26),
+                    child: _signup ? _buildSignup() : _buildLogin(),
+                  ),
+                ),
               ),
             ),
           ),
