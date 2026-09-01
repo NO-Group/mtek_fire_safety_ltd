@@ -28,7 +28,7 @@ class MtekPdfFonts {
 /// brand block at ~5% + micro-text bands, echoing the security pattern of
 /// the physical carbon-copy books.
 pw.Widget documentWatermark(pw.ImageProvider? logo) {
-  Widget microBand() => pw.Wrap(
+  pw.Widget microBand() => pw.Wrap(
         spacing: 6,
         runSpacing: 3,
         children: [
@@ -45,7 +45,7 @@ pw.Widget documentWatermark(pw.ImageProvider? logo) {
     ]),
     pw.Opacity(
       opacity: 0.055,
-      child: pw.Rotate(
+      child: pw.Transform.rotate(
         angle: 0.32,
         child: pw.Column(mainAxisSize: pw.MainAxisSize.min, children: [
           if (logo != null) pw.Image(logo, width: 150, height: 150),
@@ -68,13 +68,14 @@ pw.Widget verificationFooter(String docType, int serial, String payload) {
     pw.Container(
       width: 30,
       height: 30,
-      child: pw.QrCodeWidget(data: hash, size: 30),
+      child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: hash, width: 30, height: 30),
     ),
     pw.SizedBox(width: 6),
     pw.Text('Verify: $hash',
         style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600)),
   ]);
 }
+
 
 String _fnv(String input) {
   var h = 0x811c9dc5;
