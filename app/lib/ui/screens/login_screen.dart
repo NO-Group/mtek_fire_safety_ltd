@@ -1,26 +1,9 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
 import '../signature_pad.dart';
-
-/// Desktop (Windows/macOS/Linux) builds don't enable mouse-drag scrolling
-/// by default -- only touch/stylus/mouse-wheel. On a short window the
-/// longer Create Account form can end up with fields below the fold and
-/// no obvious way to reach them, so this screen opts into mouse-drag
-/// scrolling too (in addition to the wheel, which already worked).
-class _DesktopScrollBehavior extends MaterialScrollBehavior {
-  @override
-  Set<PointerDeviceKind> get dragDevices => {
-        PointerDeviceKind.touch,
-        PointerDeviceKind.mouse,
-        PointerDeviceKind.stylus,
-        PointerDeviceKind.trackpad,
-        PointerDeviceKind.unknown,
-      };
-}
 
 /// Sign-in / create-account. Account creation REQUIRES a Signature
 /// Passcode (separate from the password) + optional drawn signature.
@@ -38,8 +21,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _name = TextEditingController();
+  final _phone = TextEditingController();
   final _passcode = TextEditingController();
   final _passcode2 = TextEditingController();
+  final _recovery = TextEditingController();
   String _role = 'admin';
   String? _signaturePng;
   bool _showPad = false;
@@ -51,8 +36,10 @@ class _LoginScreenState extends State<LoginScreen> {
     _email.dispose();
     _password.dispose();
     _name.dispose();
+    _phone.dispose();
     _passcode.dispose();
     _passcode2.dispose();
+    _recovery.dispose();
     super.dispose();
   }
 
@@ -61,23 +48,16 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Mtek.navy950,
       body: Center(
-        child: ScrollConfiguration(
-          behavior: _DesktopScrollBehavior(),
-          child: Scrollbar(
-            controller: _scrollController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Card(
-                  color: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.all(26),
-                    child: _signup ? _buildSignup() : _buildLogin(),
-                  ),
-                ),
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Card(
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(26),
+                child: _signup ? _buildSignup() : _buildLogin(),
               ),
             ),
           ),
@@ -142,8 +122,85 @@ class _LoginScreenState extends State<LoginScreen> {
           onPressed: () => setState(() { _signup = true; _error = null; }),
           child: const Text('Create an account →'),
         ),
+        if (Env.backendConfigured)
+          TextButton(
+            onPressed: _showForgotPassword,
+            child: const Text('Forgot password?'),
+          ),
         const SizedBox(height: 6),
       ],
+    );
+  }
+
+  void _showForgotPassword() {
+    final email = TextEditingController(text: _email.text);
+    final recovery = TextEditingController();
+    final newPassword = TextEditingController();
+    String? dialogError;
+    bool busy = false;
+    showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Reset your password'),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'No email or code is sent — enter the recovery phrase you chose at sign-up.',
+                  style: TextStyle(fontSize: 12.5, color: Mtek.gray600),
+                ),
+                const SizedBox(height: 12),
+                TextField(controller: email, decoration: const InputDecoration(labelText: 'Email')),
+                const SizedBox(height: 10),
+                TextField(controller: recovery, decoration: const InputDecoration(labelText: 'Recovery phrase (min 15 characters)')),
+                const SizedBox(height: 10),
+                TextField(controller: newPassword, obscureText: true, decoration: const InputDecoration(labelText: 'New password (min 6)')),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(dialogError!, style: const TextStyle(color: Mtek.danger, fontSize: 12.5)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setDialogState(() => busy = true);
+                      final err = await AuthStore.instance.resetPasswordWithRecovery(
+                        email: email.text,
+                        recoveryString: recovery.text,
+                        newPassword: newPassword.text,
+                      );
+                      setDialogState(() => busy = false);
+                      if (err != null) {
+                        setDialogState(() => dialogError = err);
+                        return;
+                      }
+                      if (context.mounted) Navigator.pop(context);
+                      if (mounted) {
+                        setState(() {
+                          _error = null;
+                          _email.text = email.text;
+                        });
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(content: Text('Password reset — sign in with your new password')),
+                        );
+                      }
+                    },
+              child: busy
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Reset password'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -157,7 +214,29 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 10),
         TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.mail_outline))),
         const SizedBox(height: 10),
+        TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone number', prefixIcon: Icon(Icons.phone_outlined))),
+        const SizedBox(height: 10),
         TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Account password (min 6)', prefixIcon: Icon(Icons.lock_outline))),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Mtek.gray100, borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(children: [
+                Icon(Icons.key_outlined, size: 17, color: Mtek.navy800),
+                SizedBox(width: 7),
+                Text('RECOVERY PHRASE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.navy800)),
+              ]),
+              const SizedBox(height: 4),
+              const Text('A phrase only you know, at least 15 characters — the ONLY way to reset your password later. No email or SMS code is used.',
+                  style: TextStyle(fontSize: 11.5, color: Mtek.gray600)),
+              const SizedBox(height: 10),
+              TextField(controller: _recovery, decoration: const InputDecoration(labelText: 'Your recovery phrase (min 15 characters)')),
+            ],
+          ),
+        ),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
@@ -270,6 +349,20 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'Signature passcodes do not match');
       return;
     }
+    if (Env.backendConfigured) {
+      if (_phone.text.trim().isEmpty) {
+        setState(() => _error = 'Enter your phone number');
+        return;
+      }
+      if (_recovery.text.trim().length < 15) {
+        setState(() => _error = 'Recovery phrase must be at least 15 characters');
+        return;
+      }
+      if (_recovery.text.trim() == _password.text || _recovery.text.trim() == _passcode.text) {
+        setState(() => _error = 'Recovery phrase must differ from your password and signature passcode');
+        return;
+      }
+    }
     // REAL backend: create an actual Supabase account (owner directive
     // 2026-09-01) instead of the local-only fake that had no server
     // permissions and made every write get rejected.
@@ -278,8 +371,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final remoteErr = await AuthStore.instance.remoteSignUp(
         name: _name.text,
         email: _email.text,
+        phone: _phone.text,
         password: _password.text,
         signaturePasscode: _passcode.text,
+        recoveryString: _recovery.text.trim(),
       );
       if (!mounted) return;
       setState(() { _busy = false; _error = remoteErr; });

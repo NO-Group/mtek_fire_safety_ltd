@@ -45,6 +45,19 @@ class AppStore extends ChangeNotifier {
   bool _loaded = false;
   bool get isLoaded => _loaded;
 
+  /// In-app notifications (every transaction/document/stock/customer/product
+  /// change, plus CEO/Admin announcements) — newest first. Populated by
+  /// [refreshNotifications], polled periodically by the app shell.
+  final List<AppNotification> notifications = [];
+  int get unreadNotificationCount {
+    final uid = AuthStore.instance.remoteSignInUid;
+    if (uid == null || uid.isEmpty) return notifications.length;
+    return notifications.where((n) => !n.isReadBy(uid)).length;
+  }
+
+  /// Staff directory (CEO/Admin only) — populated by [refreshStaff].
+  final List<StaffMember> staff = [];
+
   RestClient? _remote;
   ApiClient? _api;
 
@@ -217,6 +230,117 @@ class AppStore extends ChangeNotifier {
     final okRemote = await _loadRemote();
     if (okRemote) await _persistAll();
     notifyListeners();
+  }
+
+  // ------------------------------------------------------------ notifications
+  /// Pulls the latest notifications (transactions, documents, stock,
+  /// customers, products, MILS, staff changes, announcements) for every
+  /// signed-in user — CEO, Admin and Sales all see the same feed (owner
+  /// directive 2026-09-01). Safe to call repeatedly (e.g. from a poll timer).
+  Future<void> refreshNotifications() async {
+    final api = _api;
+    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) return;
+    api.accessToken = AuthStore.instance.accessToken;
+    try {
+      final res = await api.get('/api/notifications');
+      if (res == null || !res.ok || res.json is! Map) return;
+      final list = (res.json as Map)['notifications'];
+      if (list is! List) return;
+      notifications
+        ..clear()
+        ..addAll([
+          for (final e in list)
+            if (e is Map) AppNotification.fromJson(e.cast<String, dynamic>()),
+        ]);
+      notifyListeners();
+    } catch (_) {
+      // offline — keep whatever was last loaded
+    }
+  }
+
+  /// Marks a notification as read by the current user (idempotent — the
+  /// server only appends once per uid) and updates the local copy so the
+  /// unread badge count reflects it immediately.
+  Future<void> markNotificationRead(String id) async {
+    final uid = AuthStore.instance.remoteSignInUid;
+    final name = AuthStore.instance.current?.name ?? '';
+    final idx = notifications.indexWhere((n) => n.id == id);
+    if (idx != -1 && uid != null && !notifications[idx].isReadBy(uid)) {
+      notifications[idx] = AppNotification(
+        id: notifications[idx].id,
+        kind: notifications[idx].kind,
+        title: notifications[idx].title,
+        message: notifications[idx].message,
+        ref: notifications[idx].ref,
+        createdBy: notifications[idx].createdBy,
+        createdByName: notifications[idx].createdByName,
+        createdAt: notifications[idx].createdAt,
+        readBy: [
+          ...notifications[idx].readBy,
+          NotificationRead(uid: uid, name: name, at: DateTime.now()),
+        ],
+      );
+      notifyListeners();
+    }
+    try {
+      await _apiPost('/api/notifications/read', {'id': id});
+    } catch (_) {
+      // best-effort — the read receipt will resync next refresh
+    }
+  }
+
+  /// CEO/Admin-only: broadcasts an announcement, which lands in every
+  /// user's notification feed exactly like a transaction notification, but
+  /// with kind 'announcement' so the UI can show it distinctly and the
+  /// sender can see who has read it via `readBy`.
+  Future<String?> sendAnnouncement(String title, String message) async {
+    try {
+      final applied = await _apiPost('/api/announcements', {'title': title, 'message': message});
+      if (!applied) return 'Network unreachable — check your connection';
+      await refreshNotifications();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  // ------------------------------------------------------------------ staff
+  /// CEO/Admin staff directory (name/email/phone/role). Only the CEO can
+  /// actually change a role via [setStaffRole] — the server enforces this
+  /// too, so an Admin calling it will get a 403 back.
+  Future<void> refreshStaff() async {
+    final api = _api;
+    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) return;
+    api.accessToken = AuthStore.instance.accessToken;
+    try {
+      final res = await api.get('/api/staff');
+      if (res == null || !res.ok || res.json is! Map) return;
+      final list = (res.json as Map)['staff'];
+      if (list is! List) return;
+      staff
+        ..clear()
+        ..addAll([
+          for (final e in list)
+            if (e is Map) StaffMember.fromJson(e.cast<String, dynamic>()),
+        ]);
+      notifyListeners();
+    } catch (_) {
+      // offline — keep whatever was last loaded
+    }
+  }
+
+  /// CEO-only: promotes a Sales staffer to Admin, or demotes an Admin back
+  /// to Sales. Throws (as a message string) on any refusal — including a
+  /// non-CEO caller, since the server is the source of truth on authority.
+  Future<String?> setStaffRole(String uid, String role) async {
+    try {
+      final applied = await _apiPost('/api/staff/role', {'uid': uid, 'role': role});
+      if (!applied) return 'Network unreachable — check your connection';
+      await refreshStaff();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   /// Role reported by the API for the signed-in user (ceo/admin/sales).

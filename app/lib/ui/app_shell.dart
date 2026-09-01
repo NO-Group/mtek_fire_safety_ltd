@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-import '../core/format.dart' as fmt;
 import '../core/theme.dart';
 import '../data/auth_store.dart';
 import '../data/store.dart';
@@ -10,8 +11,10 @@ import 'screens/generator_screen.dart';
 import 'screens/insights_screen.dart';
 import 'screens/invoices_screen.dart';
 import 'screens/mils_screen.dart';
+import 'screens/notifications_screen.dart';
 import 'screens/receipts_screen.dart';
 import 'screens/sales_screen.dart';
+import 'screens/staff_screen.dart';
 import 'screens/stock_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/summary_screen.dart';
@@ -40,10 +43,15 @@ const _sales = Destination('sales', 'Sales', Icons.point_of_sale_outlined, Icons
 const _stock = Destination('stock', 'Stock', Icons.inventory_2_outlined, Icons.inventory_2, StockScreen());
 const _summary = Destination('summary', 'Summary', Icons.summarize_outlined, Icons.summarize, SummaryScreen());
 const _docs = Destination('docs', 'Documents', Icons.draw_outlined, Icons.draw, GeneratorScreen());
+const _notifications = Destination('notifications', 'Notifications', Icons.notifications_outlined, Icons.notifications, NotificationsScreen());
+const _staff = Destination('staff', 'Staff', Icons.badge_outlined, Icons.badge, StaffScreen());
 
 const _settings = Destination('settings', 'Settings', Icons.settings_outlined, Icons.settings, SettingsScreen());
 
 /// Admin sees everything; Sales never sees revenue/profit/settings (SPEC §6).
+/// Notifications are visible to every role (owner directive 2026-09-01 —
+/// "any user" gets notified of every transaction); Staff is CEO/Admin-only
+/// (view for both, but only the CEO can actually change a role).
 List<Destination> destinationsFor(String? role) {
   // Authority: CEO > Admin > Sales. Settings (VAT/serials/seed import/reset)
   // is CEO-ONLY (owner directive 2026-08-30); stock editing is CEO/Admin.
@@ -52,20 +60,20 @@ List<Destination> destinationsFor(String? role) {
     return _allDestinations.where((d) => d.id != 'settings').toList();
   }
   return const [
-    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs,
+    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications,
   ];
 }
 
 /// The complete management destination set (CEO view).
 const _allDestinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _summary, _docs, _settings,
+  _mils, _sales, _stock, _summary, _docs, _notifications, _staff, _settings,
 ];
 
 /// Kept for backwards compatibility (admin view).
 const destinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _summary, _docs, _settings,
+  _mils, _sales, _stock, _summary, _docs, _notifications, _staff, _settings,
 ];
 
 /// Primary destinations for the phone bottom bar; everything else lives
@@ -85,60 +93,33 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-
-  /// Recent activity — the latest real transactions (payments, receipts,
-  /// refunds). Live store data; replaces a dead bell button.
-  void _showRecentActivity(BuildContext context) {
-    final store = AppStore.instance;
-    final latest = store.transactions.reversed.take(12).toList();
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Recent activity',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              const SizedBox(height: 10),
-              if (latest.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: Text('No transactions yet — activity appears here as it happens.',
-                      style: TextStyle(color: Mtek.gray500, fontSize: 12.5)),
-                )
-              else
-                for (final t in latest)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    leading: Icon(
-                      t.isRefund ? Icons.undo : Icons.payments_outlined,
-                      size: 20,
-                      color: t.isRefund ? Mtek.danger : Mtek.success,
-                    ),
-                    title: Text('${t.isRefund ? 'Refund' : 'Payment'} — ${t.reference.isEmpty ? 'walk-in' : t.reference}',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    subtitle: Text(fmt.fmtDateTime(t.date), style: const TextStyle(fontSize: 11.5)),
-                    trailing: Text(fmt.naira(t.amount),
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700,
-                            color: t.isRefund ? Mtek.danger : Mtek.gray800)),
-                  ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   int _index = 0;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  Timer? _notifyTimer;
 
   List<Destination> get _visible => destinationsFor(AuthStore.instance.current?.role);
+
+  @override
+  void initState() {
+    super.initState();
+    // Poll for new notifications every 20s — every signed-in user (CEO,
+    // Admin, Sales) sees the same live feed (owner directive 2026-09-01).
+    unawaited(AppStore.instance.refreshNotifications());
+    _notifyTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      unawaited(AppStore.instance.refreshNotifications());
+    });
+  }
+
+  @override
+  void dispose() {
+    _notifyTimer?.cancel();
+    super.dispose();
+  }
+
+  void _openNotifications() {
+    final i = _visible.indexWhere((d) => d.id == 'notifications');
+    if (i != -1) setState(() => _index = i);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -163,14 +144,20 @@ class _AppShellState extends State<AppShell> {
         ],
       ),
       actions: [
-        IconButton(
-          tooltip: 'Recent activity',
-          icon: const Icon(Icons.notifications_outlined),
-          onPressed: () => _showRecentActivity(context),
-        ),
-        const Padding(
-          padding: EdgeInsets.only(right: 8),
-          child: Center(child: Text('Admin', style: TextStyle(fontSize: 13))),
+        AnimatedBuilder(
+          animation: AppStore.instance,
+          builder: (context, _) {
+            final unread = AppStore.instance.unreadNotificationCount;
+            return IconButton(
+              tooltip: 'Notifications',
+              icon: Badge(
+                label: Text('$unread'),
+                isLabelVisible: unread > 0,
+                child: const Icon(Icons.notifications_outlined),
+              ),
+              onPressed: _openNotifications,
+            );
+          },
         ),
         Padding(
           padding: const EdgeInsets.only(right: 8),

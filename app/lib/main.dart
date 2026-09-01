@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'core/theme.dart';
@@ -11,6 +12,43 @@ Future<void> main() async {
   runApp(const MtekApp());
 }
 
+/// App-wide scroll behaviour (owner directive 2026-09-01: "every screen in
+/// the Windows build should have a visible scroller"). On desktop platforms
+/// this (a) always draws a visible, always-on scrollbar — not just the
+/// hover/drag flash Flutter shows by default — and (b) lets a mouse drag
+/// scroll content, same as the login screen already did. Applied once here
+/// on the root MaterialApp so every screen in the app gets it for free,
+/// without needing a Scrollbar wrapper hand-added to each one.
+class MtekScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.unknown,
+      };
+
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    switch (getPlatform(context)) {
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+        // Force it always-visible; the default only flashes on hover/scroll.
+        return Scrollbar(
+          controller: details.controller,
+          thumbVisibility: true,
+          child: child,
+        );
+      case TargetPlatform.android:
+      case TargetPlatform.fuchsia:
+      case TargetPlatform.iOS:
+        return super.buildScrollbar(context, child, details);
+    }
+  }
+}
+
 class MtekApp extends StatelessWidget {
   const MtekApp({super.key});
 
@@ -19,6 +57,7 @@ class MtekApp extends StatelessWidget {
     return MaterialApp(
       title: 'MFSL Inventory',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: MtekScrollBehavior(),
       theme: MtekTheme.light(),
       home: AnimatedBuilder(
         animation: Listenable.merge([AuthStore.instance, AppStore.instance]),

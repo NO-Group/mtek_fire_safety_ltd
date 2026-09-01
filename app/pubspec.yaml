@@ -42,7 +42,7 @@ msix_config:
   display_name: MFSL Inventory
   publisher_display_name: N.O Group
   publisher: CN=N.O Group
-  identity_name: com.mtek.inventory
+  identity_name: com.n_o_group.mfsl
   msix_version: 1.0.0.0
   logo_path: assets/branding/app_icon.png
   capabilities: internetClient

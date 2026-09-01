@@ -137,13 +137,19 @@ class AuthStore extends ChangeNotifier {
   /// (which holds the service-role key server-side) then signs the new
   /// account straight in with a live session, exactly like [remoteSignIn].
   /// New self-signups always land as 'sales' — the server enforces this
-  /// too, so nobody can grant themselves admin/CEO from this screen; a
-  /// CEO/Admin promotes staff afterwards via the Supabase dashboard.
+  /// too, so nobody can grant themselves admin/CEO from this screen; only
+  /// the CEO promotes staff afterwards from the in-app Staff screen (owner
+  /// directive 2026-09-01). `phone` is set on the actual Supabase Auth user
+  /// (shows up in Authentication → Users) and `recoveryString` (≥15 chars,
+  /// chosen by the user) is the only way to reset a forgotten password —
+  /// there is no email/OTP flow.
   Future<String?> remoteSignUp({
     required String name,
     required String email,
+    required String phone,
     required String password,
     required String signaturePasscode,
+    required String recoveryString,
   }) async {
     final api = AppStore.instance.api;
     if (!Env.apiConfigured || api == null) {
@@ -153,8 +159,10 @@ class AuthStore extends ChangeNotifier {
     final res = await api.postPublic('/api/auth/signup', {
       'name': name.trim(),
       'email': mail,
+      'phone': phone.trim(),
       'password': password,
       'signature_passcode': signaturePasscode,
+      'recovery_string': recoveryString,
     });
     if (res == null) return 'Network unreachable — check your connection';
     final j = res.json;
@@ -167,6 +175,30 @@ class AuthStore extends ChangeNotifier {
     }
     await _adoptSession(j);
     await AppStore.instance.reloadRemote();
+    return null;
+  }
+
+  /// No-email, no-OTP password reset: the user proves ownership with the
+  /// recovery phrase they set at sign-up (owner directive 2026-09-01).
+  Future<String?> resetPasswordWithRecovery({
+    required String email,
+    required String recoveryString,
+    required String newPassword,
+  }) async {
+    final api = AppStore.instance.api;
+    if (!Env.apiConfigured || api == null) {
+      return 'No backend configured in this build.';
+    }
+    final res = await api.postPublic('/api/auth/reset-password', {
+      'email': email.trim().toLowerCase(),
+      'recovery_string': recoveryString,
+      'new_password': newPassword,
+    });
+    if (res == null) return 'Network unreachable — check your connection';
+    if (!res.ok) {
+      final msg = (res.json is Map ? (res.json as Map)['error'] : null);
+      return msg is String ? msg : 'Could not reset the password (HTTP ${res.status})';
+    }
     return null;
   }
 

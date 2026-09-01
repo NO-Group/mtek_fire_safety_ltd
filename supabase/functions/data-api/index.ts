@@ -21,7 +21,7 @@
 //                 Authorization: Bearer <Supabase JWT>
 // ============================================================================
 
-import { MongoClient } from 'npm:mongodb@6.8.0';
+import { MongoClient, ObjectId } from 'npm:mongodb@6.8.0';
 
 // ---- environment (Function secrets — see header comment above) --------------
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Supabase
@@ -79,10 +79,12 @@ const coll = {
   mils: () => db(DB.mils).then(d => d.collection('logs')),
   archive: () => db(DB.documents).then(d => d.collection('archive')),
   audit: () => db(DB.audit).then(d => d.collection('events')),
+  notifications: () => db(DB.core).then(d => d.collection('notifications')),
 };
 
 // ---- helpers ----------------------------------------------------------------
 const pad9 = (n: number) => String(n).padStart(9, '0');
+const fmtN = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
 const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote'];
 const now = () => new Date().toISOString();
 
@@ -99,8 +101,27 @@ async function audit(section: string, action: string, ref: string, user: Profile
   } catch { /* never break a request on audit failure */ }
 }
 
+// ---- notifications: every significant write fires one of these, visible
+// to EVERY signed-in user (CEO, Admin, Sales) — owner directive 2026-09-01
+// ("the CEO admin and any user should receive a notification ... when any
+// transaction happens"). Announcements (CEO/Admin → all staff) reuse the
+// same collection with kind='announcement' and track exactly who has read
+// them so the sender can see a read count + reader list.
+async function notify(kind: string, title: string, message: string, ref: string, user: Profile) {
+  try {
+    await (await coll.notifications()).insertOne({
+      kind, title, message, ref: String(ref),
+      created_by: user.uid, created_by_name: user.name, created_at: now(),
+      read_by: [] as Array<{ uid: string; name: string; at: string }>,
+    });
+  } catch { /* never break a request because a notification failed to save */ }
+}
+
 // ---- auth: Supabase JWT → MongoDB profile ------------------------------------
-interface Profile { uid: string; email: string; name: string; role: string; sig_hash: string; sig_salt: string; }
+interface Profile {
+  uid: string; email: string; name: string; role: string;
+  sig_hash: string; sig_salt: string;
+}
 const hashPass = (secret: string, salt: string) => {
   // scrypt via WebCrypto is unavailable here, so we use HMAC-SHA512
   // (salt+secret, key='mtek-store-salt') — deterministic and salted.
@@ -108,6 +129,9 @@ const hashPass = (secret: string, salt: string) => {
   // seeded there verifies correctly here.
   return hmacHex(`${salt}${secret}`, 'mtek-store-salt');
 };
+// Recovery strings use a SEPARATE HMAC key from signature passcodes so a
+// leaked signature hash can never be replayed as a password-recovery hash.
+const hashRecovery = (secret: string, salt: string) => hmacHex(`${salt}${secret}`, 'mtek-recovery-salt');
 async function hmacHex(message: string, key: string): Promise<string> {
   const enc = new TextEncoder();
   const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']);
@@ -294,30 +318,44 @@ Deno.serve(async (req: Request) => {
     // existing Admin/CEO promotes staff afterwards. The signature-passcode
     // hash is bound immediately (there is no other first-bind path for
     // non-CEO accounts), so a brand-new account can sign documents right away.
+    // Also collects a phone number (stored on the real Supabase auth.users
+    // row so it shows in the dashboard, AND mirrored into the MongoDB
+    // profile) and a RECOVERY STRING (≥15 chars, hashed with its own HMAC
+    // key — never the signature-passcode key) used later by
+    // POST /api/auth/reset-password for a mail/OTP-free password reset
+    // (owner directive 2026-09-01).
     if (route === 'POST /api/auth/signup') {
       const b = await req.json().catch(() => ({} as Record<string, unknown>));
       const name = String(b.name ?? '').trim().slice(0, 120);
       const email = String(b.email ?? '').trim().toLowerCase();
+      const phone = String(b.phone ?? '').trim().slice(0, 32);
       const password = String(b.password ?? '');
       const passcode = String(b.signature_passcode ?? '');
+      const recovery = String(b.recovery_string ?? '');
       if (!name) return err(400, 'Enter your full name');
       if (!email.includes('@')) return err(400, 'Enter a valid email');
+      if (!phone) return err(400, 'Enter a phone number');
       if (password.length < 6) return err(400, 'Password must be at least 6 characters');
       if (passcode.length < 4) return err(400, 'Signature passcode must be at least 4 characters');
       if (passcode === password) return err(400, 'Signature passcode must be different from your password');
+      if (recovery.length < 15) return err(400, 'Recovery string must be at least 15 characters');
+      if (recovery === password || recovery === passcode) return err(400, 'Recovery string must be different from your password and signature passcode');
       if (email === CEO_EMAIL) return err(400, 'The CEO account is pre-provisioned — sign in directly');
 
+      // phone_confirm:true marks it pre-verified so GoTrue stores it on
+      // auth.users WITHOUT dispatching an SMS/needing an SMS provider —
+      // it just shows up in Authentication → Users like the owner wants.
       let createRes: Response;
       try {
         createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
           method: 'POST',
           headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name } }),
+          body: JSON.stringify({ email, password, phone, phone_confirm: true, email_confirm: true, user_metadata: { full_name: name, phone } }),
         });
       } catch {
         return err(503, 'Auth service unreachable — try again shortly');
       }
-      const created = await createRes.json().catch(() => ({} as Record<string, unknown>));
+      let created = await createRes.json().catch(() => ({} as Record<string, unknown>));
       if (!createRes.ok) {
         const msg = String((created as Record<string, unknown>).msg ?? (created as Record<string, unknown>).error_description ?? (created as Record<string, unknown>).error ?? '');
         if (createRes.status === 422 || /already.*(registered|exists)/i.test(msg)) {
@@ -326,17 +364,45 @@ Deno.serve(async (req: Request) => {
         if (createRes.status === 401 || createRes.status === 403) {
           return err(500, 'Server is not configured for self sign-up (SUPABASE_SERVICE_ROLE_KEY secret missing) — ask the CEO to check Supabase → Edge Functions → Secrets');
         }
-        return err(400, msg || 'Could not create the account');
+        // A phone-related rejection (e.g. an SMS provider strictly
+        // required in this project) shouldn't block account creation —
+        // retry once without the phone field so sign-up still succeeds;
+        // the phone number is still recorded in the MongoDB profile below.
+        if (/phone/i.test(msg)) {
+          let retryRes: Response;
+          try {
+            retryRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+              method: 'POST',
+              headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, phone } }),
+            });
+          } catch {
+            return err(503, 'Auth service unreachable — try again shortly');
+          }
+          created = await retryRes.json().catch(() => ({} as Record<string, unknown>));
+          if (!retryRes.ok) {
+            const msg2 = String((created as Record<string, unknown>).msg ?? (created as Record<string, unknown>).error_description ?? (created as Record<string, unknown>).error ?? '');
+            return err(400, msg2 || 'Could not create the account');
+          }
+        } else {
+          return err(400, msg || 'Could not create the account');
+        }
       }
       const createdUser = created as Record<string, unknown>;
       const uid = String(createdUser.id ?? (createdUser.user as Record<string, unknown> | undefined)?.id ?? '');
       if (!uid) return err(500, 'Account created but no id was returned — try signing in');
 
       const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+      const recoverySalt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
       const fullName = name || email.split('@')[0];
       await (await coll.profiles()).updateOne(
         { _id: uid },
-        { $set: { _id: uid, email, full_name: fullName, role: 'sales', sig_salt: salt, sig_hash: await hashPass(passcode, salt), created_at: now() } },
+        { $set: {
+          _id: uid, email, phone, full_name: fullName, role: 'sales',
+          sig_salt: salt, sig_hash: await hashPass(passcode, salt),
+          recovery_salt: recoverySalt, recovery_hash: await hashRecovery(recovery, recoverySalt),
+          created_at: now(),
+        } },
         { upsert: true },
       );
       profileCache.delete(uid);
@@ -362,6 +428,49 @@ Deno.serve(async (req: Request) => {
         refresh_token: String((sj as Record<string, unknown>).refresh_token ?? ''),
         user: { uid, email, name: fullName, role: 'sales' },
       });
+    }
+
+    // ---- public auth: reset password with the recovery string (owner
+    // directive 2026-09-01) — NO email/OTP round-trip. The user proves
+    // ownership by typing the ≥15-char recovery string they set at sign-up;
+    // it is verified against a salted HMAC hash using its own key (never
+    // the signature-passcode key), then the Admin API sets a new password.
+    if (route === 'POST /api/auth/reset-password') {
+      const b = await req.json().catch(() => ({} as Record<string, unknown>));
+      const email = String(b.email ?? '').trim().toLowerCase();
+      const recovery = String(b.recovery_string ?? '');
+      const newPassword = String(b.new_password ?? '');
+      if (!email.includes('@')) return err(400, 'Enter a valid email');
+      if (!recovery) return err(400, 'Enter your recovery string');
+      if (newPassword.length < 6) return err(400, 'New password must be at least 6 characters');
+
+      const profile = await (await coll.profiles()).findOne({ email }) as Record<string, unknown> | null;
+      if (!profile || !profile.recovery_hash || !profile.recovery_salt) {
+        // Same generic message whether the email is unknown or has no
+        // recovery string on file — never reveal which via the error text.
+        return err(401, 'Recovery string does not match this account');
+      }
+      const hash = await hashRecovery(recovery, String(profile.recovery_salt));
+      if (hash !== profile.recovery_hash) {
+        return err(401, 'Recovery string does not match this account');
+      }
+      const uid = String(profile._id);
+      let updRes: Response;
+      try {
+        updRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${uid}`, {
+          method: 'PUT',
+          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: newPassword }),
+        });
+      } catch {
+        return err(503, 'Auth service unreachable — try again shortly');
+      }
+      if (!updRes.ok) {
+        const j = await updRes.json().catch(() => ({} as Record<string, unknown>));
+        return err(400, String((j as Record<string, unknown>).msg ?? (j as Record<string, unknown>).error_description ?? 'Could not reset the password'));
+      }
+      profileCache.delete(uid);
+      return json({ ok: true });
     }
 
     const user = await auth(req);
@@ -410,6 +519,7 @@ Deno.serve(async (req: Request) => {
         };
         const out = await (await coll.customers()).insertOne(doc);
         await audit('customers', 'create', String(out.insertedId), user);
+        await notify('customer', 'New customer added', `${user.name} added ${doc.name} as a customer`, String(out.insertedId), user);
         return json({ customer: { ...doc, _id: out.insertedId } }, 201);
       }
 
@@ -430,6 +540,7 @@ Deno.serve(async (req: Request) => {
           upserted++;
         }
         await audit('inventory', 'upsert', `${upserted} products`, user);
+        await notify('product', 'Stock catalogue updated', `${user.name} added/updated ${upserted} product${upserted === 1 ? '' : 's'}`, `${upserted}`, user);
         return json({ ok: true, upserted });
       }
 
@@ -445,6 +556,7 @@ Deno.serve(async (req: Request) => {
         const adj = { product_id: String(b.id), delta, reason: String(b.reason ?? 'CORRECTION'), note: String(b.note ?? ''), by: user.uid, by_name: user.name, created_at: now() };
         await (await coll.adjustments()).insertOne(adj);
         await audit('inventory', 'adjust', `${b.id} ${delta > 0 ? '+' : ''}${delta}`, user);
+        await notify('stock', 'Stock adjusted', `${user.name} ${delta > 0 ? 'added' : 'removed'} ${Math.abs(delta)} unit${Math.abs(delta) === 1 ? '' : 's'} (${adj.reason})`, String(b.id), user);
         return json({ ok: true, adjustment: adj });
       }
 
@@ -501,6 +613,7 @@ Deno.serve(async (req: Request) => {
           await (await coll.invoices()).insertOne({ no: invoiceNo, customer_id: customerId, customer_name: customerName, status: 'sent', subtotal, vat: 0, total, amount_paid: 0, items: lines, issued_by: user.uid, created_at: t, updated_at: t });
         }
         await audit('billing', 'sale', recNo, user);
+        await notify('transaction', 'New sale recorded', `${user.name} recorded a ${fmtN(total)} sale for ${customerName} (${recNo})`, recNo, user);
         return json({ ok: true, sale_id: String(saleOut.insertedId), total, receipt_no: recNo, invoice_no: invoiceNo }, 201);
       }
 
@@ -525,6 +638,7 @@ Deno.serve(async (req: Request) => {
         await (await coll.receipts()).insertOne({ no: recNo, amount: pay, method, source: 'invoice', invoice_no: inv.no, customer_id: inv.customer_id ?? null, customer_name: inv.customer_name ?? '—', customer_contact: String(b.customer_contact ?? ''), issued_by: user.uid, issued_name: user.name, txn_id: String(txnOut.insertedId), created_at: t });
         await (await coll.payments()).insertOne({ invoice_no: inv.no, amount: pay, method, receipt_no: recNo, created_by: user.uid, created_at: t });
         await audit('billing', 'invoice-payment', `${inv.no} ${pay}`, user);
+        await notify('transaction', 'Invoice payment received', `${user.name} recorded a ${fmtN(pay)} payment against ${inv.no}`, String(inv.no), user);
         return json({ ok: true, receipt_no: recNo, status: Number(inv.amount_paid ?? 0) + pay >= Number(inv.total) ? 'paid' : 'partial' });
       }
 
@@ -567,6 +681,7 @@ Deno.serve(async (req: Request) => {
         };
         await (await coll.archive()).insertOne(record);
         await audit('documents', 'issue', `${type} ${pad9(serial)}`, user);
+        await notify('document', 'Document issued', `${user.name} issued ${type} No ${pad9(serial)} for ${record.customer}`, `${type} ${pad9(serial)}`, user);
         return json({ serial, doc: record, serials: await peekSerials() });
       }
       case 'GET /api/docs/history': {
@@ -588,6 +703,7 @@ Deno.serve(async (req: Request) => {
         const doc = { ...b, mils_no: b.mils_no || 'MILS-' + pad9(await nextSerial('mils')), recorded_by: user.uid, recorded_name: user.name, created_at: now() };
         const out = await (await coll.mils()).insertOne(doc);
         await audit('mils', 'create', String(out.insertedId), user);
+        await notify('mils', 'MILS job recorded', `${user.name} recorded MILS job ${doc.mils_no}`, doc.mils_no, user);
         return json({ ok: true, id: String(out.insertedId), mils_no: doc.mils_no, mils: doc }, 201);
       }
 
@@ -595,6 +711,82 @@ Deno.serve(async (req: Request) => {
         if (user.role === 'sales') throw new HttpErr(403, 'Audit trail is management-only');
         const events = await (await coll.audit()).find({}).sort({ at: -1 }).limit(1000).toArray();
         return json({ events });
+      }
+
+      // ---- notifications: every signed-in user (CEO/Admin/Sales) sees
+      // every transaction/document/stock/announcement notification (owner
+      // directive 2026-09-01). read_by tracks who has read it so an
+      // announcement's SENDER can see a read count + reader names.
+      case 'GET /api/notifications': {
+        const rows = await (await coll.notifications()).find({}).sort({ created_at: -1 }).limit(300).toArray();
+        return json({ notifications: rows });
+      }
+      case 'POST /api/notifications/read': {
+        const b = await req.json();
+        const id = String(b.id ?? '');
+        if (!id) throw new HttpErr(400, 'Notification id required');
+        let oid: InstanceType<typeof ObjectId>;
+        try {
+          oid = new ObjectId(id);
+        } catch {
+          throw new HttpErr(400, 'Invalid notification id');
+        }
+        await (await coll.notifications()).updateOne(
+          { _id: oid, 'read_by.uid': { $ne: user.uid } },
+          { $push: { read_by: { uid: user.uid, name: user.name, at: now() } } });
+        return json({ ok: true });
+      }
+      // ---- announcements: CEO/Admin broadcast a message that lands as a
+      // notification for every signed-in user, same read-tracking as above.
+      case 'POST /api/announcements': {
+        requireRole(user, ['ceo', 'admin'], 'send announcements');
+        const b = await req.json();
+        const title = String(b.title ?? '').trim().slice(0, 160);
+        const message = String(b.message ?? '').trim().slice(0, 2000);
+        if (!title) throw new HttpErr(400, 'Announcement title is required');
+        if (!message) throw new HttpErr(400, 'Announcement message is required');
+        const doc = {
+          kind: 'announcement', title, message, ref: '',
+          created_by: user.uid, created_by_name: user.name, created_at: now(),
+          read_by: [] as Array<{ uid: string; name: string; at: string }>,
+        };
+        const out = await (await coll.notifications()).insertOne(doc);
+        await audit('core', 'announcement', title, user);
+        return json({ ok: true, id: String(out.insertedId) }, 201);
+      }
+
+      // ---- staff directory: CEO/Admin see every staff member's name,
+      // email and phone (owner directive 2026-09-01). Only the CEO can
+      // promote a Sales staffer to Admin or demote an Admin back to Sales
+      // (nobody can touch the CEO row — it is locked to CEO_EMAIL).
+      case 'GET /api/staff': {
+        requireRole(user, ['ceo', 'admin'], 'view the staff directory');
+        const rows = await (await coll.profiles()).find({}).sort({ full_name: 1 }).toArray();
+        return json({
+          staff: rows.map((r: Record<string, unknown>) => ({
+            uid: String(r._id), name: String(r.full_name ?? ''), email: String(r.email ?? ''),
+            phone: String(r.phone ?? ''), role: String(r.role ?? 'sales'), created_at: r.created_at ?? null,
+          })),
+        });
+      }
+      case 'POST /api/staff/role': {
+        requireRole(user, ['ceo'], 'promote or demote staff');
+        const b = await req.json();
+        const targetUid = String(b.uid ?? '');
+        const newRole = String(b.role ?? '');
+        if (!targetUid) throw new HttpErr(400, 'Staff member id required');
+        if (!['admin', 'sales'].includes(newRole)) throw new HttpErr(400, 'Role must be admin or sales');
+        const target = await (await coll.profiles()).findOne({ _id: targetUid }) as Record<string, unknown> | null;
+        if (!target) throw new HttpErr(404, 'Staff member not found');
+        if (String(target.email ?? '').toLowerCase() === CEO_EMAIL || target.role === 'ceo') {
+          throw new HttpErr(400, 'The CEO role cannot be changed here');
+        }
+        await (await coll.profiles()).updateOne({ _id: targetUid }, { $set: { role: newRole } });
+        profileCache.delete(targetUid);
+        await audit('people', 'role-change', `${target.email} -> ${newRole}`, user);
+        await notify('staff', newRole === 'admin' ? 'Staff promoted to Admin' : 'Staff moved to Sales',
+          `${user.name} set ${target.full_name ?? target.email} to ${newRole}`, targetUid, user);
+        return json({ ok: true });
       }
 
       default:

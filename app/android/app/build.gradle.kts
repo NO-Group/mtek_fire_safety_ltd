@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.mtek.inventory"
+    namespace = "com.n_o_group.mfsl"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.mtek.inventory"
+        applicationId = "com.n_o_group.mfsl"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
