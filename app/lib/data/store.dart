@@ -13,6 +13,10 @@ import 'rest_client.dart';
 import '../documents/serial_service.dart';
 import 'seed_import.dart';
 
+// re-export for callers that imported it from here
+export 'models.dart';
+export 'seed_import.dart';
+
 /// AppStore — the Phase B data layer. Same observable API the screens were
 /// built against, now:
 ///   1. loads from the LOCAL CACHE (local_store, JSON per collection),
@@ -757,7 +761,13 @@ class AppStore extends ChangeNotifier {
     _postPayment(date: now, amount: amount, method: PaymentMethod.transfer, forDoc: invoice.number,
         customer: invoice.customer, signedBy: signedBy, receiptNo: serverReceiptNo);
     final serverApplied = serverReceiptNo != null && serverReceiptNo.isNotEmpty;
-    await _persistSaleSide(invoices[idx], enqueue: !serverApplied);
+    await writeStore('invoices', invoices.map(invoiceToJson).toList());
+    await writeStore('transactions', transactions.map(txnToJson).toList());
+    await writeStore('receipts', receipts.map(receiptToJson).toList());
+    if (!serverApplied) {
+      enqueueSync('invoices', [invoiceToJson(invoices[idx])]);
+      unawaited(flushSyncQueue());
+    }
     notifyListeners();
   }
 
@@ -905,7 +915,7 @@ class AppStore extends ChangeNotifier {
       forDoc: forDoc,
       signedBy: signedBy,
       issuedBy: 'Admin',
-      customerSignature: customerSignature,
+      customerSignature: customerSignature ?? '',
     ));
   }
 }
@@ -1168,6 +1178,3 @@ class IssuedDocument {
       );
 }
 
-// re-export for callers that imported it from here
-export 'models.dart';
-export 'seed_import.dart';

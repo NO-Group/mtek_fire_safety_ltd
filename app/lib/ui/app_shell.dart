@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/format.dart' as fmt;
 import '../core/theme.dart';
 import '../data/auth_store.dart';
+import '../data/store.dart';
 import 'screens/customers_screen.dart';
 import 'screens/generator_screen.dart';
 import 'screens/insights_screen.dart';
@@ -17,25 +18,26 @@ import 'screens/transactions_screen.dart';
 import 'watermark_background.dart';
 
 class Destination {
+  final String id;
   final String label;
   final IconData icon;
   final IconData selectedIcon;
   final Widget screen;
-  const Destination(this.label, this.icon, this.selectedIcon, this.screen);
+  const Destination(this.id, this.label, this.icon, this.selectedIcon, this.screen);
 }
 
-const _insights = Destination('Insights', Icons.insights_outlined, Icons.insights, InsightsScreen());
-const _transactions = Destination('Transactions', Icons.swap_horiz_outlined, Icons.swap_horiz, TransactionsScreen());
-const _customers = Destination('Customers', Icons.people_outline, Icons.people, CustomersScreen());
-const _receipts = Destination('Receipts', Icons.receipt_long_outlined, Icons.receipt_long, ReceiptsScreen());
-const _invoices = Destination('Invoices', Icons.request_quote_outlined, Icons.request_quote, InvoicesScreen());
-const _mils = Destination('MILS', Icons.build_circle_outlined, Icons.build_circle, MilsScreen());
-const _sales = Destination('Sales', Icons.point_of_sale_outlined, Icons.point_of_sale, SalesScreen());
-const _stock = Destination('Stock', Icons.inventory_2_outlined, Icons.inventory_2, StockScreen());
-const _summary = Destination('Summary', Icons.summarize_outlined, Icons.summarize, SummaryScreen());
-const _docs = Destination('Documents', Icons.draw_outlined, Icons.draw, GeneratorScreen());
+const _insights = Destination('insights', 'Insights', Icons.insights_outlined, Icons.insights, InsightsScreen());
+const _transactions = Destination('transactions', 'Transactions', Icons.swap_horiz_outlined, Icons.swap_horiz, TransactionsScreen());
+const _customers = Destination('customers', 'Customers', Icons.people_outline, Icons.people, CustomersScreen());
+const _receipts = Destination('receipts', 'Receipts', Icons.receipt_long_outlined, Icons.receipt_long, ReceiptsScreen());
+const _invoices = Destination('invoices', 'Invoices', Icons.request_quote_outlined, Icons.request_quote, InvoicesScreen());
+const _mils = Destination('mils', 'MILS', Icons.build_circle_outlined, Icons.build_circle, MilsScreen());
+const _sales = Destination('sales', 'Sales', Icons.point_of_sale_outlined, Icons.point_of_sale, SalesScreen());
+const _stock = Destination('stock', 'Stock', Icons.inventory_2_outlined, Icons.inventory_2, StockScreen());
+const _summary = Destination('summary', 'Summary', Icons.summarize_outlined, Icons.summarize, SummaryScreen());
+const _docs = Destination('docs', 'Documents', Icons.draw_outlined, Icons.draw, GeneratorScreen());
 
-const _settings = Destination('Settings', Icons.settings_outlined, Icons.settings, SettingsScreen());
+const _settings = Destination('settings', 'Settings', Icons.settings_outlined, Icons.settings, SettingsScreen());
 
 /// Admin sees everything; Sales never sees revenue/profit/settings (SPEC §6).
 List<Destination> destinationsFor(String? role) {

@@ -16,7 +16,7 @@ import 'store.dart';
 class StaffUser {
   final String name;
   final String email;
-  final String role; // 'ceo' | 'admin' | 'sales'
+  String role; // 'ceo' | 'admin' | 'sales'
   final String passwordHash;
   final String signaturePasscodeHash;
   final String? signaturePng; // base64 data-URL of the drawn signature
@@ -211,7 +211,7 @@ class AuthStore extends ChangeNotifier {
   String? remoteSignInUid;
 
   /// Current Supabase JWT for data-API calls (null when signed out/offline).
-  String? get accessToken => _remote?.accessToken;
+  String? get accessToken => AppStore.instance.remote?.accessToken;
 
   void signOut() {
     current = null;

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'dart:typed_data';
 
 /// Drawn-signature pad (finger/mouse). Exported as PNG bytes so it can be

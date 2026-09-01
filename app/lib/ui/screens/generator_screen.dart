@@ -405,7 +405,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_mReceiptNo, 'Receipt No.', onChanged: (v) => _mils.receiptNo = v),
       const SizedBox(height: 6),
       const Text('A — DESCRIPTION (EXTINGUISHERS BY WEIGHT)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
-      ..._milsWeightGrid(),
+      _milsWeightGrid(),
       const SizedBox(height: 10),
       const Text('B — REPLACEMENT (COMPONENTS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
       Wrap(

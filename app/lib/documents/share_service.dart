@@ -8,6 +8,7 @@ import 'dart:typed_data';
 /// Platform split via conditional imports:
 ///   io: path_provider + share_plus (Android/Windows/iOS/desktop)
 ///   web: browser download (fallback) — share_plus is limited on web.
+import 'share_impl_io.dart' if (dart.library.html) 'share_impl_web.dart';
 export 'share_impl_io.dart' if (dart.library.html) 'share_impl_web.dart';
 
 enum ShareResult { shared, savedOnly, failed }
