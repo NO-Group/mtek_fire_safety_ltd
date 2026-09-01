@@ -1,9 +1,8 @@
+import 'dart:convert' show base64Decode;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
-
-import 'package:flutter/foundation.dart' show base64Decode;
 
 import '../../core/format.dart' as fmt;
 import '../../core/theme.dart';

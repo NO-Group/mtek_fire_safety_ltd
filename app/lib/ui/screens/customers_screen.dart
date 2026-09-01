@@ -148,7 +148,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
                     children: [
-                      Text(fmt.fmtDateShort(s.date), style: const TextStyle(color: Mtek.gray500, fontSize: 13, width: 70)),
+                      SizedBox(width: 70, child: Text(fmt.fmtDateShort(s.date), style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
                       Expanded(child: Text(s.items.map((i) => '${i.product.name} ×${i.qty}').join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
                       AmountText(s.total),
                     ],

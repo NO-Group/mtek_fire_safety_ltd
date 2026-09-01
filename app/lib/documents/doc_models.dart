@@ -181,17 +181,18 @@ String nairaInWords(num amount) {
 
   String words(int n) {
     if (n == 0) return 'Zero';
-    final groups = [
-      [pow(10, 9).toInt(), 'Billion'],
-      [pow(10, 6).toInt(), 'Million'],
-      [1000, 'Thousand'],
+    final groups = <(int, String)>[
+      (pow(10, 9).toInt(), 'Billion'),
+      (pow(10, 6).toInt(), 'Million'),
+      (1000, 'Thousand'),
     ];
     var rest = n;
     final out = <String>[];
     for (final g in groups) {
-      final count = rest ~/ g[0] as int;
-      rest %= g[0] as int;
-      if (count > 0) out.add('${_below1000(count)} ${g[1]}');
+      final unit = g.$1;
+      final count = rest ~/ unit;
+      rest %= unit;
+      if (count > 0) out.add('${_below1000(count)} ${g.$2}');
     }
     if (rest > 0) out.add(_below1000(rest));
     return out.join(', ');

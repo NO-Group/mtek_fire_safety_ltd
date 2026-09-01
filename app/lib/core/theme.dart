@@ -85,7 +85,7 @@ ThemeData mtekLightTheme() {
       unselectedLabelTextStyle: const TextStyle(color: Mtek.gray400, fontSize: 12),
     ),
     drawerTheme: const DrawerThemeData(backgroundColor: Mtek.navy900),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: Colors.white,
       shape: RoundedRectangleBorder(

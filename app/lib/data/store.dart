@@ -13,6 +13,10 @@ import 'rest_client.dart';
 import '../documents/serial_service.dart';
 import 'seed_import.dart';
 
+// re-export for callers that imported it from here
+export 'models.dart';
+export 'seed_import.dart';
+
 /// AppStore — the Phase B data layer. Same observable API the screens were
 /// built against, now:
 ///   1. loads from the LOCAL CACHE (local_store, JSON per collection),
@@ -40,6 +44,19 @@ class AppStore extends ChangeNotifier {
   final List<Map<String, dynamic>> _syncQueue = [];
   bool _loaded = false;
   bool get isLoaded => _loaded;
+
+  /// In-app notifications (every transaction/document/stock/customer/product
+  /// change, plus CEO/Admin announcements) — newest first. Populated by
+  /// [refreshNotifications], polled periodically by the app shell.
+  final List<AppNotification> notifications = [];
+  int get unreadNotificationCount {
+    final uid = AuthStore.instance.remoteSignInUid;
+    if (uid == null || uid.isEmpty) return notifications.length;
+    return notifications.where((n) => !n.isReadBy(uid)).length;
+  }
+
+  /// Staff directory (CEO/Admin only) — populated by [refreshStaff].
+  final List<StaffMember> staff = [];
 
   RestClient? _remote;
   ApiClient? _api;
@@ -175,6 +192,21 @@ class AppStore extends ChangeNotifier {
           docHistory.add(IssuedDocument.fromJson((e).cast<String, dynamic>()));
         }
       }
+      for (final e in (data['sales'] as List? ?? const [])) {
+        if (e is Map) sales.add(_saleFromServer((e).cast<String, dynamic>(), products, customers));
+      }
+      for (final e in (data['adjustments'] as List? ?? const [])) {
+        if (e is Map) {
+          final adj = _adjustmentFromServer((e).cast<String, dynamic>(), products);
+          if (adj != null) adjustments.add(adj);
+        }
+      }
+      for (final e in (data['mils'] as List? ?? const [])) {
+        if (e is Map) {
+          final log = _milsLogFromServer((e).cast<String, dynamic>(), customers);
+          if (log != null) milsLogs.add(log);
+        }
+      }
       return products.isNotEmpty;
     } catch (_) {
       return false;
@@ -198,6 +230,117 @@ class AppStore extends ChangeNotifier {
     final okRemote = await _loadRemote();
     if (okRemote) await _persistAll();
     notifyListeners();
+  }
+
+  // ------------------------------------------------------------ notifications
+  /// Pulls the latest notifications (transactions, documents, stock,
+  /// customers, products, MILS, staff changes, announcements) for every
+  /// signed-in user — CEO, Admin and Sales all see the same feed (owner
+  /// directive 2026-09-01). Safe to call repeatedly (e.g. from a poll timer).
+  Future<void> refreshNotifications() async {
+    final api = _api;
+    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) return;
+    api.accessToken = AuthStore.instance.accessToken;
+    try {
+      final res = await api.get('/api/notifications');
+      if (res == null || !res.ok || res.json is! Map) return;
+      final list = (res.json as Map)['notifications'];
+      if (list is! List) return;
+      notifications
+        ..clear()
+        ..addAll([
+          for (final e in list)
+            if (e is Map) AppNotification.fromJson(e.cast<String, dynamic>()),
+        ]);
+      notifyListeners();
+    } catch (_) {
+      // offline — keep whatever was last loaded
+    }
+  }
+
+  /// Marks a notification as read by the current user (idempotent — the
+  /// server only appends once per uid) and updates the local copy so the
+  /// unread badge count reflects it immediately.
+  Future<void> markNotificationRead(String id) async {
+    final uid = AuthStore.instance.remoteSignInUid;
+    final name = AuthStore.instance.current?.name ?? '';
+    final idx = notifications.indexWhere((n) => n.id == id);
+    if (idx != -1 && uid != null && !notifications[idx].isReadBy(uid)) {
+      notifications[idx] = AppNotification(
+        id: notifications[idx].id,
+        kind: notifications[idx].kind,
+        title: notifications[idx].title,
+        message: notifications[idx].message,
+        ref: notifications[idx].ref,
+        createdBy: notifications[idx].createdBy,
+        createdByName: notifications[idx].createdByName,
+        createdAt: notifications[idx].createdAt,
+        readBy: [
+          ...notifications[idx].readBy,
+          NotificationRead(uid: uid, name: name, at: DateTime.now()),
+        ],
+      );
+      notifyListeners();
+    }
+    try {
+      await _apiPost('/api/notifications/read', {'id': id});
+    } catch (_) {
+      // best-effort — the read receipt will resync next refresh
+    }
+  }
+
+  /// CEO/Admin-only: broadcasts an announcement, which lands in every
+  /// user's notification feed exactly like a transaction notification, but
+  /// with kind 'announcement' so the UI can show it distinctly and the
+  /// sender can see who has read it via `readBy`.
+  Future<String?> sendAnnouncement(String title, String message) async {
+    try {
+      final applied = await _apiPost('/api/announcements', {'title': title, 'message': message});
+      if (!applied) return 'Network unreachable — check your connection';
+      await refreshNotifications();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  // ------------------------------------------------------------------ staff
+  /// CEO/Admin staff directory (name/email/phone/role). Only the CEO can
+  /// actually change a role via [setStaffRole] — the server enforces this
+  /// too, so an Admin calling it will get a 403 back.
+  Future<void> refreshStaff() async {
+    final api = _api;
+    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) return;
+    api.accessToken = AuthStore.instance.accessToken;
+    try {
+      final res = await api.get('/api/staff');
+      if (res == null || !res.ok || res.json is! Map) return;
+      final list = (res.json as Map)['staff'];
+      if (list is! List) return;
+      staff
+        ..clear()
+        ..addAll([
+          for (final e in list)
+            if (e is Map) StaffMember.fromJson(e.cast<String, dynamic>()),
+        ]);
+      notifyListeners();
+    } catch (_) {
+      // offline — keep whatever was last loaded
+    }
+  }
+
+  /// CEO-only: promotes a Sales staffer to Admin, or demotes an Admin back
+  /// to Sales. Throws (as a message string) on any refusal — including a
+  /// non-CEO caller, since the server is the source of truth on authority.
+  Future<String?> setStaffRole(String uid, String role) async {
+    try {
+      final applied = await _apiPost('/api/staff/role', {'uid': uid, 'role': role});
+      if (!applied) return 'Network unreachable — check your connection';
+      await refreshStaff();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   /// Role reported by the API for the signed-in user (ceo/admin/sales).
@@ -358,6 +501,27 @@ class AppStore extends ChangeNotifier {
     for (final e in rawDocs) {
       if (e is Map) docHistory.add(IssuedDocument.fromJson((e).cast<String, dynamic>()));
     }
+    final rawSales = await _readList('sales');
+    for (final e in rawSales) {
+      if (e is Map) {
+        final s = _saleFromLocal((e).cast<String, dynamic>(), products, customers);
+        if (s != null) sales.add(s);
+      }
+    }
+    final rawAdjustments = await _readList('adjustments');
+    for (final e in rawAdjustments) {
+      if (e is Map) {
+        final a = _adjustmentFromLocal((e).cast<String, dynamic>(), products);
+        if (a != null) adjustments.add(a);
+      }
+    }
+    final rawMils = await _readList('mils_logs');
+    for (final e in rawMils) {
+      if (e is Map) {
+        final log = _milsLogFromLocal((e).cast<String, dynamic>(), customers);
+        if (log != null) milsLogs.add(log);
+      }
+    }
     return true;
   }
 
@@ -499,6 +663,9 @@ class AppStore extends ChangeNotifier {
     await writeStore('customers', customers.map(customerToJson).toList());
     await writeStore('settings', settings.toJson());
     await writeStore('serials', SerialService.instance.toJson());
+    await writeStore('sales', sales.map(saleToJson).toList());
+    await writeStore('adjustments', adjustments.map(adjToJson).toList());
+    await writeStore('mils_logs', milsLogs.map(milsLogToJson).toList());
   }
 
   // ------------------------------------------------------------ analytics
@@ -718,8 +885,78 @@ class AppStore extends ChangeNotifier {
     _postPayment(date: now, amount: amount, method: PaymentMethod.transfer, forDoc: invoice.number,
         customer: invoice.customer, signedBy: signedBy, receiptNo: serverReceiptNo);
     final serverApplied = serverReceiptNo != null && serverReceiptNo.isNotEmpty;
-    await _persistSaleSide(invoices[idx], enqueue: !serverApplied);
+    await writeStore('invoices', invoices.map(invoiceToJson).toList());
+    await writeStore('transactions', transactions.map(txnToJson).toList());
+    await writeStore('receipts', receipts.map(receiptToJson).toList());
+    if (!serverApplied) {
+      enqueueSync('invoices', [invoiceToJson(invoices[idx])]);
+      unawaited(flushSyncQueue());
+    }
     notifyListeners();
+  }
+
+  /// Records a completed maintenance/service job (CEO/Admin — MILS screen +
+  /// the MILS document generator both feed this). Server-first via
+  /// POST /api/mils; the local mirror keeps the MILS screen usable offline.
+  Future<MaintenanceLog> logMaintenance({
+    required String equipment,
+    String? serial,
+    required Customer client,
+    required String location,
+    required MaintenanceAction action,
+    required String findings,
+    required String technician,
+    DateTime? serviceDate,
+    DateTime? nextDue,
+    String? milsNo,
+  }) async {
+    final service = serviceDate ?? DateTime.now();
+    final due = nextDue ?? service.add(const Duration(days: 180));
+    var log = MaintenanceLog(
+      id: milsNo ?? 'MILS-${(milsLogs.length + 1).toString().padLeft(9, '0')}',
+      serviceDate: service,
+      equipment: equipment,
+      serial: serial,
+      client: client,
+      location: location,
+      action: action,
+      findings: findings,
+      technician: technician,
+      nextDue: due,
+    );
+    var serverApplied = false;
+    if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
+      try {
+        final res = await _api!.post('/api/mils', {
+          'equipment': equipment, 'serial': serial,
+          'customer_id': client.id.length > 20 ? client.id : null,
+          'customer_name': client.name, 'location': location,
+          'action': action.name, 'findings': findings, 'technician': technician,
+          'service_date': service.toIso8601String(), 'next_due': due.toIso8601String(),
+        });
+        if (res != null && res.ok && res.json is Map) {
+          final serverNo = '${(res.json as Map)['mils_no'] ?? ''}';
+          if (serverNo.isNotEmpty) {
+            log = MaintenanceLog(
+              id: serverNo, serviceDate: service, equipment: equipment, serial: serial,
+              client: client, location: location, action: action, findings: findings,
+              technician: technician, nextDue: due,
+            );
+          }
+          serverApplied = true;
+        }
+      } catch (_) {
+        serverApplied = false;
+      }
+    }
+    milsLogs.insert(0, log);
+    await writeStore('mils_logs', milsLogs.map(milsLogToJson).toList());
+    if (!serverApplied) {
+      enqueueSync('mils_logs', [milsLogToJson(log)]);
+      unawaited(flushSyncQueue());
+    }
+    notifyListeners();
+    return log;
   }
 
   Future<void> adjustStock(Product product, int delta, AdjustmentReason reason, String note) async {
@@ -802,7 +1039,7 @@ class AppStore extends ChangeNotifier {
       forDoc: forDoc,
       signedBy: signedBy,
       issuedBy: 'Admin',
-      customerSignature: customerSignature,
+      customerSignature: customerSignature ?? '',
     ));
   }
 }
@@ -882,6 +1119,129 @@ Map<String, dynamic> adjToJson(StockAdjustment a) => {
 
 int _asInt(dynamic v) => v is int ? v : v is num ? v.round() : int.tryParse('$v') ?? 0;
 
+// ---------------------------------------------------- server ↔ UI mapping
+// The data API's /api/bootstrap already returns `sales`, `adjustments` and
+// `mils` — these turn that server shape into the models the Insights,
+// Customers, Stock and MILS screens already read (store.sales,
+// store.adjustments, store.milsLogs).
+
+Customer _lookupCustomer(List<Customer> customers, String? id, String fallbackName) {
+  if (id != null && id.isNotEmpty) {
+    final found = customers.where((c) => c.id == id).toList();
+    if (found.isNotEmpty) return found.first;
+  }
+  return Customer(id: id ?? 'walk-in', name: fallbackName, isCorporate: false, phone: '', email: '', address: '');
+}
+
+Sale _saleFromServer(Map<String, dynamic> m, List<Product> products, List<Customer> customers) {
+  final rawItems = m['items'] as List? ?? const [];
+  final items = <SaleItem>[];
+  for (final it in rawItems) {
+    if (it is! Map) continue;
+    final pid = '${it['product_id'] ?? ''}';
+    final product = products.where((p) => p.id == pid).toList();
+    items.add(SaleItem(
+      product: product.isNotEmpty
+          ? product.first
+          : Product(id: pid, name: '${it['name'] ?? 'Item'}', category: ProductCategory.fire,
+              costPrice: 0, sellingPrice: _asInt(it['unit_price']), qtyOnHand: 0, reorderLevel: 0),
+      qty: _asInt(it['qty']),
+      unitPrice: _asInt(it['unit_price']),
+    ));
+  }
+  return Sale(
+    id: '${m['_id'] ?? ''}',
+    date: DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
+    customer: _lookupCustomer(customers, m['customer_id'] as String?, '${m['customer_name'] ?? 'Walk-in customer'}'),
+    items: items,
+    discount: _asInt(m['discount']),
+    method: PaymentMethod.values.firstWhere((t) => t.name == m['method'], orElse: () => PaymentMethod.cash),
+  );
+}
+
+Sale? _saleFromLocal(Map<String, dynamic> m, List<Product> products, List<Customer> customers) {
+  final rawItems = m['items'] as List? ?? const [];
+  final items = <SaleItem>[];
+  for (final it in rawItems) {
+    if (it is! Map) continue;
+    final pid = '${it['product'] ?? ''}';
+    final product = products.where((p) => p.id == pid).toList();
+    if (product.isEmpty) continue;
+    items.add(SaleItem(product: product.first, qty: _asInt(it['qty']), unitPrice: _asInt(it['unit_price'])));
+  }
+  if (items.isEmpty) return null;
+  return Sale(
+    id: '${m['id'] ?? ''}',
+    date: DateTime.tryParse('${m['date']}') ?? DateTime.now(),
+    customer: _lookupCustomer(customers, m['customer'] as String?, 'Walk-in customer'),
+    items: items,
+    discount: _asInt(m['discount']),
+    method: PaymentMethod.values.firstWhere((t) => t.name == m['method'], orElse: () => PaymentMethod.cash),
+  );
+}
+
+StockAdjustment? _adjustmentFromServer(Map<String, dynamic> m, List<Product> products) {
+  final pid = '${m['product_id'] ?? ''}';
+  final product = products.where((p) => p.id == pid).toList();
+  if (product.isEmpty) return null;
+  return StockAdjustment(
+    id: '${m['_id'] ?? ''}',
+    date: DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
+    product: product.first,
+    delta: _asInt(m['delta']),
+    reason: AdjustmentReason.values.firstWhere((r) => r.name == m['reason'], orElse: () => AdjustmentReason.correction),
+    note: '${m['note'] ?? ''}',
+  );
+}
+
+StockAdjustment? _adjustmentFromLocal(Map<String, dynamic> m, List<Product> products) {
+  final pid = '${m['product'] ?? ''}';
+  final product = products.where((p) => p.id == pid).toList();
+  if (product.isEmpty) return null;
+  return StockAdjustment(
+    id: '${m['id'] ?? ''}',
+    date: DateTime.tryParse('${m['date']}') ?? DateTime.now(),
+    product: product.first,
+    delta: _asInt(m['delta']),
+    reason: AdjustmentReason.values.firstWhere((r) => r.name == m['reason'], orElse: () => AdjustmentReason.correction),
+    note: '${m['note'] ?? ''}',
+  );
+}
+
+MaintenanceLog? _milsLogFromServer(Map<String, dynamic> m, List<Customer> customers) {
+  final equipment = '${m['equipment'] ?? ''}';
+  if (equipment.isEmpty) return null;
+  return MaintenanceLog(
+    id: '${m['mils_no'] ?? m['_id'] ?? ''}',
+    serviceDate: DateTime.tryParse('${m['service_date']}') ?? DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
+    equipment: equipment,
+    serial: m['serial'] as String?,
+    client: _lookupCustomer(customers, m['customer_id'] as String?, '${m['customer_name'] ?? '—'}'),
+    location: '${m['location'] ?? ''}',
+    action: MaintenanceAction.values.firstWhere((a) => a.name == m['action'], orElse: () => MaintenanceAction.refill),
+    findings: '${m['findings'] ?? ''}',
+    technician: '${m['technician'] ?? m['recorded_name'] ?? ''}',
+    nextDue: DateTime.tryParse('${m['next_due']}') ?? DateTime.now().add(const Duration(days: 180)),
+  );
+}
+
+MaintenanceLog? _milsLogFromLocal(Map<String, dynamic> m, List<Customer> customers) =>
+    _milsLogFromServer(m, customers);
+
+Map<String, dynamic> milsLogToJson(MaintenanceLog l) => {
+      'mils_no': l.id,
+      'service_date': l.serviceDate.toIso8601String(),
+      'equipment': l.equipment,
+      'serial': l.serial,
+      'customer_id': l.client.id,
+      'customer_name': l.client.name,
+      'location': l.location,
+      'action': l.action.name,
+      'findings': l.findings,
+      'technician': l.technician,
+      'next_due': l.nextDue.toIso8601String(),
+    };
+
 // ------------------------------------------------------------- settings
 class StoreSettings {
   final bool vatEnabled;
@@ -942,6 +1302,3 @@ class IssuedDocument {
       );
 }
 
-// re-export for callers that imported it from here
-export 'models.dart';
-export 'seed_import.dart';

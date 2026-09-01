@@ -30,8 +30,25 @@ paste the whole contents of **`supabase/functions/data-api/index.ts`** →
 
 **4. Supabase → Authentication → Users → "Add user"** → email
 `mtekfiresafetyltd@gmail.com` + the company password → tick
-"Auto-confirm user". (Staff accounts are added the same way; they get the
-`sales` role on first sign-in — the CEO is always `ceo`.)
+"Auto-confirm user". This is only for the CEO account — it is locked to
+this exact email and always gets the `ceo` role.
+
+Everyone else (Admin/Sales staff) creates their own account straight from
+the app's "Create an account →" link on the sign-in screen — no dashboard
+work needed. It calls `POST /api/auth/signup` on the function above, which
+uses the Supabase Admin API (the `SUPABASE_SERVICE_ROLE_KEY` the Edge
+Runtime already injects automatically — nothing to add) to create a real
+Supabase Auth user and a matching MongoDB profile, plus their phone number
+(so it shows in Authentication → Users) and their self-chosen recovery
+phrase (≥15 characters — the only way to reset a forgotten password; there
+is no email/OTP flow). New accounts always start as `sales`. Promotion to
+`admin` is done entirely INSIDE the app now — sign in as the CEO, open the
+**Staff** screen, and tap "Make Admin"/"Demote" next to a name; nothing to
+edit in Supabase or MongoDB by hand any more. Every signed-in user (CEO,
+Admin, Sales) also sees a live **Notifications** feed of every sale,
+invoice payment, document issued, stock change, new customer/product and
+MILS job, and CEO/Admin can post announcements from there too (with a
+read-count and the list of who has read it).
 
 ## Check it's alive
 Open `https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api/health`

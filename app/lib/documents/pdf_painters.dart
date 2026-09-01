@@ -43,7 +43,7 @@ Future<Uint8List> buildDocument(
     case GeneratedDoc.invoice:
       doc.addPage(_invoicePage(logo, signature, customerSig, invoice!, signedBy));
     case GeneratedDoc.mils:
-      doc.addPage(_milsPage(logo, signature, mils!, signedBy));
+      doc.addPage(_milsPage(logo, signature, customerSig, mils!, signedBy));
     case GeneratedDoc.waybill:
       doc.addPage(_waybillPage(logo, signature, customerSig, waybill!, signedBy));
     case GeneratedDoc.deliveryNote:
@@ -103,7 +103,7 @@ pw.MultiPage _receiptPage(
             pw.Container(
               width: double.infinity,
               padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: pw.Border.all(color: PdfColors.red900, width: 1.4),
+              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.red900, width: 1.4)),
               child: pw.Text('IRN: ${r.irn}',
                   style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
             ),
@@ -275,7 +275,7 @@ pw.MultiPage _invoicePage(
           _nairaPart(v.rows[i].amount),
           _koboPart(v.rows[i].amount),
         ],
-  ];
+    ];
   while (rows.length < 14) {
     rows.add(['', '', '', '', '', '']); // blank ruled rows like the book
   }
@@ -321,7 +321,7 @@ pw.MultiPage _invoicePage(
 
       // Itemised ledger (dual naira/kobo amount columns)
       pw.TableHelper.fromTextArray(
-        context,
+        context: context,
         headers: ['S/NO', 'DESCRIPTION', 'QTY', 'RATE (₦)', 'AMOUNT (₦)', 'K'],
         data: rows,
         headerStyle: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -407,8 +407,8 @@ pw.MultiPage _invoicePage(
 // =====================================================================
 // 3. MAINTENANCE INFORMATION LOG SHEET (portrait — mirrors No: 925 book)
 // =====================================================================
-pw.MultiPage _milsPage(
-    pw.ImageProvider logo, pw.ImageProvider? signature, MilsDocState m, String signedBy) {
+pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
+    pw.ImageProvider? customerSig, MilsDocState m, String signedBy) {
   final hashPayload = '${m.serial}|${m.grandTotal}|${m.entryDate.toIso8601String()}|${m.name}';
 
   final weightRows = <List<String>>[
@@ -452,7 +452,7 @@ pw.MultiPage _milsPage(
         pw.SizedBox(width: 10),
         pw.Container(
           padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: pw.Border.all(color: PdfColors.red900, width: 1.2),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.red900, width: 1.2)),
           child: pw.Text('MILS No: ${m.serial}',
               style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
         ),
@@ -474,7 +474,7 @@ pw.MultiPage _milsPage(
       pw.Text('DESCRIPTION:', style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold)),
       pw.SizedBox(height: 3),
       pw.TableHelper.fromTextArray(
-        context,
+        context: context,
         headers: ['Description', 'Qty', 'Rate (₦)', 'Amount (₦)'],
         data: weightRows,
         headerStyle: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -495,7 +495,7 @@ pw.MultiPage _milsPage(
       pw.Text('REPLACEMENT:', style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
       pw.SizedBox(height: 3),
       pw.TableHelper.fromTextArray(
-        context,
+        context: context,
         headers: ['Component', 'Qty', 'Rate (₦)', 'Amount (₦)'],
         data: componentRows,
         headerStyle: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -646,7 +646,7 @@ pw.MultiPage _waybillPage(
       ]),
       pw.SizedBox(height: 6),
       pw.TableHelper.fromTextArray(
-        context,
+        context: context,
         headers: ['SNO', 'PRODUCTS', 'TECH. SPEC', 'BRAND', 'QTY'],
         data: itemRows.isEmpty ? [['', '', '', '', '']] : itemRows,
         headerStyle: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -816,7 +816,7 @@ pw.MultiPage _deliveryNotePage(
       ruledField('Banker:', value: d.banker),
       pw.SizedBox(height: 6),
       pw.TableHelper.fromTextArray(
-        context,
+        context: context,
         headers: ['S/NO', 'DESCRIPTION', 'ORDERED', 'DELIVERED', 'OUTSTANDING'],
         data: itemRows.isEmpty ? [['', '', '', '', '']] : itemRows,
         headerStyle: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -920,5 +920,5 @@ String _dt(DateTime d) =>
 String _money(num n) => n.toStringAsFixed(n.truncateToDouble() == n ? 0 : 2)
     .replaceAll(RegExp(r'\B(?=(\d{3})+(?!\d))'), ',');
 String _qty(num q) => q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(1);
-int _nairaPart(num n) => n.floor();
-int _koboPart(num n) => ((n - n.floor()) * 100).round();
+String _nairaPart(num n) => n.floor().toString().replaceAll(RegExp(r'\B(?=(\d{3})+(?!\d))'), ',');
+String _koboPart(num n) => ((n - n.floor()) * 100).round().toString().padLeft(2, '0');

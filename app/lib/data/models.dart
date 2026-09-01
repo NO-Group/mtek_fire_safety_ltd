@@ -214,3 +214,89 @@ class StockAdjustment {
     required this.note,
   });
 }
+
+/// Who has read a notification/announcement — used to show the sender a
+/// per-recipient read receipt list, not just a count.
+class NotificationRead {
+  final String uid;
+  final String name;
+  final DateTime at;
+  const NotificationRead({required this.uid, required this.name, required this.at});
+
+  factory NotificationRead.fromJson(Map<String, dynamic> j) => NotificationRead(
+        uid: '${j['uid'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        at: DateTime.tryParse('${j['at']}') ?? DateTime.now(),
+      );
+}
+
+/// An in-app notification: fired automatically for every significant write
+/// (sale, invoice payment, document issue, stock change, new customer, new
+/// product, MILS job, staff role change) OR composed manually by CEO/Admin
+/// as an announcement. Every signed-in user (CEO, Admin, Sales) receives it.
+class AppNotification {
+  final String id;
+  final String kind; // transaction | document | stock | customer | product | mils | staff | announcement
+  final String title;
+  final String message;
+  final String ref;
+  final String createdBy;
+  final String createdByName;
+  final DateTime createdAt;
+  final List<NotificationRead> readBy;
+
+  const AppNotification({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.message,
+    required this.ref,
+    required this.createdBy,
+    required this.createdByName,
+    required this.createdAt,
+    required this.readBy,
+  });
+
+  bool isReadBy(String uid) => readBy.any((r) => r.uid == uid);
+
+  factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
+        id: '${j['_id'] ?? ''}',
+        kind: '${j['kind'] ?? ''}',
+        title: '${j['title'] ?? ''}',
+        message: '${j['message'] ?? ''}',
+        ref: '${j['ref'] ?? ''}',
+        createdBy: '${j['created_by'] ?? ''}',
+        createdByName: '${j['created_by_name'] ?? ''}',
+        createdAt: DateTime.tryParse('${j['created_at']}') ?? DateTime.now(),
+        readBy: [
+          for (final r in (j['read_by'] as List? ?? const []))
+            if (r is Map) NotificationRead.fromJson(r.cast<String, dynamic>()),
+        ],
+      );
+}
+
+/// A staff directory row for the CEO/Admin "Staff" screen — email + phone
+/// visible to both roles; only the CEO can change `role` via the API.
+class StaffMember {
+  final String uid;
+  final String name;
+  final String email;
+  final String phone;
+  final String role; // ceo | admin | sales
+
+  const StaffMember({
+    required this.uid,
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.role,
+  });
+
+  factory StaffMember.fromJson(Map<String, dynamic> j) => StaffMember(
+        uid: '${j['uid'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        email: '${j['email'] ?? ''}',
+        phone: '${j['phone'] ?? ''}',
+        role: '${j['role'] ?? 'sales'}',
+      );
+}

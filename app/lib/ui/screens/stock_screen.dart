@@ -107,10 +107,10 @@ class _StockScreenState extends State<StockScreen> {
         ProductCategory.automation => 'A',
       };
       var i = 1;
-      while (products.any((p) => p.id == '$prefix${i.toString().padStart(3, '0')}')) {
+      while (products.any((p) => p.id == '$prefix${i.toString().padLeft(3, '0')}')) {
         i++;
       }
-      return '$prefix${i.toString().padStart(3, '0')}';
+      return '$prefix${i.toString().padLeft(3, '0')}';
     }
 
     try {

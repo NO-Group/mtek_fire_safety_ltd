@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
 import 'env.dart';
+import 'local_store.dart';
 import 'rest_client.dart';
 import 'store.dart';
 
@@ -16,7 +18,7 @@ import 'store.dart';
 class StaffUser {
   final String name;
   final String email;
-  final String role; // 'ceo' | 'admin' | 'sales'
+  String role; // 'ceo' | 'admin' | 'sales'
   final String passwordHash;
   final String signaturePasscodeHash;
   final String? signaturePng; // base64 data-URL of the drawn signature
@@ -95,6 +97,9 @@ class AuthStore extends ChangeNotifier {
   }
 
   /// Creates the account. Enforces password ≠ signature passcode.
+  /// OFFLINE-ONLY fallback (no backend configured in this build) — kept so
+  /// the app is still usable in a dev/demo checkout with no Supabase set up.
+  /// The real, server-backed path is [remoteSignUp] below.
   String? signUp({
     required String name,
     required String email,
@@ -125,6 +130,75 @@ class AuthStore extends ChangeNotifier {
     ));
     current = users.last;
     notifyListeners();
+    return null;
+  }
+
+  /// REAL sign-up: creates an actual Supabase Auth user via the data API
+  /// (which holds the service-role key server-side) then signs the new
+  /// account straight in with a live session, exactly like [remoteSignIn].
+  /// New self-signups always land as 'sales' — the server enforces this
+  /// too, so nobody can grant themselves admin/CEO from this screen; only
+  /// the CEO promotes staff afterwards from the in-app Staff screen (owner
+  /// directive 2026-09-01). `phone` is set on the actual Supabase Auth user
+  /// (shows up in Authentication → Users) and `recoveryString` (≥15 chars,
+  /// chosen by the user) is the only way to reset a forgotten password —
+  /// there is no email/OTP flow.
+  Future<String?> remoteSignUp({
+    required String name,
+    required String email,
+    required String phone,
+    required String password,
+    required String signaturePasscode,
+    required String recoveryString,
+  }) async {
+    final api = AppStore.instance.api;
+    if (!Env.apiConfigured || api == null) {
+      return 'No backend configured in this build.';
+    }
+    final mail = email.trim().toLowerCase();
+    final res = await api.postPublic('/api/auth/signup', {
+      'name': name.trim(),
+      'email': mail,
+      'phone': phone.trim(),
+      'password': password,
+      'signature_passcode': signaturePasscode,
+      'recovery_string': recoveryString,
+    });
+    if (res == null) return 'Network unreachable — check your connection';
+    final j = res.json;
+    if (!res.ok) {
+      final msg = (j is Map ? j['error'] : null);
+      return msg is String ? msg : 'Could not create the account (HTTP ${res.status})';
+    }
+    if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {
+      return 'Unexpected response from the server';
+    }
+    await _adoptSession(j);
+    await AppStore.instance.reloadRemote();
+    return null;
+  }
+
+  /// No-email, no-OTP password reset: the user proves ownership with the
+  /// recovery phrase they set at sign-up (owner directive 2026-09-01).
+  Future<String?> resetPasswordWithRecovery({
+    required String email,
+    required String recoveryString,
+    required String newPassword,
+  }) async {
+    final api = AppStore.instance.api;
+    if (!Env.apiConfigured || api == null) {
+      return 'No backend configured in this build.';
+    }
+    final res = await api.postPublic('/api/auth/reset-password', {
+      'email': email.trim().toLowerCase(),
+      'recovery_string': recoveryString,
+      'new_password': newPassword,
+    });
+    if (res == null) return 'Network unreachable — check your connection';
+    if (!res.ok) {
+      final msg = (res.json is Map ? (res.json as Map)['error'] : null);
+      return msg is String ? msg : 'Could not reset the password (HTTP ${res.status})';
+    }
     return null;
   }
 
@@ -174,25 +248,45 @@ class AuthStore extends ChangeNotifier {
     if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {
       return 'Unexpected auth response';
     }
-    remote.accessToken = j['access_token'] as String;
-    final uid = '${j['user']['id']}';
-    // Role/profile live in MongoDB (mtek_people.profiles) — via the data API.
-    String role = 'sales', name = mail.split('@').first;
+    await _adoptSession({
+      'access_token': j['access_token'],
+      'refresh_token': j['refresh_token'],
+      'user': {'uid': j['user']['id'], 'email': mail},
+    });
+    // pull the live dataset from MongoDB for this account
+    await AppStore.instance.reloadRemote();
+    return null;
+  }
+
+  /// Common session bootstrap: stash the token(s), warm the role/name from
+  /// /api/me, reconcile into the local directory, and PERSIST the session
+  /// (access + refresh token) to disk so exiting the app never signs the
+  /// user out (owner directive 2026-09-01). Used by sign-in, sign-up and
+  /// the silent boot-time [restoreSession].
+  Future<void> _adoptSession(Map j) async {
+    final remote = AppStore.instance.remote;
     final api = AppStore.instance.api;
-    if (Env.apiConfigured && api != null) {
-      api.accessToken = remote.accessToken;
+    final accessTok = '${j['access_token'] ?? ''}';
+    final refreshTok = '${j['refresh_token'] ?? ''}';
+    if (remote != null) remote.accessToken = accessTok;
+    if (api != null) api.accessToken = accessTok;
+    final u = (j['user'] as Map?) ?? const {};
+    final uid = '${u['uid'] ?? u['id'] ?? ''}';
+    final mail = '${u['email'] ?? ''}'.toLowerCase();
+    String role = '${u['role'] ?? 'sales'}';
+    String name = '${u['name'] ?? mail.split('@').first}';
+    if (Env.apiConfigured && api != null && (u['role'] == null || u['name'] == null)) {
       final me = await api.get('/api/me');
       if (me != null && me.ok && me.json is Map) {
-        final u = (me.json as Map)['user'];
-        if (u is Map) {
-          role = '${u['role'] ?? role}';
-          name = '${u['name'] ?? name}';
+        final mu = (me.json as Map)['user'];
+        if (mu is Map) {
+          role = '${mu['role'] ?? role}';
+          name = '${mu['name'] ?? name}';
         }
       }
     }
     remoteSignInUid = uid;
-    // reconcile into the local directory so the rest of the app just works
-    users.removeWhere((u) => u.email == mail);
+    users.removeWhere((x) => x.email == mail);
     users.add(StaffUser(
       name: name,
       email: mail,
@@ -202,19 +296,78 @@ class AuthStore extends ChangeNotifier {
     ));
     current = users.last;
     notifyListeners();
-    // pull the live dataset from MongoDB for this account
-    await AppStore.instance.reloadRemote();
-    return null;
+    if (refreshTok.isNotEmpty) {
+      await localWrite('session', jsonEncode({
+        'access_token': accessTok,
+        'refresh_token': refreshTok,
+        'email': mail,
+        'name': name,
+        'role': role,
+      }));
+    }
   }
 
   /// Supabase auth.users id of the signed-in account (null offline).
   String? remoteSignInUid;
 
   /// Current Supabase JWT for data-API calls (null when signed out/offline).
-  String? get accessToken => _remote?.accessToken;
+  String? get accessToken => AppStore.instance.remote?.accessToken;
+
+  /// Called once at boot (before the login screen would otherwise show):
+  /// reads the refresh token saved by [_adoptSession] and silently exchanges
+  /// it for a fresh access token, so closing/reopening the app keeps the
+  /// user signed in (owner directive 2026-09-01 — previously every restart
+  /// forced a fresh sign-in with no session saved anywhere).
+  Future<void> restoreSession() async {
+    final api = AppStore.instance.api;
+    if (!Env.apiConfigured || api == null) return;
+    final raw = await localRead('session');
+    if (raw == null || raw.isEmpty) return;
+    Map<String, dynamic> saved;
+    try {
+      saved = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return;
+    }
+    final refreshTok = '${saved['refresh_token'] ?? ''}';
+    if (refreshTok.isEmpty) return;
+    final res = await api.postPublic('/api/auth/refresh', {'refresh_token': refreshTok});
+    if (res == null) {
+      // offline at boot — sign back into the CACHED identity so the user
+      // still lands in the app (working off the local data cache, same as
+      // the rest of the app's offline-first design) instead of being
+      // bounced to the login screen just because there's no connection
+      // yet. A real refresh is retried the next time the app can reach it.
+      final mail = '${saved['email'] ?? ''}';
+      if (mail.isEmpty) return;
+      users.removeWhere((x) => x.email == mail);
+      users.add(StaffUser(
+        name: '${saved['name'] ?? mail.split('@').first}',
+        email: mail,
+        role: '${saved['role'] ?? 'sales'}',
+        passwordHash: '',
+        signaturePasscodeHash: '',
+      ));
+      current = users.last;
+      notifyListeners();
+      return;
+    }
+    if (!res.ok || res.json is! Map) {
+      // the server actively rejected it — refresh token expired/revoked;
+      // fall through to the login screen.
+      await localWrite('session', '');
+      return;
+    }
+    await _adoptSession(res.json as Map);
+    await AppStore.instance.reloadRemote();
+  }
 
   void signOut() {
     current = null;
+    remoteSignInUid = null;
+    AppStore.instance.remote?.accessToken = null;
+    AppStore.instance.api?.accessToken = null;
+    unawaited(localWrite('session', ''));
     notifyListeners();
   }
 

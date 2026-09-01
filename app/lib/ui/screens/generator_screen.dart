@@ -73,7 +73,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
             children: [
               Text('Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Mtek.ink)),
               SizedBox(height: 4),
-              Text('Write up a receipt, invoice or MILS log — PDF mirrors your paper books, signed & shared instantly',
+              Text('Write up a receipt, invoice, MILS log, waybill or delivery note — PDF mirrors your paper books, signed & shared instantly',
                   style: TextStyle(color: Mtek.gray500)),
             ],
           ),
@@ -405,7 +405,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_mReceiptNo, 'Receipt No.', onChanged: (v) => _mils.receiptNo = v),
       const SizedBox(height: 6),
       const Text('A — DESCRIPTION (EXTINGUISHERS BY WEIGHT)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
-      ..._milsWeightGrid(),
+      _milsWeightGrid(),
       const SizedBox(height: 10),
       const Text('B — REPLACEMENT (COMPONENTS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
       Wrap(
@@ -890,6 +890,29 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       verifyHash: hash,
       serverIssued: Env.backendConfigured,
     );
+
+    if (_type == DocType.mils) {
+      // A completed MILS sheet IS a maintenance job — feeds the MILS
+      // screen's overdue/upcoming tracking and Insights' serviced-by-weight.
+      final equipmentParts = <String>[
+        for (final e in _mils.servicedByWeight.entries) '${e.key}kg ×${e.value.round()}',
+        for (final c in _mils.componentQty.entries.where((e) => e.value > 0))
+          '${c.key} ×${c.value.round()}',
+      ];
+      await AppStore.instance.logMaintenance(
+        equipment: equipmentParts.isEmpty ? 'Fire extinguisher service' : equipmentParts.join(', '),
+        serial: 'MILS-${serial.toString().padLeft(9, '0')}',
+        client: Customer(id: customer, name: customer, isCorporate: false,
+            phone: _mils.phone, email: _mils.customerEmail, address: _mils.address),
+        location: _mils.address,
+        action: MaintenanceAction.refill,
+        findings: 'Serviced per MILS-${serial.toString().padLeft(9, '0')}',
+        technician: signer.name,
+        serviceDate: _mils.entryDate,
+        nextDue: _mils.nextServiceDate,
+        milsNo: 'MILS-${serial.toString().padLeft(9, '0')}',
+      );
+    }
 
     final outcome = await dispatchPdf(bytes: bytes, filename: filename);
 

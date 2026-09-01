@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * M-TEK — seed MongoDB (run once from any machine with normal internet):
- *   cd backend && npm --prefix api install mongodb
+ *   cd backend && npm install
  *   node scripts/seed-mongo.js
  *
  * Creates the seven section databases, zeroes the serial books (000000001

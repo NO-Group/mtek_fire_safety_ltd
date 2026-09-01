@@ -62,7 +62,7 @@ const hashPass = (secret, salt) =>
   step('MongoDB cluster + section databases');
   let mongoOk = false;
   try {
-    const { MongoClient } = require('../api/node_modules/mongodb');
+    const { MongoClient } = require('mongodb');
     const c = new MongoClient(env.MONGODB_URI, { appName: 'mtek-verify' });
     await c.connect();
     mongoOk = true;

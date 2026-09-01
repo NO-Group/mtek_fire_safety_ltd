@@ -43,5 +43,24 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+app/android/app/debug
+app/android/app/profile
+app/android/app/release
 
 previous_chat.txt
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Flutter build settings (contains the anon key)
+app/build_env.txt
+app/M-TEK-windows.zip
+
+# Misc tooling / local data dirs that must never be committed
+image-search/
+node_modules/
+backend/data/

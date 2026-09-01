@@ -82,14 +82,14 @@ class StatusChip extends StatelessWidget {
   final Color fg;
   const StatusChip(this.label, {super.key, required this.bg, required this.fg});
 
-  const StatusChip.paid(String label, {super.key})
-      : this(label, bg: Mtek.successTint, fg: Mtek.success);
-  const StatusChip.pending(String label, {super.key})
-      : this(label, bg: Mtek.warnTint, fg: Mtek.warn);
-  const StatusChip.bad(String label, {super.key})
-      : this(label, bg: Mtek.dangerTint, fg: Mtek.danger);
-  const StatusChip.neutral(String label, {super.key})
-      : this(label, bg: Mtek.gray100, fg: Mtek.gray600);
+  const StatusChip.paid(String label, {Key? key})
+      : this(label, key: key, bg: Mtek.successTint, fg: Mtek.success);
+  const StatusChip.pending(String label, {Key? key})
+      : this(label, key: key, bg: Mtek.warnTint, fg: Mtek.warn);
+  const StatusChip.bad(String label, {Key? key})
+      : this(label, key: key, bg: Mtek.dangerTint, fg: Mtek.danger);
+  const StatusChip.neutral(String label, {Key? key})
+      : this(label, key: key, bg: Mtek.gray100, fg: Mtek.gray600);
 
   @override
   Widget build(BuildContext context) {

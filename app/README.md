@@ -1,4 +1,4 @@
-# M-TEK Inventory — ONE app, TWO build paths
+# MFSL Inventory — ONE app, TWO build paths
 
 The Flutter app in this folder is the whole product. There is no web/PWA
 version anymore (owner directive 2026-08-30). Both builds talk to the SAME
@@ -16,7 +16,8 @@ every product is entered through the app itself:
 2. Open this `app/` folder.
 3. Double-click **`make_apk.bat`** — nothing else. Server and keys are
    already baked into the app.
-   → APK appears at `app\build\app\outputs\flutter-apk\app-release.apk`.
+   → APK appears at `app\MFSL Inventory.apk` (also kept at
+   `app\build\app\outputs\flutter-apk\app-release.apk`).
 
 Command line equivalent:
 ```
@@ -30,13 +31,23 @@ edition) and tick **"Desktop development with C++"** in the installer —
 Flutter needs its compiler for Windows EXEs.
 
 Same prerequisites, then double-click **`make_exe.bat`** — nothing else.
-→ Folder: `app\build\windows\x64\runner\Release\` (zip created for you:
-`M-TEK-windows.zip`). Copy the whole folder to any Windows PC and run
-`m_tek_inventory.exe` — no installation needed.
+It builds the app and then packages a Windows installer for you:
+
+→ **Installer (recommended)**: `app\build\windows\x64\runner\Release\MFSL Inventory Setup.msix`.
+Double-click it to install like any normal Windows app. It shows
+**Publisher: N.O Group** in the install wizard. The very first time you
+install it, Windows will ask you to confirm trusting a self-signed
+developer certificate — click **Yes**; this only prompts once per PC.
+
+→ Plain folder (no installer, portable): `app\build\windows\x64\runner\Release\`
+— run `MFSL Inventory.exe` from inside that folder (needs the whole folder,
+not just the .exe by itself). A zip of the whole folder is also made for
+you: `app\MFSL Inventory.zip`.
 
 Command line equivalent:
 ```
 flutter build windows --release
+dart run msix:create
 ```
 
 ## Sign in
