@@ -34,6 +34,7 @@ flutter:
   assets:
     - assets/branding/logo.png
     - assets/branding/logo_watermark.svg
+    - assets/branding/app_icon.png
     - assets/fonts/DejaVuSans.ttf
     - assets/fonts/DejaVuSans-Bold.ttf
 
@@ -43,7 +44,7 @@ msix_config:
   publisher: CN=N.O Group
   identity_name: com.mtek.inventory
   msix_version: 1.0.0.0
-  logo_path: assets/branding/logo.png
+  logo_path: assets/branding/app_icon.png
   capabilities: internetClient
   output_path: build\windows\x64\runner\Release
   output_name: MFSL-Inventory-Setup
