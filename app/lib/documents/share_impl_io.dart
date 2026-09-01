@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart' hide ShareResult;
 
@@ -25,11 +26,15 @@ Future<ShareOutcome> dispatchPdfImpl({
       return const ShareOutcome(ShareResult.shared,
           'PDF attached — pick WhatsApp, Gmail or any app in the share sheet.');
     } catch (shareErr) {
-      // Fallback: keep the file, tell the user where.
-      return ShareOutcome(ShareResult.savedOnly,
-          'Share sheet unavailable — PDF saved to app cache: ${file.path}');
+      // Fallback: keep the file on the device. Never surface an internal
+      // filesystem path on screen.
+      return const ShareOutcome(ShareResult.savedOnly,
+          'Share sheet unavailable — the PDF was saved on this device.');
     }
   } catch (e) {
-    return ShareOutcome(ShareResult.failed, 'Could not write PDF: $e');
+    // Full detail goes to the console only — never onto a production screen.
+    debugPrint('dispatchPdf (io) failed: $e');
+    return const ShareOutcome(ShareResult.failed,
+        'Could not save the PDF — please try again.');
   }
 }

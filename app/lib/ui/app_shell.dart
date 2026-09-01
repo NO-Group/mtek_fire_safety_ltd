@@ -53,14 +53,13 @@ const _settings = Destination('settings', 'Settings', Icons.settings_outlined, I
 /// "any user" gets notified of every transaction); Staff is CEO/Admin-only
 /// (view for both, but only the CEO can actually change a role).
 List<Destination> destinationsFor(String? role) {
-  // Authority: CEO > Admin > Sales. Settings (VAT/serials/seed import/reset)
-  // is CEO-ONLY (owner directive 2026-08-30); stock editing is CEO/Admin.
-  if (role == 'ceo') return _allDestinations;
-  if (role == 'admin') {
-    return _allDestinations.where((d) => d.id != 'settings').toList();
-  }
+  // Authority: CEO > Admin > Sales. Settings is visible to EVERY role
+  // (owner directive 2026-09-01) — Account/Recovery/Preferences/About are
+  // universal, while the management controls inside it (VAT, serial reseed,
+  // stock seed import) stay CEO-only. Stock editing is CEO/Admin.
+  if (role == 'ceo' || role == 'admin') return _allDestinations;
   return const [
-    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications,
+    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications, _settings,
   ];
 }
 

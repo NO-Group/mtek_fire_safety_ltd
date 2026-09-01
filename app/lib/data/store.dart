@@ -48,7 +48,7 @@ class AppStore extends ChangeNotifier {
   /// In-app notifications (every transaction/document/stock/customer/product
   /// change, plus CEO/Admin announcements) — newest first. Populated by
   /// [refreshNotifications], polled periodically by the app shell.
-  final List<AppNotification> notifications = [];
+  List<AppNotification> notifications = [];
   int get unreadNotificationCount {
     final uid = AuthStore.instance.remoteSignInUid;
     if (uid == null || uid.isEmpty) return notifications.length;
@@ -289,6 +289,43 @@ class AppStore extends ChangeNotifier {
     }
   }
 
+  /// Marks EVERY notification as read by the current user (Settings →
+  /// Preferences). Updates the local copies immediately so the unread badge
+  /// clears, then asks the server to do the same (idempotent — each uid is
+  /// only appended to a notification's `read_by` once).
+  Future<void> markAllNotificationsRead() async {
+    final uid = AuthStore.instance.remoteSignInUid;
+    final name = AuthStore.instance.current?.name ?? '';
+    if (uid != null && uid.isNotEmpty) {
+      notifications = [
+        for (final n in notifications)
+          if (!n.isReadBy(uid))
+            AppNotification(
+              id: n.id,
+              kind: n.kind,
+              title: n.title,
+              message: n.message,
+              ref: n.ref,
+              createdBy: n.createdBy,
+              createdByName: n.createdByName,
+              createdAt: n.createdAt,
+              readBy: [
+                ...n.readBy,
+                NotificationRead(uid: uid, name: name, at: DateTime.now()),
+              ],
+            )
+          else
+            n,
+      ];
+      notifyListeners();
+    }
+    try {
+      await _apiPost('/api/notifications/read-all', {});
+    } catch (_) {
+      // best-effort — the read receipts will resync on the next refresh
+    }
+  }
+
   /// CEO/Admin-only: broadcasts an announcement, which lands in every
   /// user's notification feed exactly like a transaction notification, but
   /// with kind 'announcement' so the UI can show it distinctly and the
@@ -300,7 +337,9 @@ class AppStore extends ChangeNotifier {
       await refreshNotifications();
       return null;
     } catch (e) {
-      return e.toString().replaceFirst('Exception: ', '');
+      debugPrint('sendAnnouncement failed: $e');
+      final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
+      return msg.isEmpty ? 'Something went wrong — please try again.' : msg;
     }
   }
 
@@ -339,7 +378,9 @@ class AppStore extends ChangeNotifier {
       await refreshStaff();
       return null;
     } catch (e) {
-      return e.toString().replaceFirst('Exception: ', '');
+      debugPrint('setStaffRole failed: $e');
+      final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
+      return msg.isEmpty ? 'Something went wrong — please try again.' : msg;
     }
   }
 

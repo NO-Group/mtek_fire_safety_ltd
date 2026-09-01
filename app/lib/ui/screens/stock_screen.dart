@@ -131,10 +131,12 @@ class _StockScreenState extends State<StockScreen> {
             content: Text('${name.text.trim()} saved to the server.')));
       }
     } catch (e) {
+      debugPrint('Product save failed: $e');
       if (context.mounted) {
+        final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: Mtek.danger,
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+            content: Text(msg.isEmpty ? 'Could not save the product — please try again.' : msg)));
       }
     }
   }
@@ -152,10 +154,12 @@ class _StockScreenState extends State<StockScreen> {
             content: Text('$count product row(s) imported — catalogue updated.')));
       }
     } catch (e) {
+      debugPrint('Product import failed: $e');
       if (context.mounted) {
+        final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: Mtek.danger,
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+            content: Text(msg.isEmpty ? 'Could not import the products — please try again.' : msg)));
       }
     }
   }

@@ -41,9 +41,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
         content: Text(outcome.message),
       ));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      // Full detail goes to the console only — never onto a production
+      // screen (no raw exception text, no stack traces).
+      debugPrint('Summary export failed: $e');
+      messenger.showSnackBar(const SnackBar(
           backgroundColor: Mtek.danger,
-          content: Text('Could not build the report: $e')));
+          content: Text('Could not build the report — please try again.')));
     }
   }
 
@@ -200,9 +203,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Text('#${e.key + 1} ${e.value.key}',
-                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                                    const Spacer(),
+                                    Expanded(
+                                      child: Text('#${e.key + 1} ${e.value.key}',
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                          overflow: TextOverflow.ellipsis),
+                                    ),
+                                    const SizedBox(width: 10),
                                     AmountText(e.value.value),
                                   ],
                                 ),

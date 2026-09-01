@@ -209,9 +209,12 @@ class ReceiptsScreen extends StatelessWidget {
         content: Text(outcome.message),
       ));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      // Full detail goes to the console only — never onto a production
+      // screen (no raw exception text, no stack traces).
+      debugPrint('Receipt PDF share failed: $e');
+      messenger.showSnackBar(const SnackBar(
           backgroundColor: Mtek.danger,
-          content: Text('Could not build the PDF: $e')));
+          content: Text('Could not build the PDF — please try again.')));
     }
   }
 
@@ -222,9 +225,10 @@ class ReceiptsScreen extends StatelessWidget {
       final bytes = await _receiptBytes(context, r);
       await Printing.layoutPdf(onLayout: (_) async => bytes);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      debugPrint('Receipt PDF print failed: $e');
+      messenger.showSnackBar(const SnackBar(
           backgroundColor: Mtek.danger,
-          content: Text('Could not build the PDF: $e')));
+          content: Text('Could not build the PDF — please try again.')));
     }
   }
 
