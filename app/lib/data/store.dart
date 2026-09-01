@@ -4,6 +4,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/format.dart' as fmt;
+import '../core/widget_bridge.dart';
 import 'api_client.dart';
 import 'auth_store.dart';
 import 'env.dart';
@@ -93,6 +95,7 @@ class AppStore extends ChangeNotifier {
     _loaded = true;
     notifyListeners();
     unawaited(flushSyncQueue());
+    pushHomeWidgetStats();
   }
 
   Future<List<dynamic>> _readList(String key) async {
@@ -240,6 +243,27 @@ class AppStore extends ChangeNotifier {
     final okRemote = await _loadRemote();
     if (okRemote) await _persistAll();
     notifyListeners();
+    pushHomeWidgetStats();
+  }
+
+  /// Pushes the three headline figures onto the Android home-screen widget.
+  /// No-op everywhere else (the method channel only exists on Android).
+  void pushHomeWidgetStats() {
+    final now = DateTime.now();
+    var todaySales = 0;
+    for (final t in transactions) {
+      if (t.date.year == now.year &&
+          t.date.month == now.month &&
+          t.date.day == now.day) {
+        todaySales += t.amount;
+      }
+    }
+    final dueInvoices = invoices.where((i) => i.balance > 0).length;
+    unawaited(WidgetBridge.updateStats(
+      todaySales: fmt.nairaCompact(todaySales),
+      receipts: '${receipts.length}',
+      invoices: '$dueInvoices',
+    ));
   }
 
   // ------------------------------------------------------------ notifications
@@ -897,6 +921,7 @@ class AppStore extends ChangeNotifier {
     final serverApplied = serverReceiptNo != null && serverReceiptNo.isNotEmpty;
     await _persistSaleSide(sale, enqueue: !serverApplied);
     notifyListeners();
+    pushHomeWidgetStats();
   }
 
   Future<void> _persistSaleSide(Sale sale, {bool enqueue = true}) async {
@@ -944,6 +969,7 @@ class AppStore extends ChangeNotifier {
       unawaited(flushSyncQueue());
     }
     notifyListeners();
+    pushHomeWidgetStats();
   }
 
   /// Records a completed maintenance/service job (CEO/Admin — MILS screen +

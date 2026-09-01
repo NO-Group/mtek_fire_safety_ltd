@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import '../core/widget_bridge.dart';
 import '../data/auth_store.dart';
 import '../data/store.dart';
 import 'screens/customers_screen.dart';
@@ -107,12 +108,25 @@ class _AppShellState extends State<AppShell> {
     _notifyTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       unawaited(AppStore.instance.refreshNotifications());
     });
+    // Jump to a screen requested by a home-widget tap / launcher shortcut.
+    WidgetBridge.requestedScreen.addListener(_applyRequestedScreen);
+    _applyRequestedScreen();
   }
 
   @override
   void dispose() {
+    WidgetBridge.requestedScreen.removeListener(_applyRequestedScreen);
     _notifyTimer?.cancel();
     super.dispose();
+  }
+
+  void _applyRequestedScreen() {
+    final requested = WidgetBridge.requestedScreen.value;
+    if (requested == null) return;
+    WidgetBridge.requestedScreen.value = null;
+    final i = _visible.indexWhere((d) => d.id == requested);
+    if (i == -1) return; // screen not visible for this role — ignore
+    if (_index != i) setState(() => _index = i);
   }
 
   void _openNotifications() {

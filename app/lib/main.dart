@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'core/theme.dart';
+import 'core/widget_bridge.dart';
 import 'data/auth_store.dart';
 import 'data/store.dart';
 import 'ui/app_shell.dart';
@@ -16,6 +19,8 @@ Future<void> main() async {
     debugPrint('Flutter build error: ${details.exception}');
     return const _FriendlyError();
   };
+  // Subscribe to home-widget / launcher-shortcut taps (Android only).
+  unawaited(WidgetBridge.init());
   runApp(const MtekApp());
 }
 
