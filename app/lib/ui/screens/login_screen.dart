@@ -132,8 +132,10 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Text(_error!, style: const TextStyle(color: Mtek.danger, fontSize: 13)),
           ),
         FilledButton(
-          onPressed: _signIn,
-          child: const Text('Sign in'),
+          onPressed: _busy ? null : _signIn,
+          child: _busy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Sign in'),
         ),
         const SizedBox(height: 10),
         TextButton(
@@ -179,15 +181,37 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            const Text('Role', style: TextStyle(color: Mtek.gray500)),
-            const SizedBox(width: 12),
-            ChoiceChip(label: const Text('Admin'), selected: _role == 'admin', onSelected: (_) => setState(() => _role = 'admin')),
-            const SizedBox(width: 8),
-            ChoiceChip(label: const Text('Sales'), selected: _role == 'sales', onSelected: (_) => setState(() => _role = 'sales')),
-          ],
-        ),
+        if (Env.backendConfigured)
+          // Real accounts always start as Sales (server-enforced too) — no
+          // self-service Admin/CEO, for the same reason a bank teller can't
+          // promote themselves to branch manager. An existing Admin/CEO
+          // upgrades staff afterwards via the Supabase dashboard.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: Mtek.gray100, borderRadius: BorderRadius.circular(10)),
+            child: Row(
+              children: const [
+                Icon(Icons.info_outline, size: 16, color: Mtek.gray500),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'New accounts start as Sales staff. An Admin or the CEO can promote you afterwards.',
+                    style: TextStyle(fontSize: 12, color: Mtek.gray600),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            children: [
+              const Text('Role', style: TextStyle(color: Mtek.gray500)),
+              const SizedBox(width: 12),
+              ChoiceChip(label: const Text('Admin'), selected: _role == 'admin', onSelected: (_) => setState(() => _role = 'admin')),
+              const SizedBox(width: 8),
+              ChoiceChip(label: const Text('Sales'), selected: _role == 'sales', onSelected: (_) => setState(() => _role = 'sales')),
+            ],
+          ),
         const SizedBox(height: 10),
         // Drawn signature is optional; the passcode is what authorises documents.
         if (_showPad)
@@ -212,8 +236,10 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Text(_error!, style: const TextStyle(color: Mtek.danger, fontSize: 13)),
           ),
         FilledButton(
-          onPressed: _createAccount,
-          child: const Text('Create account'),
+          onPressed: _busy ? null : _createAccount,
+          child: _busy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Create account'),
         ),
         TextButton(
           onPressed: () => setState(() { _signup = false; _error = null; }),
@@ -223,22 +249,40 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  bool _busy = false;
+
   Future<void> _signIn() async {
     // REAL backend first (Supabase Auth + profiles role); offline dev
     // (backend not configured) falls back to the local directory.
     if (Env.backendConfigured) {
+      setState(() { _busy = true; _error = null; });
       final remoteErr = await AuthStore.instance.remoteSignIn(_email.text, _password.text);
-      if (remoteErr == null) return; // signed in via Supabase
-      setState(() => _error = remoteErr);
+      if (!mounted) return;
+      setState(() { _busy = false; _error = remoteErr; });
       return;
     }
     final err = AuthStore.instance.signIn(_email.text, _password.text);
     setState(() => _error = err);
   }
 
-  void _createAccount() {
+  Future<void> _createAccount() async {
     if (_passcode.text != _passcode2.text) {
       setState(() => _error = 'Signature passcodes do not match');
+      return;
+    }
+    // REAL backend: create an actual Supabase account (owner directive
+    // 2026-09-01) instead of the local-only fake that had no server
+    // permissions and made every write get rejected.
+    if (Env.backendConfigured) {
+      setState(() { _busy = true; _error = null; });
+      final remoteErr = await AuthStore.instance.remoteSignUp(
+        name: _name.text,
+        email: _email.text,
+        password: _password.text,
+        signaturePasscode: _passcode.text,
+      );
+      if (!mounted) return;
+      setState(() { _busy = false; _error = remoteErr; });
       return;
     }
     final err = AuthStore.instance.signUp(

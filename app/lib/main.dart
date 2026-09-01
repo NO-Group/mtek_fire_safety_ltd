@@ -45,7 +45,15 @@ class _BootScreenState extends State<_BootScreen> {
   @override
   void initState() {
     super.initState();
-    AppStore.instance.init().then((_) => AuthStore.instance.ping());
+    // AppStore.init() first (creates the RestClient/ApiClient the session
+    // restore needs), THEN silently try to resume a saved session from the
+    // last app run before deciding whether to show the login screen — this
+    // is what keeps the user signed in across app exits (owner directive
+    // 2026-09-01; previously every restart forced a fresh sign-in).
+    AppStore.instance.init().then((_) async {
+      await AuthStore.instance.restoreSession();
+      AuthStore.instance.ping();
+    });
   }
 
   @override

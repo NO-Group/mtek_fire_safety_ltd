@@ -243,6 +243,7 @@ Deno.serve(async (req: Request) => {
       } catch { /* profile warming is best-effort */ }
       return json({
         access_token: token,
+        refresh_token: String(j.refresh_token ?? ''),
         user: {
           uid: String(u.id ?? ''), email: String(u.email ?? ''),
           name: profile?.name ?? String((u.user_metadata as Record<string, unknown> | undefined)?.full_name ?? String(u.email ?? '').split('@')[0]),
@@ -250,10 +251,117 @@ Deno.serve(async (req: Request) => {
         },
       });
     }
+    // ---- public auth: silent session restore from a stored refresh token
+    // (owner directive 2026-09-01 — exiting the app must not sign you out).
+    if (route === 'POST /api/auth/refresh') {
+      const b = await req.json().catch(() => ({} as Record<string, unknown>));
+      const refreshToken = String(b.refresh_token ?? '');
+      if (!refreshToken) return err(400, 'Missing refresh token');
+      let gr: Response;
+      try {
+        gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      } catch {
+        return err(503, 'Auth service unreachable — try again shortly');
+      }
+      const j = await gr.json().catch(() => ({} as Record<string, unknown>));
+      if (!gr.ok) {
+        return err(401, String(j.error_description ?? j.msg ?? 'Session expired — please sign in again'));
+      }
+      const u = (j.user ?? {}) as Record<string, unknown>;
+      const token = String(j.access_token ?? '');
+      let profile: Profile | null = null;
+      try {
+        profile = await auth(new Request('https://internal/', { headers: { authorization: `Bearer ${token}` } }));
+      } catch { /* profile warming is best-effort */ }
+      return json({
+        access_token: token,
+        refresh_token: String(j.refresh_token ?? refreshToken),
+        user: {
+          uid: String(u.id ?? ''), email: String(u.email ?? ''),
+          name: profile?.name ?? String((u.user_metadata as Record<string, unknown> | undefined)?.full_name ?? String(u.email ?? '').split('@')[0]),
+          role: profile?.role ?? 'sales',
+        },
+      });
+    }
+    // ---- public auth: real self sign-up (owner directive 2026-09-01) ----
+    // Creates an ACTUAL Supabase Auth user via the Admin API (service-role
+    // key, never exposed to the client) and seeds its MongoDB profile with
+    // role='sales' — self-signup can never grant admin/CEO authority; an
+    // existing Admin/CEO promotes staff afterwards. The signature-passcode
+    // hash is bound immediately (there is no other first-bind path for
+    // non-CEO accounts), so a brand-new account can sign documents right away.
     if (route === 'POST /api/auth/signup') {
-      // open self-registration is disabled on the live system (authority rules):
-      // the CEO adds staff in Supabase → Authentication → Users → "Add user".
-      return err(403, 'Staff accounts are created by the CEO (Supabase dashboard → Authentication → Add user), then sign in here');
+      const b = await req.json().catch(() => ({} as Record<string, unknown>));
+      const name = String(b.name ?? '').trim().slice(0, 120);
+      const email = String(b.email ?? '').trim().toLowerCase();
+      const password = String(b.password ?? '');
+      const passcode = String(b.signature_passcode ?? '');
+      if (!name) return err(400, 'Enter your full name');
+      if (!email.includes('@')) return err(400, 'Enter a valid email');
+      if (password.length < 6) return err(400, 'Password must be at least 6 characters');
+      if (passcode.length < 4) return err(400, 'Signature passcode must be at least 4 characters');
+      if (passcode === password) return err(400, 'Signature passcode must be different from your password');
+      if (email === CEO_EMAIL) return err(400, 'The CEO account is pre-provisioned — sign in directly');
+
+      let createRes: Response;
+      try {
+        createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name } }),
+        });
+      } catch {
+        return err(503, 'Auth service unreachable — try again shortly');
+      }
+      const created = await createRes.json().catch(() => ({} as Record<string, unknown>));
+      if (!createRes.ok) {
+        const msg = String((created as Record<string, unknown>).msg ?? (created as Record<string, unknown>).error_description ?? (created as Record<string, unknown>).error ?? '');
+        if (createRes.status === 422 || /already.*(registered|exists)/i.test(msg)) {
+          return err(409, 'An account with that email already exists');
+        }
+        if (createRes.status === 401 || createRes.status === 403) {
+          return err(500, 'Server is not configured for self sign-up (SUPABASE_SERVICE_ROLE_KEY secret missing) — ask the CEO to check Supabase → Edge Functions → Secrets');
+        }
+        return err(400, msg || 'Could not create the account');
+      }
+      const createdUser = created as Record<string, unknown>;
+      const uid = String(createdUser.id ?? (createdUser.user as Record<string, unknown> | undefined)?.id ?? '');
+      if (!uid) return err(500, 'Account created but no id was returned — try signing in');
+
+      const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+      const fullName = name || email.split('@')[0];
+      await (await coll.profiles()).updateOne(
+        { _id: uid },
+        { $set: { _id: uid, email, full_name: fullName, role: 'sales', sig_salt: salt, sig_hash: await hashPass(passcode, salt), created_at: now() } },
+        { upsert: true },
+      );
+      profileCache.delete(uid);
+
+      // sign the brand-new account straight in so the app lands the user
+      // directly in the workspace, same shape as /api/auth/login above.
+      let signInRes: Response;
+      try {
+        signInRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        return err(503, 'Account created — sign in manually with your new email and password');
+      }
+      const sj = await signInRes.json().catch(() => ({} as Record<string, unknown>));
+      if (!signInRes.ok) {
+        return err(503, 'Account created — sign in manually with your new email and password');
+      }
+      return json({
+        access_token: String((sj as Record<string, unknown>).access_token ?? ''),
+        refresh_token: String((sj as Record<string, unknown>).refresh_token ?? ''),
+        user: { uid, email, name: fullName, role: 'sales' },
+      });
     }
 
     const user = await auth(req);

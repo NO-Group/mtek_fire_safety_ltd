@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../data/auth_store.dart';
 import '../data/store.dart';
 import 'screens/customers_screen.dart';
+import 'screens/delivery_notes_screen.dart';
 import 'screens/generator_screen.dart';
 import 'screens/insights_screen.dart';
 import 'screens/invoices_screen.dart';
@@ -15,6 +16,7 @@ import 'screens/stock_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/summary_screen.dart';
 import 'screens/transactions_screen.dart';
+import 'screens/waybills_screen.dart';
 import 'watermark_background.dart';
 
 class Destination {
@@ -31,6 +33,8 @@ const _transactions = Destination('transactions', 'Transactions', Icons.swap_hor
 const _customers = Destination('customers', 'Customers', Icons.people_outline, Icons.people, CustomersScreen());
 const _receipts = Destination('receipts', 'Receipts', Icons.receipt_long_outlined, Icons.receipt_long, ReceiptsScreen());
 const _invoices = Destination('invoices', 'Invoices', Icons.request_quote_outlined, Icons.request_quote, InvoicesScreen());
+const _waybills = Destination('waybills', 'Waybills', Icons.local_shipping_outlined, Icons.local_shipping, WaybillsScreen());
+const _deliveryNotes = Destination('deliverynotes', 'Delivery Notes', Icons.inventory_2_outlined, Icons.inventory_2, DeliveryNotesScreen());
 const _mils = Destination('mils', 'MILS', Icons.build_circle_outlined, Icons.build_circle, MilsScreen());
 const _sales = Destination('sales', 'Sales', Icons.point_of_sale_outlined, Icons.point_of_sale, SalesScreen());
 const _stock = Destination('stock', 'Stock', Icons.inventory_2_outlined, Icons.inventory_2, StockScreen());
@@ -48,25 +52,25 @@ List<Destination> destinationsFor(String? role) {
     return _allDestinations.where((d) => d.id != 'settings').toList();
   }
   return const [
-    _sales, _stock, _customers, _receipts, _invoices, _docs,
+    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs,
   ];
 }
 
 /// The complete management destination set (CEO view).
 const _allDestinations = <Destination>[
-  _insights, _transactions, _customers, _receipts, _invoices,
+  _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
   _mils, _sales, _stock, _summary, _docs, _settings,
 ];
 
 /// Kept for backwards compatibility (admin view).
 const destinations = <Destination>[
-  _insights, _transactions, _customers, _receipts, _invoices,
+  _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
   _mils, _sales, _stock, _summary, _docs, _settings,
 ];
 
 /// Primary destinations for the phone bottom bar; everything else lives
 /// behind "More" (opens the drawer).
-const _bottomBarIndexes = [0, 6, 7, 5]; // Insights, Sales, Stock, MILS
+const _bottomBarIndexes = [0, 8, 9, 7]; // Insights, Sales, Stock, MILS
 
 /// Responsive shell — four tiers:
 ///   ≥1280px : NavigationRail with extended labels (desktop)

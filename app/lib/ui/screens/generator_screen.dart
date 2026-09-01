@@ -73,7 +73,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
             children: [
               Text('Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Mtek.ink)),
               SizedBox(height: 4),
-              Text('Write up a receipt, invoice or MILS log — PDF mirrors your paper books, signed & shared instantly',
+              Text('Write up a receipt, invoice, MILS log, waybill or delivery note — PDF mirrors your paper books, signed & shared instantly',
                   style: TextStyle(color: Mtek.gray500)),
             ],
           ),

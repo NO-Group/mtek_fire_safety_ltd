@@ -23,4 +23,14 @@ class ApiClient {
 
   Future<impl.RestJsonResponse?> post(String path, Map<String, dynamic> body) =>
       impl.httpJson(method: 'POST', url: '$baseUrl$path', headers: _headers(), body: body);
+
+  /// Auth endpoints (/api/auth/login, /signup, /refresh) never require a
+  /// bearer token — call them without one attached.
+  Future<impl.RestJsonResponse?> postPublic(String path, Map<String, dynamic> body) =>
+      impl.httpJson(
+        method: 'POST',
+        url: '$baseUrl$path',
+        headers: const {'Content-Type': 'application/json'},
+        body: body,
+      );
 }
