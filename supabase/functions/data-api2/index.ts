@@ -60,7 +60,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-02h';
+const BUNDLE_VERSION = '2026-09-02i';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -284,7 +284,10 @@ async function peekSerials(): Promise<Record<string, number>> {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const url = new URL(req.url);
-  const path = url.pathname.replace(/^\/functions\/v1\/data-api/, '') || '/';
+  // [^/]+ (not a hardcoded name): a name like data-api2 would otherwise
+  // leave a '2/...' suffix after the prefix strip, routing every request
+  // into auth() — the 'Unknown API route' style failures on a live function.
+  const path = url.pathname.replace(/^\/functions\/v1\/[^/]+/, '') || '/';
   const route = `${req.method} ${path}`;
 
   try {
