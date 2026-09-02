@@ -11,6 +11,28 @@ every product is entered through the app itself:
   reorder level, unit, service toggle), or
 - **Stock → Import TXT** (optional bulk path for an edited products_seed.txt).
 
+## Install the app (no local build needed)
+Every push to `main` that touches the app — and every manual run of
+**Actions → Build MFSL Inventory (APK + EXE)** — publishes fresh installers to
+the rolling **`ci` pre-release** on the Releases page. GitHub serves release
+assets **byte-for-byte: never re-zipped, never encrypted** — the download *is*
+the installer, so there is nothing to extract and no “password protected”
+errors, ever:
+
+- **Android** (open on the phone itself): 
+  https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL%20Inventory.apk
+- **Windows installer**: 
+  https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL%20Inventory%20Setup.msix
+- **Windows portable** (whole Release folder, zipped by *us*, not GitHub): 
+  https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL-Inventory-portable.zip
+
+(Build logic lives in `ci/build-android.sh` / `ci/build-windows.ps1`; the
+workflow file `.github/workflows/build-mfsl.yml` is a stable shim that just
+calls those scripts — edit the scripts, never the workflow. Old Actions
+*artifacts*, by contrast, always arrive wrapped in a GitHub-made zip, and a
+truncated download of that zip is what made Windows claim “password
+protected”.)
+
 ## Build the APK (Android)
 1. Install Flutter SDK (flutter.dev) and Android Studio once.
 2. Open this `app/` folder.

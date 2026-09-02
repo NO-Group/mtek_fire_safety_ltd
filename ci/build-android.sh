@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# ============================================================================
+# MFSL Inventory - Android build + publish (GitHub Actions / any Linux box).
+#
+# ALL CI logic lives here in ci/ so that .github/workflows/build-mfsl.yml
+# never has to change: editing files under .github/workflows/ requires a
+# GitHub token with the special "workflows" permission, while normal git
+# pushes to ci/ work for everyone. Change the build HERE, not in the shim.
+#
+# What it does:
+#   1. Installs Flutter (stable) by shallow clone - no setup action needed.
+#   2. Builds the release APK.
+#   3. Uploads it to the rolling GitHub Release tagged "ci" as a RAW asset.
+#      GitHub serves release assets byte-for-byte: never re-zipped, never
+#      encrypted. The download IS "MFSL Inventory.apk" - nothing to extract,
+#      and no "password protected" errors, ever.
+#
+# Local usage: bash ci/build-android.sh   (needs flutter + gh + a checkout)
+# ============================================================================
+set -euo pipefail
+
+# Gradle 9 needs JDK >= 17; runners ship several JDKs, pin 17 when present.
+if [ -n "${JAVA_HOME_17_X64:-}" ]; then
+  export JAVA_HOME="${JAVA_HOME_17_X64}"
+fi
+
+# --- 1. Flutter (stable) -----------------------------------------------------
+FLUTTER_DIR="${RUNNER_TEMP:-/tmp}/flutter"
+if [ ! -x "$FLUTTER_DIR/bin/flutter" ]; then
+  git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_DIR"
+fi
+export PATH="$FLUTTER_DIR/bin:$PATH"
+flutter config --no-analytics >/dev/null 2>&1 || true
+flutter --version
+
+# --- 2. Build -----------------------------------------------------------------
+cd "$(cd "$(dirname "$0")" && pwd)/../app"
+flutter pub get
+flutter build apk --release
+
+APK="build/app/outputs/flutter-apk/app-release.apk"
+test -s "$APK"
+
+STAGE="${RUNNER_TEMP:-/tmp}/MFSL Inventory.apk"
+cp "$APK" "$STAGE"
+
+# --- 3. Publish to the rolling "ci" release (raw asset, no zip wrapper) -------
+TAG="ci"
+TITLE="MFSL Inventory - auto builds (rolling)"
+NOTES="$(mktemp)"
+SHA="${GITHUB_SHA:-local}"
+REF="${GITHUB_REF_NAME:-local}"
+{
+  echo "Auto build \`${SHA:0:7}\` ($REF), $(date -u '+%Y-%m-%d %H:%M UTC')."
+  echo ""
+  echo "These assets are RAW files - GitHub never re-zips release assets, so there is"
+  echo "nothing to extract and no \"password protected\" errors. Ever."
+  echo ""
+  echo "- \`MFSL Inventory.apk\` - sideload onto Android (open this link on the phone)."
+  echo "- \`MFSL Inventory Setup.msix\` - Windows installer (from the Windows job)."
+  echo "- \`MFSL-Inventory-portable.zip\` - portable Windows folder (from the Windows job)."
+} >"$NOTES"
+
+# View-or-create, then upload with retries: the Windows job runs in parallel
+# and touches the same release; per-asset last writer wins, which is fine.
+for _ in 1 2 3; do
+  gh release view "$TAG" >/dev/null 2>&1 ||
+    gh release create "$TAG" --target "${GITHUB_SHA:-HEAD}" --prerelease \
+      --title "$TITLE" --notes-file "$NOTES" >/dev/null 2>&1 || true
+  if gh release upload "$TAG" "$STAGE" --clobber; then
+    echo "Published $STAGE to release $TAG"
+    exit 0
+  fi
+  sleep 15
+done
+echo "ERROR: could not upload $STAGE to release $TAG" >&2
+exit 1
