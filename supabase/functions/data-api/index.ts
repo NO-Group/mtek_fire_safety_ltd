@@ -1,4 +1,4 @@
-// bisect h1: first 131 of 259 top-section lines, no imports
+// bisect h1b: first 125 of 259 top lines (cut at: 'const hashPass = (secret: string, salt: string) => {'), no imports
 // DRIVER SWAP (edge-runtime activation fix): the official npm:mongodb driver
 // bundles to many MB and the function uploaded but NEVER activated — the
 // platform silently kept serving the last healthy deployment (proven with a
@@ -36,7 +36,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-02g';
+const BUNDLE_VERSION = '2026-09-02f-xmongo';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -124,18 +124,12 @@ interface Profile {
   uid: string; email: string; name: string; role: string;
   sig_hash: string; sig_salt: string;
 }
-const hashPass = (secret: string, salt: string) => {
-  // scrypt via WebCrypto is unavailable here, so we use HMAC-SHA512
-  // (salt+secret, key='mtek-store-salt') — deterministic and salted.
-  // Kept byte-identical with backend/scripts/seed-mongo.js so a passcode
-  // seeded there verifies correctly here.
-  return hmacHex(`${salt}${secret}`, 'mtek-store-salt');
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/functions\/v1\/data-api/, '') || '/';
   if (path === '/' || path === '/health') {
-    return json({ ok: true, version: 'bisect-h1', lines: 131 });
+    return json({ ok: true, version: 'bisect-h1b', lines: 125 });
   }
-  return err(503, 'bisect h1');
+  return err(503, 'bisect h1b');
 });
