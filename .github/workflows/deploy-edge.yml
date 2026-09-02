@@ -34,6 +34,11 @@ jobs:
       - name: Deploy data-api function
         run: |
           set +e
+          # DELETE + CREATE: the PATCH-update path has been accepted by the API
+          # while the runtime kept serving the previous bundle. A fresh create
+          # forces a brand-new function activation (few seconds of downtime).
+          supabase functions delete data-api --project-ref "$SUPABASE_PROJECT_ID" --force >> /tmp/deploy.log 2>&1
+          echo "delete exit: $?" >> /tmp/deploy.log
           supabase functions deploy data-api --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
           CODE=$?
           set -e
