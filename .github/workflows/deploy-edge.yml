@@ -37,17 +37,24 @@ jobs:
           # DELETE + CREATE: the PATCH-update path has been accepted by the API
           # while the runtime kept serving the previous bundle. A fresh create
           # forces a brand-new function activation (few seconds of downtime).
-          # UPDATES to an existing function never take over on this project
-          # (verified by bisect: fresh names activate, updates don't), so
-          # delete fully, wait for propagation, then create fresh.
-          supabase functions delete data-api2 --project-ref "$SUPABASE_PROJECT_ID" --force >> /tmp/deploy.log 2>&1
-          echo "delete exit: $?" >> /tmp/deploy.log
-          sleep 20
+          # UPDATES never take over on this project: the CLI answers "No
+          # change found" for every redeploy (its stored-hash comparison is
+          # stuck), so the gateway keeps serving the FIRST deployment
+          # forever. Bisect proved fresh names activate fine. Therefore:
+          # hard-delete via the management API, then create fresh via CLI.
+          echo "--- DELETE via management API ---"
+          curl -s -o /tmp/del.json -w "delete HTTP %{http_code}\n" \
+            -X DELETE "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/functions/data-api2" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" | tee /tmp/delete.log
+          cat /tmp/del.json | tee -a /tmp/delete.log; echo "" | tee -a /tmp/delete.log
+          sleep 15
+          echo "--- CREATE via CLI ---"
           supabase functions deploy data-api2 --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
           CODE=$?
           set -e
           echo "supabase functions deploy exit code: $CODE"
-          tail -40 /tmp/deploy.log
+          grep -E "No change|Deployed|error|Error" /tmp/deploy.log | tail -6
+          grep -q "No change found" /tmp/deploy.log && { echo "::error::CLI said 'No change found' on a FRESH create — delete must have failed"; exit 1; }
           exit $CODE
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -83,7 +90,7 @@ jobs:
         run: |
           {
             echo "deploy run: $GITHUB_RUN_ID  at: $(date -u '+%Y-%m-%d %H:%M:%SZ')  ref: $GITHUB_REF_NAME  sha: $GITHUB_SHA"
-            tail -c 24000 /tmp/deploy.log 2>/dev/null || echo "(log missing)"
+            { cat /tmp/delete.log 2>/dev/null; echo '--- deploy.log ---'; tail -c 24000 /tmp/deploy.log 2>/dev/null; } || echo "(log missing)"
           } > last-edge-deploy.log
           gh release view ci >/dev/null 2>&1 || gh release create ci --prerelease -t "MFSL Inventory - auto builds (rolling)" -n ci
           gh release upload ci last-edge-deploy.log --clobber
