@@ -52,7 +52,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-02c-mongo630';
+const BUNDLE_VERSION = '2026-09-02d';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;

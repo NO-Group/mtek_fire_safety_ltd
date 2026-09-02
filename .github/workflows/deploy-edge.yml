@@ -49,11 +49,17 @@ jobs:
       # route answer "Unknown API route" — this check makes that visible.
       - name: Verify live bundle version
         run: |
-          sleep 6
-          BODY=$(curl -sf "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health" || true)
+          WANT='2026-09-02d'
+          BODY=""
+          for i in $(seq 1 36); do
+            BODY=$(curl -s "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health" || true)
+            echo "try $i: $BODY"
+            echo "$BODY" | grep -q "\"version\":\"$WANT\"" && break
+            sleep 5
+          done
           echo "live /health: $BODY"
-          echo "$BODY" | grep -q '"ok":true' || echo "::warning::/health did not return ok:true — deploy may not have propagated"
-          echo "$BODY" | grep -q '"version":"2026-09-02b-mongo630"' || echo "::warning::live bundle version is NOT 2026-09-02a — the old bundle is still being served"
+          echo "$BODY" | grep -q '"ok":true' || echo "::error::/health never returned ok:true — bundle did not activate (boot failure?)"
+          echo "$BODY" | grep -q "\"version\":\"$WANT\"" || echo "::error::live bundle version is NOT $WANT"
         env:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       # TEMPORARY diagnostics: the Actions log host is unreachable from the
