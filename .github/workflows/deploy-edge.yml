@@ -53,7 +53,7 @@ jobs:
           BODY=$(curl -sf "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health" || true)
           echo "live /health: $BODY"
           echo "$BODY" | grep -q '"ok":true' || echo "::warning::/health did not return ok:true — deploy may not have propagated"
-          echo "$BODY" | grep -q '"version":"2026-09-02a"' || echo "::warning::live bundle version is NOT 2026-09-02a — the old bundle is still being served"
+          echo "$BODY" | grep -q '"version":"2026-09-02b-mongo630"' || echo "::warning::live bundle version is NOT 2026-09-02a — the old bundle is still being served"
         env:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       # TEMPORARY diagnostics: the Actions log host is unreachable from the
