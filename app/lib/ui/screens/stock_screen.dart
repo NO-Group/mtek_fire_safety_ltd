@@ -35,8 +35,8 @@ class _StockScreenState extends State<StockScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialog) => AlertDialog(
           title: const Text('Add product'),
-          content: SizedBox(
-            width: 420,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

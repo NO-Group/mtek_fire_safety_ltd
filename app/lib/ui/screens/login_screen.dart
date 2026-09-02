@@ -150,8 +150,8 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Reset your password'),
-          content: SizedBox(
-            width: 380,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

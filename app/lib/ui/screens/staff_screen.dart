@@ -107,23 +107,29 @@ class _StaffScreenState extends State<StaffScreen> {
                           title: Text(s.name.isEmpty ? s.email : s.name,
                               style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text('${s.email}${s.phone.isEmpty ? '' : ' · ${s.phone}'}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _roleChip(s.role),
-                              if (isCeo && s.role != 'ceo') ...[
-                                const SizedBox(width: 10),
-                                _busyUid == s.uid
-                                    ? const SizedBox(
-                                        width: 18, height: 18,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : OutlinedButton(
-                                        onPressed: () => _toggleRole(s),
-                                        child: Text(s.role == 'admin' ? 'Demote' : 'Make Admin'),
-                                      ),
+                          // FittedBox: chip + button can exceed the tile's
+                          // trailing space on narrow phones — scale down
+                          // instead of painting overflow stripes.
+                          trailing: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _roleChip(s.role),
+                                if (isCeo && s.role != 'ceo') ...[
+                                  const SizedBox(width: 10),
+                                  _busyUid == s.uid
+                                      ? const SizedBox(
+                                          width: 18, height: 18,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : OutlinedButton(
+                                          onPressed: () => _toggleRole(s),
+                                          child: Text(s.role == 'admin' ? 'Demote' : 'Make Admin'),
+                                        ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         );
                       },

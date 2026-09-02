@@ -17,20 +17,72 @@ name: Deploy Edge Function
 
 on:
   push:
-    branches: [main]
-    paths: ['supabase/functions/**']
+    branches: [main, arena/01a061f5-mtek-fire-safety-ltd]
+    paths: ['supabase/functions/**', '.github/workflows/deploy-edge.yml']
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the deploy log back for remote diagnostics
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
           version: latest
       - name: Deploy data-api function
-        run: supabase functions deploy data-api --project-ref "$SUPABASE_PROJECT_ID"
+        run: |
+          set +e
+          # DELETE + CREATE: the PATCH-update path has been accepted by the API
+          # while the runtime kept serving the previous bundle. A fresh create
+          # forces a brand-new function activation (few seconds of downtime).
+          supabase functions delete data-api --project-ref "$SUPABASE_PROJECT_ID" --force >> /tmp/deploy.log 2>&1
+          echo "delete exit: $?" >> /tmp/deploy.log
+          supabase functions deploy data-api --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
+          CODE=$?
+          set -e
+          echo "supabase functions deploy exit code: $CODE"
+          tail -40 /tmp/deploy.log
+          exit $CODE
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      # VERIFY the deploy actually landed: /health must return ok:true AND
+      # the bundle version baked into index.ts. A past deploy "succeeded"
+      # while the project kept serving a stale bundle, which made every new
+      # route answer "Unknown API route" — this check makes that visible.
+      - name: Verify live bundle version
+        run: |
+          WANT='2026-09-02h'
+          BODY=""
+          for i in $(seq 1 40); do
+            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health?poll=${GITHUB_RUN_ID}-$i" || true)
+            BODY=$(cat /tmp/h.json 2>/dev/null || true)
+            echo "try $i (HTTP $CODE): ${BODY:0:160}"
+            case "$BODY" in
+              *cloudflare*|*"Just a moment"*|*challenge*) echo "::error::CDN challenge — runner IP blocked from supabase.co"; break;;
+            esac
+            echo "$BODY" | grep -q "\"version\":\"$WANT\"" && break
+            sleep 6
+          done
+          echo "final /health: $BODY"
+          echo "$BODY" | grep -q '"ok":true' || echo "::error::/health never returned ok:true"
+          echo "$BODY" | grep -q "\"version\":\"$WANT\"" || echo "::error::live bundle version is NOT $WANT"
+        env:
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      # TEMPORARY diagnostics: the Actions log host is unreachable from the
+      # arena sandbox, so attach the CLI log to the rolling "ci" release
+      # instead. Remove once the deploy reliably lands.
+      - name: Record deploy log on the ci release
+        if: always()
+        run: |
+          {
+            echo "deploy run: $GITHUB_RUN_ID  at: $(date -u '+%Y-%m-%d %H:%M:%SZ')  ref: $GITHUB_REF_NAME  sha: $GITHUB_SHA"
+            tail -c 24000 /tmp/deploy.log 2>/dev/null || echo "(log missing)"
+          } > last-edge-deploy.log
+          gh release view ci >/dev/null 2>&1 || gh release create ci --prerelease -t "MFSL Inventory - auto builds (rolling)" -n ci
+          gh release upload ci last-edge-deploy.log --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

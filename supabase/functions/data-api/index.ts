@@ -21,7 +21,15 @@
 //                 Authorization: Bearer <Supabase JWT>
 // ============================================================================
 
-import { MongoClient, ObjectId } from 'npm:mongodb@6.8.0';
+// deno-lint-ignore no-import-assertions
+import { MongoClient, ObjectId } from 'https://deno.land/x/mongo@v0.32.0/mod.ts';
+// DRIVER SWAP (edge-runtime activation fix): the official npm:mongodb driver
+// bundles to many MB and the function uploaded but NEVER activated — the
+// platform silently kept serving the last healthy deployment (proven with a
+// minimal canary that activated instantly, and with a lazy-import variant
+// that still failed). x/mongo is a small pure-Deno driver with the same
+// CRUD surface this API uses (find/sort/limit/toArray, insertOne, updateOne,
+// updateMany, $-operators are all server-side and driver-agnostic).
 
 // ---- environment (Function secrets — see header comment above) --------------
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Supabase
@@ -37,11 +45,22 @@ const SERVICE_ROLE =
 // a specific Supabase Auth UID if MTEK_CEO_UID is set as a secret.
 const CEO_EMAIL = 'mtekfiresafetyltd@gmail.com';
 const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
-// The CEO signature passcode. A Supabase Function Secret (MTEK_CEO_SIG)
-// overrides this when set; the in-code fallback keeps the CEO account
-// signing even on a fresh/forgotten deploy where the secret is missing
-// (owner directive 2026-09-02 — passcode reset to 093618).
-const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') || '093618';
+// The CEO signature passcode (owner directive 2026-09-02 — 093618).
+// HARDCODED ON PURPOSE: an old MTEK_CEO_SIG function secret previously
+// overrode the directive, so the CEO's passcode silently never matched.
+// To change the CEO passcode later: edit this constant AND bump
+// SIG_RESET_ID below, then redeploy (or rotate in-app via Settings →
+// Account → Signature passcode, which sticks — see the self-heal note).
+const CEO_SIG = '093618';
+// One-time passcode reset marker: whenever this value differs from the
+// profile's stored sig_reset, the CEO's stored signature hash is re-bound
+// to CEO_SIG exactly once (then the marker is written). Bump it to force a
+// new server-side reset; between bumps, in-app passcode changes STICK
+// (the previous unconditional self-heal silently reverted every change).
+const SIG_RESET_ID = '2026-09-02a';
+// Bundle marker returned by GET /health so a deploy can be VERIFIED from
+// the outside (bump whenever index.ts changes).
+const BUNDLE_VERSION = '2026-09-02h';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -66,10 +85,10 @@ const SECTION_DBS = Object.values(DB);
 let client: MongoClient | null = null;
 async function db(name: string) {
   if (!client) {
-    client = new MongoClient(Deno.env.get('MONGODB_URI') ?? '', { appName: 'mtek-edge' });
+    client = new MongoClient();
+    await client.connect(Deno.env.get('MONGODB_URI') ?? '');
   }
-  if (!client.topology || !client.topology.isConnected()) await client.connect();
-  return client.db(name);
+  return client.database(name);
 }
 const coll = {
   serials: () => db(DB.core).then(d => d.collection('serials')),
@@ -183,6 +202,7 @@ async function auth(req: Request): Promise<Profile> {
       role: isCeo ? 'ceo' : 'sales', // the CEO identity is locked by hardcode
       sig_salt: salt,
       sig_hash: isCeo && CEO_SIG ? await hashPass(CEO_SIG, salt) : null,
+      sig_reset: SIG_RESET_ID,
       created_at: now(),
     };
     await profiles.insertOne(p as Record<string, unknown>);
@@ -190,22 +210,22 @@ async function auth(req: Request): Promise<Profile> {
     await profiles.updateOne({ _id: user.id }, { $set: { role: 'ceo' } });
     p.role = 'ceo';
   }
-  // Self-heal the CEO's SIGNATURE PASSCODE too: whenever the CEO identity
-  // makes any authenticated call, re-bind the stored sig_hash to the
-  // current CEO_SIG (secret or the in-code fallback 093618). This is what
-  // makes a passcode change (owner directive 2026-09-02 → 093618) take
-  // effect for the CEO's EXISTING profile — an old stored hash would
-  // otherwise reject the new passcode forever. Also guarantees role='ceo'.
-  if (isCeo && CEO_SIG) {
+  // Self-heal the CEO's SIGNATURE PASSCODE — but only ONCE per SIG_RESET_ID
+  // (owner directive 2026-09-02 → 093618). Gating on the marker means: a
+  // deploy with a bumped SIG_RESET_ID force-applies the new passcode even
+  // though an old hash is stored (the "new passcode not recognised" bug),
+  // while the CEO's own in-app passcode rotations (Settings → Account)
+  // stick — the old unconditional self-heal silently reverted those on the
+  // very next call. Also guarantees role='ceo'.
+  if (isCeo && CEO_SIG && (p as Record<string, unknown>).sig_reset !== SIG_RESET_ID) {
     const salt = String(p.sig_salt ?? '').slice(0, 16) || crypto.randomUUID().replaceAll('-', '').slice(0, 16);
     const wantHash = await hashPass(CEO_SIG, salt);
-    if (p.role !== 'ceo' || p.sig_hash !== wantHash) {
-      await profiles.updateOne(
-        { _id: user.id },
-        { $set: { role: 'ceo', sig_salt: salt, sig_hash: wantHash, email: String(user.email ?? '').toLowerCase() } });
-      p.role = 'ceo'; p.sig_salt = salt; p.sig_hash = wantHash;
-      p.email = String(user.email ?? '').toLowerCase();
-    }
+    await profiles.updateOne(
+      { _id: user.id },
+      { $set: { role: 'ceo', sig_salt: salt, sig_hash: wantHash, sig_reset: SIG_RESET_ID, email: String(user.email ?? '').toLowerCase() } });
+    p.role = 'ceo'; p.sig_salt = salt; p.sig_hash = wantHash;
+    p.email = String(user.email ?? '').toLowerCase();
+    (p as Record<string, unknown>).sig_reset = SIG_RESET_ID;
   }
   const value: Profile = {
     uid: user.id, email: String(p.email), name: String(p.full_name),
@@ -268,9 +288,15 @@ Deno.serve(async (req: Request) => {
   const route = `${req.method} ${path}`;
 
   try {
-    if (route === 'GET /' || route === 'GET /health') {
-      await ensureCore();
-      return json({ ok: true, databases: SECTION_DBS, serials: await peekSerials() });
+    // Boot/activation probe — responds to ANY method (GET/HEAD/POST alike)
+    // so HEAD-only fetchers can read the live bundle version. Deliberately NO
+    // DB work; deep (DB-touching) check: GET /?deep=1
+    if (path === '/' || path === '/health') {
+      if (url.searchParams.get('deep') === '1') {
+        await ensureCore();
+        return json({ ok: true, version: BUNDLE_VERSION, databases: SECTION_DBS, serials: await peekSerials() });
+      }
+      return json({ ok: true, version: BUNDLE_VERSION, databases: SECTION_DBS });
     }
 
     // ---- public auth: email + password sign-in (Supabase GoTrue proxy) ----
