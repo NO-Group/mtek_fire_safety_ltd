@@ -8,11 +8,12 @@
 ##
 ## Outputs (no artifacts, no zip wrappers, no passwords):
 ##   A rolling pre-release tagged "ci" on the Releases page with RAW assets:
-##     - MFSL Inventory.apk
-##     - MFSL Inventory Setup.msix
+##     - MFSL.Inventory.apk
+##     - MFSL.Inventory.Setup.msix
 ##     - MFSL-Inventory-portable.zip (portable Release folder, zipped by us)
 ##   GitHub NEVER re-zips or encrypts release assets (unlike Actions
 ##   artifacts), so downloads are exactly these files - nothing to extract.
+##   (Dot names: GitHub replaces spaces in release asset names with dots.)
 ##
 ## Runs: manually (Actions tab), or automatically on pushes to main or to the
 ## working branch that touch app/, ci/ or this file.

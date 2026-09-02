@@ -12,7 +12,7 @@
 #   2. Builds the release APK.
 #   3. Uploads it to the rolling GitHub Release tagged "ci" as a RAW asset.
 #      GitHub serves release assets byte-for-byte: never re-zipped, never
-#      encrypted. The download IS "MFSL Inventory.apk" - nothing to extract,
+#      encrypted. The download IS "MFSL.Inventory.apk" - nothing to extract,
 #      and no "password protected" errors, ever.
 #
 # Local usage: bash ci/build-android.sh   (needs flutter + gh + a checkout)
@@ -41,7 +41,7 @@ flutter build apk --release
 APK="build/app/outputs/flutter-apk/app-release.apk"
 test -s "$APK"
 
-STAGE="${RUNNER_TEMP:-/tmp}/MFSL Inventory.apk"
+STAGE="${RUNNER_TEMP:-/tmp}/MFSL.Inventory.apk"  # dots: GitHub renames asset spaces to dots
 cp "$APK" "$STAGE"
 
 # --- 3. Publish to the rolling "ci" release (raw asset, no zip wrapper) -------
@@ -56,8 +56,8 @@ REF="${GITHUB_REF_NAME:-local}"
   echo "These assets are RAW files - GitHub never re-zips release assets, so there is"
   echo "nothing to extract and no \"password protected\" errors. Ever."
   echo ""
-  echo "- \`MFSL Inventory.apk\` - sideload onto Android (open this link on the phone)."
-  echo "- \`MFSL Inventory Setup.msix\` - Windows installer (from the Windows job)."
+  echo "- \`MFSL.Inventory.apk\` - sideload onto Android (open this link on the phone)."
+  echo "- \`MFSL.Inventory.Setup.msix\` - Windows installer (from the Windows job)."
   echo "- \`MFSL-Inventory-portable.zip\` - portable Windows folder (from the Windows job)."
 } >"$NOTES"
 

@@ -20,12 +20,13 @@ the installer, so there is nothing to extract and no “password protected”
 errors, ever:
 
 - **Android** (open on the phone itself): 
-  https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL%20Inventory.apk
+  https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL.Inventory.apk
 - **Windows installer**: 
-  https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL%20Inventory%20Setup.msix
+  https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL.Inventory.Setup.msix
 - **Windows portable** (whole Release folder, zipped by *us*, not GitHub): 
   https://github.com/NO-Group/mtek_fire_safety_ltd/releases/download/ci/MFSL-Inventory-portable.zip
 
+Asset names use dots because GitHub renames release-asset spaces to dots.
 (Build logic lives in `ci/build-android.sh` / `ci/build-windows.ps1`; the
 workflow file `.github/workflows/build-mfsl.yml` is a stable shim that just
 calls those scripts — edit the scripts, never the workflow. Old Actions

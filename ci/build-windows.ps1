@@ -39,7 +39,7 @@ flutter build windows --release
 $OUT = "build\windows\x64\runner\Release"
 Copy-Item "$OUT\mtek_inventory.exe" "$OUT\MFSL Inventory.exe"
 dart run msix:create
-Copy-Item "$OUT\MFSL-Inventory-Setup.msix" "$OUT\MFSL Inventory Setup.msix"
+Copy-Item "$OUT\MFSL-Inventory-Setup.msix" "$OUT\MFSL.Inventory.Setup.msix"
 
 # Portable zip - WE zip it ourselves; GitHub then serves it byte-for-byte
 # (unlike artifacts, GitHub never adds its own wrapper around release assets).
@@ -49,7 +49,7 @@ Compress-Archive -Path "$OUT\*" -DestinationPath $ZIP
 
 # --- 3. Publish to the rolling "ci" release (raw assets, no zip wrapper) ------
 $TAG = "ci"
-$MSIX = "$OUT\MFSL Inventory Setup.msix"
+$MSIX = "$OUT\MFSL.Inventory.Setup.msix"
 $sha = if ($env:GITHUB_SHA) { $env:GITHUB_SHA.Substring(0, 7) } else { "local" }
 $ref = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "local" }
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
@@ -60,9 +60,9 @@ Auto build ``$sha`` ($ref), $stamp.
 These assets are RAW files - GitHub never re-zips release assets, so there is
 nothing to extract and no "password protected" errors. Ever.
 
-- ``MFSL Inventory Setup.msix`` - double-click to install (Windows).
+- ``MFSL.Inventory.Setup.msix`` - double-click to install (Windows).
 - ``MFSL-Inventory-portable.zip`` - portable folder; run ``MFSL Inventory.exe`` inside it.
-- ``MFSL Inventory.apk`` - Android sideload (from the Android job).
+- ``MFSL.Inventory.apk`` - Android sideload (from the Android job).
 "@ | Set-Content -Path $notes -Encoding utf8
 
 $target = @()
