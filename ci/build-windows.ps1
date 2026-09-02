@@ -77,7 +77,11 @@ foreach ($i in 1..3) {
       --notes-file $notes *> $null
   }
   gh release upload $TAG $MSIX $ZIP --clobber
-  if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+  if ($LASTEXITCODE -eq 0) {
+    # Refresh notes so the body always shows the latest build.
+    gh release edit $TAG --notes-file $notes *> $null
+    $ok = $true; break
+  }
   Start-Sleep -Seconds 15
 }
 if (-not $ok) { throw "Could not upload assets to release $TAG" }

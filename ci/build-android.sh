@@ -68,6 +68,9 @@ for _ in 1 2 3; do
     gh release create "$TAG" --target "${GITHUB_SHA:-HEAD}" --prerelease \
       --title "$TITLE" --notes-file "$NOTES" >/dev/null 2>&1 || true
   if gh release upload "$TAG" "$STAGE" --clobber; then
+    # Refresh notes so the body always shows the latest build (assets-only
+    # uploads don't touch the body).
+    gh release edit "$TAG" --notes-file "$NOTES" >/dev/null 2>&1 || true
     echo "Published $STAGE to release $TAG"
     exit 0
   fi
