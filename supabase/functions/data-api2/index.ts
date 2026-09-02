@@ -60,7 +60,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-02i';
+const BUNDLE_VERSION = '2026-09-02j';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -284,10 +284,14 @@ async function peekSerials(): Promise<Record<string, number>> {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const url = new URL(req.url);
-  // [^/]+ (not a hardcoded name): a name like data-api2 would otherwise
-  // leave a '2/...' suffix after the prefix strip, routing every request
-  // into auth() — the 'Unknown API route' style failures on a live function.
-  const path = url.pathname.replace(/^\/functions\/v1\/[^/]+/, '') || '/';
+  // Gateway path forms vary across function versions/regions (full
+  // '/functions/v1/<name>/...', '/<name>/...', or the bare route) — guessing
+  // prefixes routed live traffic into auth() (the 'Unknown API route' class
+  // of failures). Anchor on the LAST '/api/' marker or trailing '/health'
+  // instead: immune to whatever prefix the gateway keeps.
+  const rawPath = url.pathname;
+  const cut = Math.max(rawPath.lastIndexOf('/api/'), rawPath.lastIndexOf('/health'));
+  const path = cut === -1 ? '/' : rawPath.slice(cut);
   const route = `${req.method} ${path}`;
 
   try {

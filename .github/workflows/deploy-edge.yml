@@ -65,7 +65,7 @@ jobs:
       # route answer "Unknown API route" — this check makes that visible.
       - name: Verify live bundle version
         run: |
-          WANT='2026-09-02i'
+          WANT='2026-09-02j'
           BODY=""
           for i in $(seq 1 40); do
             CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api2/health?poll=${GITHUB_RUN_ID}-$i" || true)
