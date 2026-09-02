@@ -18,19 +18,28 @@ name: Deploy Edge Function
 on:
   push:
     branches: [main, arena/01a061f5-mtek-fire-safety-ltd]
-    paths: ['supabase/functions/**']
+    paths: ['supabase/functions/**', '.github/workflows/deploy-edge.yml']
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the deploy log back for remote diagnostics
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
           version: latest
       - name: Deploy data-api function
-        run: supabase functions deploy data-api --project-ref "$SUPABASE_PROJECT_ID"
+        run: |
+          set +e
+          supabase functions deploy data-api --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
+          CODE=$?
+          set -e
+          echo "supabase functions deploy exit code: $CODE"
+          tail -40 /tmp/deploy.log
+          exit $CODE
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -47,3 +56,24 @@ jobs:
           echo "$BODY" | grep -q '"version":"2026-09-02a"' || echo "::warning::live bundle version is NOT 2026-09-02a — the old bundle is still being served"
         env:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      # TEMPORARY diagnostics: the Actions log host is unreachable from the
+      # arena sandbox, so commit the CLI log into the repo for inspection.
+      # Remove once the deploy reliably lands.
+      - name: Record deploy log in repo
+        if: always()
+        run: |
+          set -e
+          git config user.name "arena-ai-coding-agent[bot]"
+          git config user.email "298482267+arena-ai-coding-agent[bot]@users.noreply.github.com"
+          git fetch origin "$GITHUB_REF_NAME" 2>/dev/null || true
+          git checkout "$GITHUB_REF_NAME" 2>/dev/null || true
+          mkdir -p .github/logs
+          {
+            echo "deploy run: $GITHUB_RUN_ID  at: $(date -u '+%Y-%m-%d %H:%M:%SZ')  ref: $GITHUB_REF_NAME  sha: $GITHUB_SHA"
+            echo '```'
+            tail -c 24000 /tmp/deploy.log 2>/dev/null || echo "(log missing)"
+            echo '```'
+          } > .github/logs/last-deploy.log
+          git add .github/logs/last-deploy.log
+          git commit -m "ci: record edge deploy log (run $GITHUB_RUN_ID)" || true
+          git push origin "$GITHUB_REF_NAME"
