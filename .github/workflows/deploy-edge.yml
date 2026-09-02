@@ -57,23 +57,17 @@ jobs:
         env:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       # TEMPORARY diagnostics: the Actions log host is unreachable from the
-      # arena sandbox, so commit the CLI log into the repo for inspection.
-      # Remove once the deploy reliably lands.
-      - name: Record deploy log in repo
+      # arena sandbox, so attach the CLI log to the rolling "ci" release
+      # instead. Remove once the deploy reliably lands.
+      - name: Record deploy log on the ci release
         if: always()
         run: |
-          set -e
-          git config user.name "arena-ai-coding-agent[bot]"
-          git config user.email "298482267+arena-ai-coding-agent[bot]@users.noreply.github.com"
-          git fetch origin "$GITHUB_REF_NAME" 2>/dev/null || true
-          git checkout "$GITHUB_REF_NAME" 2>/dev/null || true
-          mkdir -p .github/logs
           {
             echo "deploy run: $GITHUB_RUN_ID  at: $(date -u '+%Y-%m-%d %H:%M:%SZ')  ref: $GITHUB_REF_NAME  sha: $GITHUB_SHA"
-            echo '```'
             tail -c 24000 /tmp/deploy.log 2>/dev/null || echo "(log missing)"
-            echo '```'
-          } > .github/logs/last-deploy.log
-          git add .github/logs/last-deploy.log
-          git commit -m "ci: record edge deploy log (run $GITHUB_RUN_ID)" || true
-          git push origin "$GITHUB_REF_NAME"
+          } > last-edge-deploy.log
+          gh release view ci >/dev/null 2>&1 || gh release create ci --prerelease -t "MFSL Inventory - auto builds (rolling)" -n ci
+          gh release upload ci last-edge-deploy.log --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
