@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'core/theme.dart';
+import 'core/widget_bridge.dart';
 import 'data/auth_store.dart';
 import 'data/store.dart';
 import 'ui/app_shell.dart';
@@ -9,7 +12,46 @@ import 'ui/screens/login_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Replace Flutter's default red "Error" box with a calm, jargon-free
+  // panel. The real error detail is logged to the console only — a
+  // production user never sees exception text or stack traces on screen.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    debugPrint('Flutter build error: ${details.exception}');
+    return const _FriendlyError();
+  };
+  // Subscribe to home-widget / launcher-shortcut taps (Android only).
+  unawaited(WidgetBridge.init());
   runApp(const MtekApp());
+}
+
+/// Friendly fallback for any widget that throws while building — shown in
+/// place of Flutter's default red error box. No technical detail on screen.
+class _FriendlyError extends StatelessWidget {
+  const _FriendlyError();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Card(
+        margin: const EdgeInsets.all(24),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.error_outline, size: 40, color: Mtek.gold500),
+              SizedBox(height: 12),
+              Text('Something went wrong here.',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              SizedBox(height: 6),
+              Text('Please go back and try again.',
+                  style: TextStyle(color: Mtek.gray500)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// App-wide scroll behaviour (owner directive 2026-09-01: "every screen in
@@ -98,8 +140,9 @@ class _BootScreenState extends State<_BootScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Mtek.navy950,
-      body: Center(
+      body: Container(
+        decoration: const BoxDecoration(gradient: Mtek.navyGradient),
+        child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -119,6 +162,7 @@ class _BootScreenState extends State<_BootScreen> {
               child: CircularProgressIndicator(color: Mtek.gold500, strokeWidth: 2.5),
             ),
           ],
+        ),
         ),
       ),
     );

@@ -7,7 +7,7 @@ import '../../data/store.dart';
 import '../widgets.dart';
 
 /// TRANSACTIONS — unified money ledger (sale payments, invoice payments,
-/// refunds). M3 mirrors this to the Supabase `transactions` table.
+/// refunds).
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
 
@@ -35,7 +35,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(title: 'Transactions', subtitle: 'Every naira in and out — one ledger'),
+          const PageHeader(
+            title: 'Transactions',
+            subtitle: 'Every naira in and out — one ledger',
+            icon: Icons.swap_horiz,
+          ),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
@@ -110,7 +114,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             _row('Method', MethodIcon.label(t.method)),
             _row('Date', fmt.fmtDateTime(t.date)),
             _row('Reference', t.reference),
-            _row('Ledger', 'Mirrors to Supabase `transactions` in M3'),
+            _row('Recorded in', 'Money ledger'),
           ],
         ),
       ),

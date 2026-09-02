@@ -41,9 +41,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
         content: Text(outcome.message),
       ));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      // Full detail goes to the console only — never onto a production
+      // screen (no raw exception text, no stack traces).
+      debugPrint('Summary export failed: $e');
+      messenger.showSnackBar(const SnackBar(
           backgroundColor: Mtek.danger,
-          content: Text('Could not build the report: $e')));
+          content: Text('Could not build the report — please try again.')));
     }
   }
 
@@ -114,6 +117,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
   String _period = 'month';
 
+  String _monthYear(DateTime d) => const [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ][d.month - 1] + ' ${d.year}';
+
   @override
   Widget build(BuildContext context) {
     final store = AppStore.instance;
@@ -132,7 +140,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
       children: [
         PageHeader(
           title: 'Summary',
-          subtitle: 'Business report — $label (Aug 2026)',
+          subtitle: 'Business report — $label · ${_monthYear(now)}',
+          icon: Icons.summarize,
           actions: [
             OutlinedButton.icon(
               onPressed: () => _exportPdf(context, from, label),
@@ -200,9 +209,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Text('#${e.key + 1} ${e.value.key}',
-                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                                    const Spacer(),
+                                    Expanded(
+                                      child: Text('#${e.key + 1} ${e.value.key}',
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                          overflow: TextOverflow.ellipsis),
+                                    ),
+                                    const SizedBox(width: 10),
                                     AmountText(e.value.value),
                                   ],
                                 ),

@@ -45,9 +45,18 @@ class ReceiptsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(
+          PageHeader(
             title: 'Receipts',
             subtitle: 'Auto-issued when money is received',
+            icon: Icons.receipt_long,
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            children: [
+              MetricPill(label: 'Receipts', value: '${receipts.length}', icon: Icons.receipt_long, accent: Mtek.success),
+              MetricPill(label: 'Total collected', value: fmt.nairaCompact(store.receipts.fold(0, (s, r) => s + r.amount)), icon: Icons.payments_outlined, accent: Mtek.brand600),
+            ],
           ),
           const SizedBox(height: 14),
           Expanded(
@@ -158,8 +167,8 @@ class ReceiptsScreen extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              const Text('Issued by: Admin — thank you for your business.',
-                  style: TextStyle(fontSize: 11, color: Mtek.gray500)),
+              Text('Issued by: ${r.issuedBy} — thank you for your business.',
+                  style: const TextStyle(fontSize: 11, color: Mtek.gray500)),
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -209,9 +218,12 @@ class ReceiptsScreen extends StatelessWidget {
         content: Text(outcome.message),
       ));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      // Full detail goes to the console only — never onto a production
+      // screen (no raw exception text, no stack traces).
+      debugPrint('Receipt PDF share failed: $e');
+      messenger.showSnackBar(const SnackBar(
           backgroundColor: Mtek.danger,
-          content: Text('Could not build the PDF: $e')));
+          content: Text('Could not build the PDF — please try again.')));
     }
   }
 
@@ -222,9 +234,10 @@ class ReceiptsScreen extends StatelessWidget {
       final bytes = await _receiptBytes(context, r);
       await Printing.layoutPdf(onLayout: (_) async => bytes);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      debugPrint('Receipt PDF print failed: $e');
+      messenger.showSnackBar(const SnackBar(
           backgroundColor: Mtek.danger,
-          content: Text('Could not build the PDF: $e')));
+          content: Text('Could not build the PDF — please try again.')));
     }
   }
 

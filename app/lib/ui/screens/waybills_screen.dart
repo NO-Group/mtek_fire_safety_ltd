@@ -28,6 +28,7 @@ class WaybillsScreen extends StatelessWidget {
           PageHeader(
             title: 'Waybills',
             subtitle: '${rows.length} issued — dispatch record for goods in transit',
+            icon: Icons.local_shipping,
             actions: [
               FilledButton.icon(
                 onPressed: () => Navigator.push(

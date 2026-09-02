@@ -168,7 +168,7 @@ class AuthStore extends ChangeNotifier {
     final j = res.json;
     if (!res.ok) {
       final msg = (j is Map ? j['error'] : null);
-      return msg is String ? msg : 'Could not create the account (HTTP ${res.status})';
+      return msg is String ? msg : 'Could not create the account — please try again.';
     }
     if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {
       return 'Unexpected response from the server';
@@ -180,10 +180,13 @@ class AuthStore extends ChangeNotifier {
 
   /// No-email, no-OTP password reset: the user proves ownership with the
   /// recovery phrase they set at sign-up (owner directive 2026-09-01).
+  /// Pass [newSignaturePasscode] to also rotate the signature passcode in
+  /// the same recovery flow (Settings → Account → Recovery).
   Future<String?> resetPasswordWithRecovery({
     required String email,
     required String recoveryString,
     required String newPassword,
+    String? newSignaturePasscode,
   }) async {
     final api = AppStore.instance.api;
     if (!Env.apiConfigured || api == null) {
@@ -193,12 +196,87 @@ class AuthStore extends ChangeNotifier {
       'email': email.trim().toLowerCase(),
       'recovery_string': recoveryString,
       'new_password': newPassword,
+      if (newSignaturePasscode != null && newSignaturePasscode.isNotEmpty)
+        'new_signature_passcode': newSignaturePasscode,
     });
     if (res == null) return 'Network unreachable — check your connection';
     if (!res.ok) {
       final msg = (res.json is Map ? (res.json as Map)['error'] : null);
-      return msg is String ? msg : 'Could not reset the password (HTTP ${res.status})';
+      return msg is String ? msg : 'Could not reset the password';
     }
+    return null;
+  }
+
+  /// Rotates the recovery phrase. Requires BOTH the account password and the
+  /// signature passcode together — either alone is rejected server-side
+  /// (Settings → Account → Recovery).
+  Future<String?> resetRecovery({
+    required String email,
+    required String password,
+    required String signaturePasscode,
+    required String newRecoveryString,
+  }) async {
+    final api = AppStore.instance.api;
+    if (!Env.apiConfigured || api == null) {
+      return 'No backend configured in this build.';
+    }
+    final res = await api.postPublic('/api/auth/reset-recovery', {
+      'email': email.trim().toLowerCase(),
+      'password': password,
+      'signature_passcode': signaturePasscode,
+      'new_recovery_string': newRecoveryString,
+    });
+    if (res == null) return 'Network unreachable — check your connection';
+    if (!res.ok) {
+      final msg = (res.json is Map ? (res.json as Map)['error'] : null);
+      return msg is String ? msg : 'Could not reset the recovery string';
+    }
+    return null;
+  }
+
+  /// Changes the account password while signed in (Settings → Account).
+  /// Requires the current password; no email/OTP round-trip.
+  Future<String?> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final api = AppStore.instance.api;
+    if (!Env.apiConfigured || api == null || accessToken == null) {
+      return 'You must be signed in to change your password.';
+    }
+    final res = await api.post('/api/auth/change-password', {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
+    if (res == null) return 'Network unreachable — check your connection';
+    if (!res.ok) {
+      final msg = (res.json is Map ? (res.json as Map)['error'] : null);
+      return msg is String ? msg : 'Could not change the password';
+    }
+    return null;
+  }
+
+  /// Changes the signature passcode while signed in (Settings → Account).
+  /// Requires the current passcode. Clears the in-RAM last-verified passcode
+  /// so the next document sign forces a fresh bind against the new hash.
+  Future<String?> changePasscode({
+    required String currentPasscode,
+    required String newPasscode,
+  }) async {
+    final api = AppStore.instance.api;
+    if (!Env.apiConfigured || api == null || accessToken == null) {
+      return 'You must be signed in to change your signature passcode.';
+    }
+    final res = await api.post('/api/auth/change-passcode', {
+      'current_passcode': currentPasscode,
+      'new_passcode': newPasscode,
+    });
+    if (res == null) return 'Network unreachable — check your connection';
+    if (!res.ok) {
+      final msg = (res.json is Map ? (res.json as Map)['error'] : null);
+      return msg is String ? msg : 'Could not change the signature passcode';
+    }
+    lastVerifiedPasscode = null;
     return null;
   }
 
@@ -243,15 +321,24 @@ class AuthStore extends ChangeNotifier {
     final j = res.json;
     if (!res.ok) {
       final msg = (j is Map ? (j['error_description'] ?? j['error'] ?? j['msg']) : null);
-      return msg is String ? msg : 'Sign-in failed (HTTP ${res.status})';
+      return msg is String ? msg : 'Sign-in failed — please try again.';
     }
     if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {
       return 'Unexpected auth response';
     }
+    // The login response's `user` object is `{uid, email, name, role}` — key
+    // it on `uid` (NOT `id`, which the response never contains; the previous
+    // code read `id`, leaving remoteSignInUid empty) and carry the role/name
+    // straight through so the client trusts the server's authoritative role.
     await _adoptSession({
       'access_token': j['access_token'],
       'refresh_token': j['refresh_token'],
-      'user': {'uid': j['user']['id'], 'email': mail},
+      'user': {
+        'uid': j['user']['uid'] ?? '',
+        'email': j['user']['email'] ?? mail,
+        'name': j['user']['name'],
+        'role': j['user']['role'],
+      },
     });
     // pull the live dataset from MongoDB for this account
     await AppStore.instance.reloadRemote();
@@ -333,33 +420,58 @@ class AuthStore extends ChangeNotifier {
     if (refreshTok.isEmpty) return;
     final res = await api.postPublic('/api/auth/refresh', {'refresh_token': refreshTok});
     if (res == null) {
-      // offline at boot — sign back into the CACHED identity so the user
+      // Offline at boot — sign back into the CACHED identity so the user
       // still lands in the app (working off the local data cache, same as
       // the rest of the app's offline-first design) instead of being
       // bounced to the login screen just because there's no connection
       // yet. A real refresh is retried the next time the app can reach it.
-      final mail = '${saved['email'] ?? ''}';
-      if (mail.isEmpty) return;
-      users.removeWhere((x) => x.email == mail);
-      users.add(StaffUser(
-        name: '${saved['name'] ?? mail.split('@').first}',
-        email: mail,
-        role: '${saved['role'] ?? 'sales'}',
-        passwordHash: '',
-        signaturePasscodeHash: '',
-      ));
-      current = users.last;
-      notifyListeners();
+      _restoreCachedIdentity(saved);
       return;
     }
-    if (!res.ok || res.json is! Map) {
-      // the server actively rejected it — refresh token expired/revoked;
-      // fall through to the login screen.
+    final body = res.json;
+    // Only a GENUINE session rejection signs the user out — a 401 whose
+    // `error` text comes from our refresh route's own "expired/revoked"
+    // mapping. Everything else is treated as a TRANSIENT failure and must
+    // NOT wipe the saved session. In particular, a stale server that lacks
+    // the public refresh route answers with `auth()`'s "Missing bearer
+    // token" (also a 401) — that is a server-version mismatch, NOT an
+    // expired session, so we keep the cached identity instead of destroying
+    // the session on disk.
+    final isAuthReject = res.status == 401 &&
+        body is Map &&
+        body['error'] is String &&
+        (body['error'] as String) != 'Missing bearer token';
+    if (isAuthReject) {
+      // refresh token genuinely expired/revoked — sign out cleanly.
       await localWrite('session', '');
       return;
     }
-    await _adoptSession(res.json as Map);
-    await AppStore.instance.reloadRemote();
+    if (res.ok && body is Map) {
+      await _adoptSession(body);
+      await AppStore.instance.reloadRemote();
+      return;
+    }
+    // Transient (5xx, non-Map body, unexpected status) — keep the session
+    // and fall back to the cached identity rather than signing the user out.
+    _restoreCachedIdentity(saved);
+  }
+
+  /// Rehydrates the signed-in identity from the persisted session blob so
+  /// the user lands in the app (offline-first, working off the local cache)
+  /// even when the server can't be reached yet at boot.
+  void _restoreCachedIdentity(Map<String, dynamic> saved) {
+    final mail = '${saved['email'] ?? ''}';
+    if (mail.isEmpty) return;
+    users.removeWhere((x) => x.email == mail);
+    users.add(StaffUser(
+      name: '${saved['name'] ?? mail.split('@').first}',
+      email: mail,
+      role: '${saved['role'] ?? 'sales'}',
+      passwordHash: '',
+      signaturePasscodeHash: '',
+    ));
+    current = users.last;
+    notifyListeners();
   }
 
   void signOut() {

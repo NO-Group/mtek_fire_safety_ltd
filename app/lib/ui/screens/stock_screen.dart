@@ -131,10 +131,12 @@ class _StockScreenState extends State<StockScreen> {
             content: Text('${name.text.trim()} saved to the server.')));
       }
     } catch (e) {
+      debugPrint('Product save failed: $e');
       if (context.mounted) {
+        final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: Mtek.danger,
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+            content: Text(msg.isEmpty ? 'Could not save the product — please try again.' : msg)));
       }
     }
   }
@@ -152,10 +154,12 @@ class _StockScreenState extends State<StockScreen> {
             content: Text('$count product row(s) imported — catalogue updated.')));
       }
     } catch (e) {
+      debugPrint('Product import failed: $e');
       if (context.mounted) {
+        final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: Mtek.danger,
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+            content: Text(msg.isEmpty ? 'Could not import the products — please try again.' : msg)));
       }
     }
   }
@@ -183,6 +187,7 @@ class _StockScreenState extends State<StockScreen> {
             title: 'Stock',
             subtitle:
                 '${store.products.length} items · $lowCount low/out of stock · ${fmt.naira(store.stockValueAtCost())} at cost',
+            icon: Icons.inventory_2,
             actions: [
               // stock is created HERE, in the app — never pre-loaded
               if (AuthStore.instance.isManagement)
@@ -204,10 +209,7 @@ class _StockScreenState extends State<StockScreen> {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search by name or ID…'),
-                  onChanged: (v) => setState(() => _query = v),
-                ),
+                child: SearchField(hint: 'Search by name or ID…', onChanged: (v) => setState(() => _query = v)),
               ),
               const SizedBox(width: 12),
               DropdownButton<String>(

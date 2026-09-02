@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart' hide ShareResult;
 
@@ -25,11 +26,44 @@ Future<ShareOutcome> dispatchPdfImpl({
       return const ShareOutcome(ShareResult.shared,
           'PDF attached — pick WhatsApp, Gmail or any app in the share sheet.');
     } catch (shareErr) {
-      // Fallback: keep the file, tell the user where.
-      return ShareOutcome(ShareResult.savedOnly,
-          'Share sheet unavailable — PDF saved to app cache: ${file.path}');
+      // Fallback: keep the file on the device. Never surface an internal
+      // filesystem path on screen.
+      return const ShareOutcome(ShareResult.savedOnly,
+          'Share sheet unavailable — the PDF was saved on this device.');
     }
   } catch (e) {
-    return ShareOutcome(ShareResult.failed, 'Could not write PDF: $e');
+    // Full detail goes to the console only — never onto a production screen.
+    debugPrint('dispatchPdf (io) failed: $e');
+    return const ShareOutcome(ShareResult.failed,
+        'Could not save the PDF — please try again.');
+  }
+}
+
+/// Explicit "Download" (save) action: write the PDF to a persistent,
+/// user-accessible folder and report success WITHOUT opening the share
+/// sheet. Downloads directory on desktop; the app documents directory as a
+/// safe fallback on Android. Never surfaces a raw filesystem path.
+Future<ShareOutcome> savePdfImpl({
+  required Uint8List bytes,
+  required String filename,
+}) async {
+  try {
+    Directory dir;
+    try {
+      dir = await getDownloadsDirectory() ??
+          await getApplicationDocumentsDirectory();
+    } catch (_) {
+      // getDownloadsDirectory is unsupported on some platforms (Android) —
+      // fall back to the app's own persistent documents directory.
+      dir = await getApplicationDocumentsDirectory();
+    }
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
+    return const ShareOutcome(ShareResult.savedOnly,
+        'PDF downloaded — saved on this device.');
+  } catch (e) {
+    debugPrint('savePdf (io) failed: $e');
+    return const ShareOutcome(ShareResult.failed,
+        'Could not download the PDF — please try again.');
   }
 }

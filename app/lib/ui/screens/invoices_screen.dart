@@ -28,6 +28,7 @@ class InvoicesScreen extends StatelessWidget {
           PageHeader(
             title: 'Invoices',
             subtitle: '${store.outstandingInvoicesTotal() == 0 ? "All settled" : "${fmt.naira(store.outstandingInvoicesTotal())} outstanding"}',
+            icon: Icons.request_quote,
             actions: [
               FilledButton.icon(
                 onPressed: () => Navigator.push(
@@ -134,8 +135,18 @@ class InvoicesScreen extends StatelessWidget {
       }
       return;
     }
-    await AppStore.instance.payInvoice(inv, inv.balance,
-        signedBy: signer.name, passcode: AuthStore.instance.lastVerifiedPasscode);
+    try {
+      await AppStore.instance.payInvoice(inv, inv.balance,
+          signedBy: signer.name,
+          passcode: AuthStore.instance.lastVerifiedPasscode);
+    } catch (e) {
+      debugPrint('payInvoice failed: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Payment could not be recorded — please try again.')));
+      }
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
             'Payment recorded — receipt issued & signed by ${signer.name}, stock untouched.')));

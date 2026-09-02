@@ -61,7 +61,10 @@ class _SalesScreenState extends State<SalesScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const PageHeader(title: 'Sales', subtitle: 'Pick items — stock & receipts update automatically'),
+        const PageHeader(
+            title: 'Sales',
+            subtitle: 'Pick items — stock & receipts update automatically',
+            icon: Icons.point_of_sale),
         const SizedBox(height: 14),
         Expanded(
           child: Card(
@@ -112,9 +115,18 @@ class _SalesScreenState extends State<SalesScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.shopping_cart_outlined, size: 18),
-                const SizedBox(width: 8),
-                Text('CURRENT SALE (${_cart.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    gradient: Mtek.brandGradient,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.shopping_cart_outlined, size: 18, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+                Text('CURRENT SALE (${_cart.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                 const Spacer(),
                 if (_cart.isNotEmpty)
                   TextButton(onPressed: () => setState(() => _cart.clear()), child: const Text('Clear')),
@@ -152,12 +164,24 @@ class _SalesScreenState extends State<SalesScreen> {
               ),
             const Spacer(),
             const Divider(),
-            Row(
-              children: [
-                const Text('Subtotal', style: TextStyle(color: Mtek.gray500)),
-                const Spacer(),
-                AmountText(subtotal),
-              ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Mtek.brandTint,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Text('TOTAL',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                          color: Mtek.brand700,
+                          letterSpacing: 1)),
+                  const Spacer(),
+                  AmountText(subtotal, size: 20, color: Mtek.brand700),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Wrap(

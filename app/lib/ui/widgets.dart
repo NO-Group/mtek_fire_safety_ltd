@@ -7,41 +7,123 @@ import 'package:flutter/material.dart';
 import '../core/format.dart' as fmt;
 import '../core/theme.dart';
 
-/// Small reusable building blocks shared by all screens.
+/// Small reusable building blocks shared by all screens — the single source
+/// of the app's visual language (hero headers, gradient stat cards, status
+/// chips, empty states, section titles).
 
+/// Hero page header: gradient accent tile + title + subtitle + actions.
 class PageHeader extends StatelessWidget {
   final String title;
   final String subtitle;
   final List<Widget> actions;
-  const PageHeader({super.key, required this.title, required this.subtitle, this.actions = const []});
+  final IconData? icon;
+  const PageHeader({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    this.actions = const [],
+    this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            gradient: Mtek.brandGradient,
+            borderRadius: BorderRadius.circular(13),
+            boxShadow: Mtek.softShadow,
+          ),
+          child: Icon(icon ?? Icons.grid_view_rounded, color: Colors.white, size: 22),
+        ),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: Mtek.ink)),
-              const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(color: Mtek.gray500)),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: Mtek.ink,
+                      letterSpacing: -0.4,
+                    ),
+              ),
+              const SizedBox(height: 3),
+              Text(subtitle,
+                  style: const TextStyle(color: Mtek.gray500, fontSize: 13)),
             ],
           ),
         ),
-        ...actions,
+        if (actions.isNotEmpty) ...[
+          const SizedBox(width: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: actions,
+          ),
+        ],
       ],
     );
   }
 }
 
+/// Uppercase tracked section label with a gold accent tick — used between
+/// stat bands and detail sections to give the page rhythm.
+class SectionTitle extends StatelessWidget {
+  final String label;
+  final Widget? trailing;
+  const SectionTitle(this.label, {super.key, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 16,
+          decoration: BoxDecoration(
+            gradient: Mtek.goldGradient,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 12,
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.w800,
+            color: Mtek.gray600,
+          ),
+        ),
+        const Spacer(),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+/// Gradient-accented stat card for the money/stock headline figures.
 class StatCard extends StatelessWidget {
   final String label;
   final String value;
   final String? hint;
   final IconData icon;
   final Color? accent;
-  const StatCard({super.key, required this.label, required this.value, required this.icon, this.hint, this.accent});
+  const StatCard({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.hint,
+    this.accent,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -55,22 +137,90 @@ class StatCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: color.withOpacity(.1), borderRadius: BorderRadius.circular(10)),
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
                   child: Icon(icon, size: 20, color: color),
                 ),
                 const SizedBox(width: 10),
-                Expanded(child: Text(label, style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
+                Expanded(
+                  child: Text(label,
+                      style: const TextStyle(
+                          color: Mtek.gray500, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                ),
               ],
             ),
             const SizedBox(height: 14),
-            Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Mtek.ink)),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 26, fontWeight: FontWeight.w800, color: Mtek.ink)),
             if (hint != null) ...[
-              const SizedBox(height: 4),
-              Text(hint!, style: const TextStyle(color: Mtek.gray500, fontSize: 12)),
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(hint!,
+                        style: const TextStyle(color: Mtek.gray500, fontSize: 11.5)),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Small inline metric pill — used inside headers or row bands.
+class MetricPill extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color? accent;
+  const MetricPill({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent ?? Mtek.brand600;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Mtek.gray200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(fontSize: 10.5, color: Mtek.gray500)),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w800, color: Mtek.ink)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -90,13 +240,28 @@ class StatusChip extends StatelessWidget {
       : this(label, key: key, bg: Mtek.dangerTint, fg: Mtek.danger);
   const StatusChip.neutral(String label, {Key? key})
       : this(label, key: key, bg: Mtek.gray100, fg: Mtek.gray600);
+  const StatusChip.info(String label, {Key? key})
+      : this(label, key: key, bg: Mtek.infoTint, fg: Mtek.info);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(label, style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: fg.withValues(alpha: .18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 6, height: 6, decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text(label,
+              style: TextStyle(
+                  color: fg, fontSize: 12, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }
@@ -110,7 +275,7 @@ class MethodIcon extends StatelessWidget {
     final map = <String, (IconData, Color)>{
       'PaymentMethod.cash': (Icons.payments_outlined, Mtek.success),
       'PaymentMethod.transfer': (Icons.account_balance_outlined, Mtek.navy700),
-      'PaymentMethod.pos': (Icons.point_of_sale_outlined, Mtek.gold500),
+      'PaymentMethod.pos': (Icons.point_of_sale_outlined, Mtek.gold600),
       'PaymentMethod.credit': (Icons.credit_score_outlined, Mtek.brand600),
     };
     final entry = map[method.toString()];
@@ -129,32 +294,117 @@ class AmountText extends StatelessWidget {
   final num amount;
   final bool bold;
   final Color? color;
-  const AmountText(this.amount, {super.key, this.bold = true, this.color});
+  final double? size;
+  const AmountText(this.amount, {super.key, this.bold = true, this.color, this.size});
 
   @override
   Widget build(BuildContext context) {
     return Text(
       fmt.naira(amount),
-      style: TextStyle(fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: color ?? Mtek.ink),
+      style: TextStyle(
+        fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+        color: color ?? Mtek.ink,
+        fontSize: size,
+      ),
     );
   }
 }
 
+/// Friendly empty state: soft icon plate + message (never raw exceptions).
 class EmptyHint extends StatelessWidget {
   final String message;
-  const EmptyHint(this.message, {super.key});
+  final IconData icon;
+  const EmptyHint(this.message, {super.key, this.icon = Icons.inbox_outlined});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Mtek.gray500)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Mtek.gray100,
+                shape: BoxShape.circle,
+                border: Border.all(color: Mtek.gray200),
+              ),
+              child: Icon(icon, size: 28, color: Mtek.gray400),
+            ),
+            const SizedBox(height: 14),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Mtek.gray500, fontSize: 13.5)),
+          ],
+        ),
       ),
     );
   }
 }
 
+/// Reusable search field with the app's standard styling.
+class SearchField extends StatelessWidget {
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final TextEditingController? controller;
+  const SearchField({super.key, required this.hint, required this.onChanged, this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search, color: Mtek.gray400),
+        hintText: hint,
+        suffixIcon: controller != null
+            ? IconButton(
+                icon: const Icon(Icons.close, size: 18, color: Mtek.gray400),
+                onPressed: () {
+                  controller!.clear();
+                  onChanged('');
+                },
+              )
+            : null,
+      ),
+      onChanged: onChanged,
+    );
+  }
+}
+
+/// Avatar initials bubble, brand-tinted — used for customers, staff, stock.
+class InitialsAvatar extends StatelessWidget {
+  final String text;
+  final Color? background;
+  final Color? foreground;
+  final double radius;
+  const InitialsAvatar(
+    this.text, {
+    super.key,
+    this.background,
+    this.foreground,
+    this.radius = 20,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = background ?? Mtek.brand600;
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: bg,
+      child: Text(
+        text,
+        style: TextStyle(
+          color: foreground ?? Colors.white,
+          fontSize: radius * 0.62,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
 
 // =====================================================================
 // REAL device attachments (owner directive: no dead buttons, no demos)
@@ -205,7 +455,11 @@ class MilsPhotoImage extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      color: Mtek.gray100,
+      decoration: BoxDecoration(
+        color: Mtek.gray100,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: bytes == null
           ? const Icon(Icons.broken_image_outlined, size: 18, color: Mtek.gray400)
           : Image.memory(bytes, width: size, height: size, fit: BoxFit.cover),

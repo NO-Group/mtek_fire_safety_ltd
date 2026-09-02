@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// M-Tek brand tokens — mirrored 1:1 from the website's styles.css.
+/// M-Tek brand design system — tokens mirrored 1:1 from the physical forms
+/// and website, extended with gradients, shadows and a refined component
+/// theme so every screen shares one cohesive look.
 abstract final class Mtek {
-  // Brand palette
+  // Brand (red) palette — original M-Tek tokens, unchanged.
   static const brand700 = Color(0xFFA50F1E);
   static const brand600 = Color(0xFFC8102E);
   static const brand500 = Color(0xFFE11D2E);
@@ -19,6 +21,7 @@ abstract final class Mtek {
   static const navy600 = Color(0xFF24365C);
 
   // Gold accent
+  static const gold600 = Color(0xFFB87B14);
   static const gold500 = Color(0xFFF0A92E);
   static const gold400 = Color(0xFFF7C04A);
   static const goldTint = Color(0xFFFDF3DD);
@@ -36,15 +39,52 @@ abstract final class Mtek {
   static const gray900 = Color(0xFF0F172A);
 
   static const ink = Color(0xFF0B1220);
+
+  // Status accents
   static const success = Color(0xFF15803D);
   static const successTint = Color(0xFFDCFCE7);
   static const warn = Color(0xFFB45309);
   static const warnTint = Color(0xFFFEF3C7);
   static const danger = Color(0xFFB91C1C);
   static const dangerTint = Color(0xFFFEE2E2);
+  static const info = Color(0xFF2563EB);
+  static const infoTint = Color(0xFFEFF6FF);
 
+  // Radii
   static const radius = 16.0;
-  static const fontFamily = 'Sora'; // bundle Sora/Poppins assets in M2
+  static const radiusSm = 12.0;
+  static const radiusLg = 22.0;
+  static const fontFamily = 'Sora';
+
+  // Gradients
+  static const brandGradient = LinearGradient(
+    colors: [Color(0xFFC8102E), Color(0xFFA50F1E)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const navyGradient = LinearGradient(
+    colors: [Color(0xFF0D1728), Color(0xFF060B16)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const heroGradient = LinearGradient(
+    colors: [Color(0xFF1A2A4A), Color(0xFF0A1220)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+  static const goldGradient = LinearGradient(
+    colors: [Color(0xFFF7C04A), Color(0xFFF0A92E)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Soft elevation shadows
+  static const List<BoxShadow> cardShadow = [
+    BoxShadow(color: Color(0x100B1220), blurRadius: 20, offset: Offset(0, 8)),
+  ];
+  static const List<BoxShadow> softShadow = [
+    BoxShadow(color: Color(0x1A0B1220), blurRadius: 28, offset: Offset(0, 14)),
+  ];
 }
 
 /// Convenience accessor used by main.dart.
@@ -60,17 +100,21 @@ ThemeData mtekLightTheme() {
     secondary: Mtek.navy800,
     tertiary: Mtek.gold500,
     surface: Colors.white,
+    error: Mtek.danger,
   );
+  final rounded = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusSm));
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: Mtek.gray50,
     fontFamily: Mtek.fontFamily,
+    splashFactory: InkRipple.splashFactory,
     appBarTheme: const AppBarTheme(
       backgroundColor: Mtek.navy900,
       foregroundColor: Colors.white,
       elevation: 0,
       centerTitle: false,
+      iconTheme: IconThemeData(color: Colors.white),
     ),
     navigationRailTheme: NavigationRailThemeData(
       backgroundColor: Mtek.navy900,
@@ -84,39 +128,120 @@ ThemeData mtekLightTheme() {
       ),
       unselectedLabelTextStyle: const TextStyle(color: Mtek.gray400, fontSize: 12),
     ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Colors.white,
+      indicatorColor: Mtek.brandTint,
+      elevation: 0,
+      height: 68,
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 11,
+          fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+          color: states.contains(WidgetState.selected) ? Mtek.brand600 : Mtek.gray500,
+        ),
+      ),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected) ? Mtek.brand600 : Mtek.gray400,
+        ),
+      ),
+    ),
     drawerTheme: const DrawerThemeData(backgroundColor: Mtek.navy900),
     cardTheme: CardThemeData(
       elevation: 0,
       color: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: const Color(0x100B1220),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Mtek.radius),
         side: const BorderSide(color: Mtek.gray200),
       ),
     ),
     chipTheme: ChipThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       side: const BorderSide(color: Mtek.gray200),
+      backgroundColor: Colors.white,
+      selectedColor: Mtek.brandTint,
+      labelStyle: const TextStyle(color: Mtek.gray600, fontSize: 12.5),
+      secondaryLabelStyle: const TextStyle(color: Mtek.brand600, fontSize: 12.5),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: Mtek.brand600,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusSm)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Mtek.navy800,
+        side: const BorderSide(color: Mtek.gray300),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusSm)),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: Mtek.brand600,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusSm)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: Mtek.brand600,
+      foregroundColor: Colors.white,
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Mtek.radiusSm),
         borderSide: const BorderSide(color: Mtek.gray200),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Mtek.radiusSm),
         borderSide: const BorderSide(color: Mtek.gray200),
       ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(Mtek.radiusSm),
+        borderSide: const BorderSide(color: Mtek.brand600, width: 1.6),
+      ),
+      labelStyle: const TextStyle(color: Mtek.gray500),
     ),
     listTileTheme: const ListTileThemeData(iconColor: Mtek.navy700),
+    dividerTheme: const DividerThemeData(color: Mtek.gray100, thickness: 1, space: 1),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: Mtek.navy900,
+      contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusSm)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusLg)),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Mtek.radiusLg)),
+      ),
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(color: Mtek.brand600),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: Mtek.navy900,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+    ),
   );
 }
+
+/// Standard page padding shared across screens.
+const EdgeInsets kPagePadding = EdgeInsets.all(20);

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import '../../core/format.dart' as fmt;
 import '../../core/theme.dart';
+import '../widgets.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
 import '../../data/store.dart';
@@ -68,14 +69,10 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Mtek.ink)),
-              SizedBox(height: 4),
-              Text('Write up a receipt, invoice, MILS log, waybill or delivery note — PDF mirrors your paper books, signed & shared instantly',
-                  style: TextStyle(color: Mtek.gray500)),
-            ],
+          child: PageHeader(
+            title: 'Documents',
+            subtitle: 'Write up a receipt, invoice, MILS log, waybill or delivery note — signed & shared instantly',
+            icon: Icons.draw,
           ),
         ),
         Padding(
@@ -154,10 +151,15 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(children: [
-        Text(label, style: const TextStyle(color: Mtek.gray500, fontSize: 13)),
-        const Spacer(),
-        Text(value,
-            style: TextStyle(fontSize: strong ? 17 : 14, fontWeight: FontWeight.w800, color: color ?? Mtek.ink)),
+        // Flexible (not bare Text + Spacer) so a long label OR a long value
+        // (e.g. "Amount in words") wraps instead of overflowing the row.
+        Flexible(child: Text(label, style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(value,
+              textAlign: TextAlign.end,
+              style: TextStyle(fontSize: strong ? 17 : 14, fontWeight: FontWeight.w800, color: color ?? Mtek.ink)),
+        ),
       ]),
     );
   }
@@ -246,7 +248,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
           onChanged: (v) => setState(() => _receipt.amount = double.tryParse(v) ?? 0)),
       _sigTile("Customer's signature"),
       const SizedBox(height: 6),
-      const Text('PAYMENT METHOD', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Payment method'),
       const SizedBox(height: 6),
       Wrap(
         spacing: 8,
@@ -310,7 +312,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_iPhone, 'Phone No. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _invoice.phone = v),
       _field(_iEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _invoice.customerEmail = v),
       const SizedBox(height: 6),
-      const Text('ITEMISED LEDGER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Itemised ledger'),
       ..._invoiceFormRows(),
       TextButton.icon(
         onPressed: () => setState(() => _invoice.rows.add(LedgerRow())),
@@ -404,10 +406,10 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_mInvoiceNo, 'Invoice No.', onChanged: (v) => _mils.invoiceNo = v),
       _field(_mReceiptNo, 'Receipt No.', onChanged: (v) => _mils.receiptNo = v),
       const SizedBox(height: 6),
-      const Text('A — DESCRIPTION (EXTINGUISHERS BY WEIGHT)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('A — Description (extinguishers by weight)'),
       _milsWeightGrid(),
       const SizedBox(height: 10),
-      const Text('B — REPLACEMENT (COMPONENTS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('B — Replacement (components)'),
       Wrap(
         spacing: 6,
         runSpacing: 6,
@@ -559,8 +561,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_wbPhone, 'Phone no. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _waybill.phone = v),
       _field(_wbEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _waybill.customerEmail = v),
       const SizedBox(height: 6),
-      const Text('ITEMS — PRODUCTS / TECH. SPEC / BRAND / QTY',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Items — products / tech. spec / brand / qty'),
       const SizedBox(height: 6),
       for (var i = 0; i < _waybill.rows.length; i++)
         Card(
@@ -650,8 +651,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_dnPhone, 'Phone no. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.phone = v),
       _field(_dnEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _deliveryNote.customerEmail = v),
       const SizedBox(height: 6),
-      const Text('SHIPPING ADDRESS',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Shipping address'),
       const SizedBox(height: 6),
       _field(_dnLoc, 'Location', onChanged: (v) => _deliveryNote.location = v),
       Row(children: [
@@ -660,8 +660,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
         Expanded(child: _field(_dnReceiverNo, "Receiver's no.", keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.receiverNo = v)),
       ]),
       const SizedBox(height: 6),
-      const Text('DELIVERY DETAILS',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Delivery details'),
       const SizedBox(height: 6),
       _dateTile('Date of Order', _deliveryNote.orderDate, (d) => _deliveryNote.orderDate = d),
       Row(children: [
@@ -681,8 +680,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       ]),
       _field(_dnBanker, 'Banker', onChanged: (v) => _deliveryNote.banker = v),
       const SizedBox(height: 6),
-      const Text('ITEMS — DESCRIPTION / ORDERED / DELIVERED / OUTSTANDING',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Items — ordered / delivered / outstanding'),
       const SizedBox(height: 6),
       for (var i = 0; i < _deliveryNote.rows.length; i++)
         Card(
@@ -748,20 +746,111 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       child: Row(children: [
         const Icon(Icons.tag, size: 15, color: Mtek.warn),
         const SizedBox(width: 6),
-        Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
-        Text(preview
-            ? 'next: ${next.toString().padLeft(9, '0')}'
-            : (assigned ?? next).toString().padLeft(9, '0'),
-            style: const TextStyle(fontWeight: FontWeight.w800)),
-        const Spacer(),
-        Text('books start at 000000001', style: TextStyle(fontSize: 10.5, color: Mtek.gray600)),
+        Expanded(
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(
+                text: preview
+                    ? 'next: ${next.toString().padLeft(9, '0')}'
+                    : (assigned ?? next).toString().padLeft(9, '0'),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ]),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text('books start at 000000001',
+              style: const TextStyle(fontSize: 10.5, color: Mtek.gray600),
+              overflow: TextOverflow.ellipsis),
+        ),
       ]),
     );
   }
 
   // ---------- validation → signature → PDF → share ----------
 
+  /// Copies every field controller's current text into the form models,
+  /// immediately before validation. Android autofill and some IMEs can
+  /// commit text into a [TextField] WITHOUT firing [TextField.onChanged],
+  /// which previously left the models stale (e.g. an autofilled customer
+  /// name validated as "required" even though the field visibly held text).
+  /// Reading the controllers directly here makes generation see exactly
+  /// what is on screen.
+  void _syncControllersToModel() {
+    // Receipt
+    _receipt.irn = _rIrn.text;
+    _receipt.name = _rName.text;
+    _receipt.address = _rAddr.text;
+    _receipt.phone = _rPhone.text;
+    _receipt.customerEmail = _rEmail.text;
+    _receipt.beingPaymentFor = _rFor.text;
+    _receipt.amount = double.tryParse(_rAmount.text) ?? 0;
+
+    // Invoice
+    _invoice.name = _iName.text;
+    _invoice.address = _iAddr.text;
+    _invoice.phone = _iPhone.text;
+    _invoice.customerEmail = _iEmail.text;
+    _invoice.milsNo = _iMils.text;
+    _invoice.receiptNo = _iRec.text;
+    _invoice.lpoNo = _iLpo.text;
+    _invoice.advancePayment = double.tryParse(_iAdvance.text) ?? 0;
+
+    // MILS
+    _mils.name = _mName.text;
+    _mils.address = _mAddr.text;
+    _mils.phone = _mPhone.text;
+    _mils.customerEmail = _mEmail.text;
+    _mils.invoiceNo = _mInvoiceNo.text;
+    _mils.receiptNo = _mReceiptNo.text;
+    _mils.lpoNo = _mLpo.text;
+    _mils.advancePayment = double.tryParse(_mAdvance.text) ?? 0;
+
+    // Waybill
+    _waybill.name = _wbName.text;
+    _waybill.address = _wbAddr.text;
+    _waybill.phone = _wbPhone.text;
+    _waybill.customerEmail = _wbEmail.text;
+    _waybill.destination = _wbDest.text;
+    _waybill.originatingFrom = _wbFrom.text;
+    _waybill.milsNo = _wbMils.text;
+    _waybill.receiptNo = _wbRec.text;
+    _waybill.invoiceNo = _wbInv.text;
+    _waybill.lpoNo = _wbLpo.text;
+    _waybill.driverName = _wbDriver.text;
+    _waybill.driverPhone = _wbDriverPhone.text;
+    _waybill.vehicleBrand = _wbVehicle.text;
+    _waybill.plateNo = _wbPlate.text;
+    _waybill.colour = _wbColour.text;
+    _waybill.receiverName = _wbReceiver.text;
+    _waybill.receiverPhone = _wbReceiverPhone.text;
+
+    // Delivery note
+    _deliveryNote.customerName = _dnName.text;
+    _deliveryNote.institution = _dnInst.text;
+    _deliveryNote.address = _dnAddr.text;
+    _deliveryNote.phone = _dnPhone.text;
+    _deliveryNote.customerEmail = _dnEmail.text;
+    _deliveryNote.location = _dnLoc.text;
+    _deliveryNote.receiver = _dnReceiver.text;
+    _deliveryNote.receiverNo = _dnReceiverNo.text;
+    _deliveryNote.proformaInvoiceId = _dnProforma.text;
+    _deliveryNote.customerId = _dnCustId.text;
+    _deliveryNote.dispatch = _dnDispatch.text;
+    _deliveryNote.deliveryMethod = _dnMethod.text;
+    _deliveryNote.accountNo = _dnAcctNo.text;
+    _deliveryNote.accountName = _dnAcctName.text;
+    _deliveryNote.banker = _dnBanker.text;
+    _deliveryNote.summary = _dnSummary.text;
+  }
+
   Future<void> _generate() async {
+    // Autofill/IME may have filled fields without firing onChanged — make
+    // the models reflect what's on screen before any validation runs.
+    _syncControllersToModel();
     String? contactError(String phone, String email) =>
         (phone.trim().isEmpty && email.trim().isEmpty)
             ? 'Add the customer\u2019s phone or email \u2014 the PDF is sent to them.'
@@ -836,38 +925,22 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
         contact: contact,
       );
     } catch (e) {
+      // Full detail goes to the console only — never onto a production
+      // screen. Only our own human-readable [Exception] messages are shown;
+      // anything unexpected collapses to a single friendly line.
+      debugPrint('Document generation failed: $e');
       if (!mounted) return;
+      final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: Mtek.danger,
-        content: Text('Document NOT issued — '
-            '${e.toString().replaceFirst('Exception: ', '')}'),
+        content: Text(msg.isEmpty
+            ? 'Document NOT issued — please try again.'
+            : 'Document NOT issued — $msg'),
       ));
       return;
     }
     _receipt.serial = serial; _invoice.serial = serial; _mils.serial = serial;
     _waybill.serial = serial; _deliveryNote.serial = serial;
-
-    final logoBytes = await rootBundle.load('assets/branding/logo.png');
-    final signatureBytes = dataUrlToBytes(signer.signaturePng);
-
-    final bytes = await buildDocument(
-      switch (_type) {
-        DocType.receipt => GeneratedDoc.receipt,
-        DocType.invoice => GeneratedDoc.invoice,
-        DocType.mils => GeneratedDoc.mils,
-        DocType.waybill => GeneratedDoc.waybill,
-        DocType.deliveryNote => GeneratedDoc.deliveryNote,
-      },
-      logoBytes: logoBytes.buffer.asUint8List(),
-      receipt: _receipt,
-      invoice: _invoice,
-      mils: _mils,
-      waybill: _waybill,
-      deliveryNote: _deliveryNote,
-      signedBy: signer.name,
-      signaturePngBytes: signatureBytes,
-      customerSignaturePngBytes: dataUrlToBytes(_customerSigDataUrl),
-    );
 
     final docLabel = switch (_type) {
       DocType.receipt => 'Payment Receipt',
@@ -914,12 +987,153 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       );
     }
 
-    final outcome = await dispatchPdf(bytes: bytes, filename: filename);
+    // Build the PDF and hand it to the share sheet — guarded so a PDF
+    // build/export failure shows one friendly line instead of crashing.
+    try {
+      final logoBytes = await rootBundle.load('assets/branding/logo.png');
+      final signatureBytes = dataUrlToBytes(signer.signaturePng);
+      final bytes = await buildDocument(
+        switch (_type) {
+          DocType.receipt => GeneratedDoc.receipt,
+          DocType.invoice => GeneratedDoc.invoice,
+          DocType.mils => GeneratedDoc.mils,
+          DocType.waybill => GeneratedDoc.waybill,
+          DocType.deliveryNote => GeneratedDoc.deliveryNote,
+        },
+        logoBytes: logoBytes.buffer.asUint8List(),
+        receipt: _receipt,
+        invoice: _invoice,
+        mils: _mils,
+        waybill: _waybill,
+        deliveryNote: _deliveryNote,
+        signedBy: signer.name,
+        signaturePngBytes: signatureBytes,
+        customerSignaturePngBytes: dataUrlToBytes(_customerSigDataUrl),
+      );
 
+      if (!mounted) return;
+      // The PDF is built — offer BOTH an explicit Share button (share sheet:
+      // WhatsApp / Gmail / Drive…) and a Download button (saves the file),
+      // instead of auto-opening the share sheet.
+      _showPdfReady(
+        bytes: bytes,
+        filename: filename,
+        docLabel: docLabel,
+        serial: serial,
+        signerName: signer.name,
+      );
+    } catch (e) {
+      debugPrint('Document PDF build/export failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: Mtek.danger,
+        content: Text('Document recorded, but the PDF could not be generated — please try again.'),
+      ));
+    }
+  }
+
+  /// Bottom sheet shown once a document PDF is built — the document was
+  /// already recorded; this lets the user pick Share (share sheet) or
+  /// Download (save the file) with one tap each.
+  void _showPdfReady({
+    required Uint8List bytes,
+    required String filename,
+    required String docLabel,
+    required int serial,
+    required String signerName,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: Mtek.brandGradient,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.picture_as_pdf_outlined, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(docLabel,
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        const SizedBox(height: 2),
+                        Text('No: $serial · signed by $signerName',
+                            style: const TextStyle(color: Mtek.gray500, fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                icon: const Icon(Icons.ios_share, size: 18),
+                label: const Text('Share PDF'),
+                onPressed: () {
+                  Navigator.of(sheetCtx).pop();
+                  _sharePdf(bytes, filename);
+                },
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: const Text('Download PDF'),
+                onPressed: () {
+                  Navigator.of(sheetCtx).pop();
+                  _downloadPdf(bytes, filename);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sharePdf(Uint8List bytes, String filename) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      backgroundColor: outcome.result == ShareResult.failed ? Mtek.danger : Mtek.success,
-      content: Text('✓ $docLabel No: $serial signed by ${signer.name} — ${outcome.message}'),
-    ));
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final outcome = await dispatchPdf(bytes: bytes, filename: filename);
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: outcome.result == ShareResult.failed ? Mtek.danger : Mtek.success,
+        content: Text(outcome.message),
+      ));
+    } catch (e) {
+      debugPrint('Share failed: $e');
+      messenger.showSnackBar(const SnackBar(
+          backgroundColor: Mtek.danger,
+          content: Text('Could not share the PDF — please try again.')));
+    }
+  }
+
+  Future<void> _downloadPdf(Uint8List bytes, String filename) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final outcome = await savePdf(bytes: bytes, filename: filename);
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: outcome.result == ShareResult.failed ? Mtek.danger : Mtek.success,
+        content: Text(outcome.message),
+      ));
+    } catch (e) {
+      debugPrint('Download failed: $e');
+      messenger.showSnackBar(const SnackBar(
+          backgroundColor: Mtek.danger,
+          content: Text('Could not download the PDF — please try again.')));
+    }
   }
 }

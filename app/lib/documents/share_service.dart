@@ -25,3 +25,13 @@ Future<ShareOutcome> dispatchPdf({
   required String filename,
 }) =>
     dispatchPdfImpl(bytes: bytes, filename: filename);
+
+/// Saves the PDF to a user-accessible location WITHOUT opening the share
+/// sheet — the explicit "Download" action (owner request): Downloads folder
+/// on desktop, the app's documents area on Android, a browser download on
+/// web. Returns a user-safe outcome (never a raw filesystem path).
+Future<ShareOutcome> savePdf({
+  required Uint8List bytes,
+  required String filename,
+}) =>
+    savePdfImpl(bytes: bytes, filename: filename);

@@ -38,6 +38,12 @@ class _StaffScreenState extends State<StaffScreen> {
         _ => Mtek.gray500,
       };
 
+  Widget _roleChip(String role) => switch (role) {
+        'ceo' => const StatusChip.pending('CEO'),
+        'admin' => const StatusChip.info('ADMIN'),
+        _ => const StatusChip.neutral('SALES'),
+      };
+
   Future<void> _toggleRole(StaffMember s) async {
     final newRole = s.role == 'admin' ? 'sales' : 'admin';
     setState(() => _busyUid = s.uid);
@@ -65,6 +71,7 @@ class _StaffScreenState extends State<StaffScreen> {
                 ? 'Every account that has signed in or signed up shows here'
                 : '${list.length} staff member${list.length == 1 ? '' : 's'}'
                     '${isCeo ? '' : ' · only the CEO can change roles'}',
+            icon: Icons.badge,
             actions: [
               IconButton(
                 tooltip: 'Refresh',
@@ -103,7 +110,7 @@ class _StaffScreenState extends State<StaffScreen> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              StatusChip.neutral(s.role.toUpperCase()),
+                              _roleChip(s.role),
                               if (isCeo && s.role != 'ceo') ...[
                                 const SizedBox(width: 10),
                                 _busyUid == s.uid

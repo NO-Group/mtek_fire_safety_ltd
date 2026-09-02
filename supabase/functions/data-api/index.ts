@@ -143,7 +143,13 @@ const profileCache = new Map<string, { value: Profile; expires: number }>();
 async function auth(req: Request): Promise<Profile> {
   const jwt = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!jwt) throw new HttpErr(401, 'Missing bearer token');
-  let user: { sub: string; email?: string; user_metadata?: Record<string, unknown> };
+  // NOTE: Supabase's GET /auth/v1/user returns the user id under `id`, NOT
+  // `sub` (`sub` only exists inside a raw JWT payload). Keying everything on
+  // `user.sub` made every profile lookup/cache key resolve to `undefined`,
+  // so accounts could collide and pick up the WRONG cached role — the
+  // reported "CEO signs in and shows as Sales" bug. Everything here now keys
+  // on the real `user.id`.
+  let user: { id: string; email?: string; user_metadata?: Record<string, unknown> };
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${jwt}` },
@@ -154,16 +160,17 @@ async function auth(req: Request): Promise<Profile> {
     if (e instanceof HttpErr) throw e;
     throw new HttpErr(503, 'Auth service unreachable — try again shortly');
   }
-  const cached = profileCache.get(user.sub);
+  if (!user.id) throw new HttpErr(401, 'Invalid or expired token');
+  const cached = profileCache.get(user.id);
   if (cached && Date.now() < cached.expires) return cached.value;
 
   const profiles = await coll.profiles();
-  let p = await profiles.findOne({ _id: user.sub }) as Record<string, unknown> | null;
-  const isCeo = user.sub === CEO_UID || String(user.email ?? '').toLowerCase() === CEO_EMAIL;
+  let p = await profiles.findOne({ _id: user.id }) as Record<string, unknown> | null;
+  const isCeo = user.id === CEO_UID || String(user.email ?? '').toLowerCase() === CEO_EMAIL;
   if (!p) {
     const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
     p = {
-      _id: user.sub,
+      _id: user.id,
       email: String(user.email ?? '').toLowerCase(),
       full_name: (user.user_metadata?.full_name as string) || (isCeo ? 'CEO' : String(user.email ?? 'staff').split('@')[0]),
       role: isCeo ? 'ceo' : 'sales', // the CEO identity is locked by hardcode
@@ -173,14 +180,14 @@ async function auth(req: Request): Promise<Profile> {
     };
     await profiles.insertOne(p as Record<string, unknown>);
   } else if (isCeo && p.role !== 'ceo') {
-    await profiles.updateOne({ _id: user.sub }, { $set: { role: 'ceo' } });
+    await profiles.updateOne({ _id: user.id }, { $set: { role: 'ceo' } });
     p.role = 'ceo';
   }
   const value: Profile = {
-    uid: user.sub, email: String(p.email), name: String(p.full_name),
+    uid: user.id, email: String(p.email), name: String(p.full_name),
     role: String(p.role), sig_hash: String(p.sig_hash ?? ''), sig_salt: String(p.sig_salt ?? ''),
   };
-  profileCache.set(user.sub, { value, expires: Date.now() + 60_000 });
+  profileCache.set(user.id, { value, expires: Date.now() + 60_000 });
   return value;
 }
 
@@ -440,9 +447,12 @@ Deno.serve(async (req: Request) => {
       const email = String(b.email ?? '').trim().toLowerCase();
       const recovery = String(b.recovery_string ?? '');
       const newPassword = String(b.new_password ?? '');
+      const newPasscode = String(b.new_signature_passcode ?? ''); // optional
       if (!email.includes('@')) return err(400, 'Enter a valid email');
       if (!recovery) return err(400, 'Enter your recovery string');
       if (newPassword.length < 6) return err(400, 'New password must be at least 6 characters');
+      if (newPasscode && newPasscode.length < 4) return err(400, 'Signature passcode must be at least 4 characters');
+      if (newPasscode && newPasscode === newPassword) return err(400, 'Signature passcode must be different from your password');
 
       const profile = await (await coll.profiles()).findOne({ email }) as Record<string, unknown> | null;
       if (!profile || !profile.recovery_hash || !profile.recovery_salt) {
@@ -469,6 +479,60 @@ Deno.serve(async (req: Request) => {
         const j = await updRes.json().catch(() => ({} as Record<string, unknown>));
         return err(400, String((j as Record<string, unknown>).msg ?? (j as Record<string, unknown>).error_description ?? 'Could not reset the password'));
       }
+      // If a new signature passcode was supplied, rotate its salt+hash too.
+      if (newPasscode) {
+        const sigSalt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+        await (await coll.profiles()).updateOne(
+          { _id: uid },
+          { $set: { sig_salt: sigSalt, sig_hash: await hashPass(newPasscode, sigSalt) } },
+        );
+      }
+      profileCache.delete(uid);
+      return json({ ok: true });
+    }
+
+    // ---- public auth: reset the RECOVERY STRING (owner directive
+    // 2026-09-01). Both the account password AND the signature passcode are
+    // required together — either alone is rejected. Verifies the password
+    // via a real GoTrue token exchange, the passcode against the stored
+    // salted hash, then rotates the recovery salt+hash.
+    if (route === 'POST /api/auth/reset-recovery') {
+      const b = await req.json().catch(() => ({} as Record<string, unknown>));
+      const email = String(b.email ?? '').trim().toLowerCase();
+      const password = String(b.password ?? '');
+      const passcode = String(b.signature_passcode ?? '');
+      const newRecovery = String(b.new_recovery_string ?? '');
+      if (!email.includes('@')) return err(400, 'Enter a valid email');
+      if (!password) return err(400, 'Enter your account password');
+      if (!passcode) return err(400, 'Enter your signature passcode');
+      if (newRecovery.length < 15) return err(400, 'Recovery string must be at least 15 characters');
+      if (newRecovery === password || newRecovery === passcode) return err(400, 'Recovery string must be different from your password and signature passcode');
+
+      let gr: Response;
+      try {
+        gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        return err(503, 'Auth service unreachable — try again shortly');
+      }
+      if (!gr.ok) return err(401, 'Account password is incorrect');
+
+      const profile = await (await coll.profiles()).findOne({ email }) as Record<string, unknown> | null;
+      if (!profile) return err(404, 'No account found for that email');
+      const uid = String(profile._id);
+      const sigHash = String(profile.sig_hash ?? '');
+      const sigSalt = String(profile.sig_salt ?? '');
+      if (!sigHash || !sigSalt) return err(401, 'No signature passcode is set on this account');
+      if ((await hashPass(passcode, sigSalt)) !== sigHash) return err(401, 'Signature passcode is incorrect');
+
+      const recoverySalt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+      await (await coll.profiles()).updateOne(
+        { _id: uid },
+        { $set: { recovery_salt: recoverySalt, recovery_hash: await hashRecovery(newRecovery, recoverySalt) } },
+      );
       profileCache.delete(uid);
       return json({ ok: true });
     }
@@ -506,6 +570,57 @@ Deno.serve(async (req: Request) => {
         const b = await req.json();
         await verifyPasscode(user, String(b.passcode ?? ''));
         return json({ ok: true, user: { uid: user.uid, name: user.name, role: user.role } });
+      }
+
+      // ---- signed-in: change the account password (Settings → Account).
+      // Verifies the current password via a GoTrue token exchange, then the
+      // Admin API sets the new one. No email/OTP round-trip.
+      case 'POST /api/auth/change-password': {
+        const b = await req.json();
+        const current = String(b.current_password ?? '');
+        const next = String(b.new_password ?? '');
+        if (!current) throw new HttpErr(400, 'Enter your current password');
+        if (next.length < 6) throw new HttpErr(400, 'New password must be at least 6 characters');
+        if (next === current) throw new HttpErr(400, 'New password must be different from your current password');
+        let gr: Response;
+        try {
+          gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+            method: 'POST',
+            headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: user.email, password: current }),
+          });
+        } catch {
+          throw new HttpErr(503, 'Auth service unreachable — try again shortly');
+        }
+        if (!gr.ok) throw new HttpErr(401, 'Current password is incorrect');
+        const upd = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${user.uid}`, {
+          method: 'PUT',
+          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: next }),
+        });
+        if (!upd.ok) throw new HttpErr(400, 'Could not update the password right now — please try again shortly');
+        profileCache.delete(user.uid);
+        await audit('core', 'change-password', user.uid, user);
+        return json({ ok: true });
+      }
+
+      // ---- signed-in: change the signature passcode (Settings → Account).
+      // Verifies the current passcode against the stored salted hash, then
+      // rotates the salt+hash. Also invalidates the in-RAM last-verified
+      // passcode by forcing a fresh bind on the next signature.
+      case 'POST /api/auth/change-passcode': {
+        const b = await req.json();
+        const current = String(b.current_passcode ?? '');
+        const next = String(b.new_passcode ?? '');
+        if (next.length < 4) throw new HttpErr(400, 'Signature passcode must be at least 4 characters');
+        if (next === current) throw new HttpErr(400, 'New signature passcode must be different from your current one');
+        await verifyPasscode(user, current);
+        const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+        await (await coll.profiles()).updateOne(
+          { _id: user.uid }, { $set: { sig_salt: salt, sig_hash: await hashPass(next, salt) } });
+        profileCache.delete(user.uid);
+        await audit('core', 'change-passcode', user.uid, user);
+        return json({ ok: true });
       }
 
       case 'POST /api/customers': {
@@ -736,6 +851,15 @@ Deno.serve(async (req: Request) => {
           { $push: { read_by: { uid: user.uid, name: user.name, at: now() } } });
         return json({ ok: true });
       }
+      // ---- mark EVERY notification as read by the current user in one go
+      // (Settings → Preferences). Idempotent: the $ne filter skips any
+      // notification this uid has already read.
+      case 'POST /api/notifications/read-all': {
+        await (await coll.notifications()).updateMany(
+          { 'read_by.uid': { $ne: user.uid } },
+          { $push: { read_by: { uid: user.uid, name: user.name, at: now() } } });
+        return json({ ok: true });
+      }
       // ---- announcements: CEO/Admin broadcast a message that lands as a
       // notification for every signed-in user, same read-tracking as above.
       case 'POST /api/announcements': {
@@ -794,6 +918,10 @@ Deno.serve(async (req: Request) => {
     }
   } catch (e) {
     if (e instanceof HttpErr) return err(e.status, e.message);
-    return err(500, String(e instanceof Error ? e.message : e));
+    // Log the full detail SERVER-SIDE only (visible in the function logs,
+    // never to the app) and return one plain, user-safe message. Raw driver
+    // errors / stack text must never reach a production screen.
+    console.error('data-api unhandled error:', e);
+    return err(500, 'Something went wrong on the server — please try again');
   }
 });

@@ -27,6 +27,7 @@ class DeliveryNotesScreen extends StatelessWidget {
           PageHeader(
             title: 'Delivery Notes',
             subtitle: '${rows.length} issued — client acknowledgement of goods received',
+            icon: Icons.inventory_2,
             actions: [
               FilledButton.icon(
                 onPressed: () => Navigator.push(

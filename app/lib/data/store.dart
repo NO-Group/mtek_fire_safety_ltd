@@ -4,6 +4,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/format.dart' as fmt;
+import '../core/widget_bridge.dart';
 import 'api_client.dart';
 import 'auth_store.dart';
 import 'env.dart';
@@ -48,7 +50,7 @@ class AppStore extends ChangeNotifier {
   /// In-app notifications (every transaction/document/stock/customer/product
   /// change, plus CEO/Admin announcements) — newest first. Populated by
   /// [refreshNotifications], polled periodically by the app shell.
-  final List<AppNotification> notifications = [];
+  List<AppNotification> notifications = [];
   int get unreadNotificationCount {
     final uid = AuthStore.instance.remoteSignInUid;
     if (uid == null || uid.isEmpty) return notifications.length;
@@ -93,6 +95,7 @@ class AppStore extends ChangeNotifier {
     _loaded = true;
     notifyListeners();
     unawaited(flushSyncQueue());
+    pushHomeWidgetStats();
   }
 
   Future<List<dynamic>> _readList(String key) async {
@@ -116,7 +119,17 @@ class AppStore extends ChangeNotifier {
       if (res == null || !res.ok || res.json is! Map) return false; // offline / not signed in
       final data = (res.json as Map).cast<String, dynamic>();
       final u = data['user'];
-      if (u is Map) remoteRole = '${u['role'] ?? ''}';
+      if (u is Map) {
+        remoteRole = '${u['role'] ?? ''}';
+        // Reconcile the authoritative server role into the signed-in
+        // identity so a promoted/demoted account (e.g. the CEO) reflects
+        // immediately on the next data reload — no re-login required.
+        final cur = AuthStore.instance.current;
+        if (remoteRole.isNotEmpty && cur != null && cur.role != remoteRole) {
+          cur.role = remoteRole;
+          AuthStore.instance.ping();
+        }
+      }
 
       products.addAll(parseProducts([
         for (final e in (data['products'] as List? ?? const []))
@@ -230,6 +243,27 @@ class AppStore extends ChangeNotifier {
     final okRemote = await _loadRemote();
     if (okRemote) await _persistAll();
     notifyListeners();
+    pushHomeWidgetStats();
+  }
+
+  /// Pushes the three headline figures onto the Android home-screen widget.
+  /// No-op everywhere else (the method channel only exists on Android).
+  void pushHomeWidgetStats() {
+    final now = DateTime.now();
+    var todaySales = 0;
+    for (final t in transactions) {
+      if (t.date.year == now.year &&
+          t.date.month == now.month &&
+          t.date.day == now.day) {
+        todaySales += t.amount;
+      }
+    }
+    final dueInvoices = invoices.where((i) => i.balance > 0).length;
+    unawaited(WidgetBridge.updateStats(
+      todaySales: fmt.nairaCompact(todaySales),
+      receipts: '${receipts.length}',
+      invoices: '$dueInvoices',
+    ));
   }
 
   // ------------------------------------------------------------ notifications
@@ -289,6 +323,43 @@ class AppStore extends ChangeNotifier {
     }
   }
 
+  /// Marks EVERY notification as read by the current user (Settings →
+  /// Preferences). Updates the local copies immediately so the unread badge
+  /// clears, then asks the server to do the same (idempotent — each uid is
+  /// only appended to a notification's `read_by` once).
+  Future<void> markAllNotificationsRead() async {
+    final uid = AuthStore.instance.remoteSignInUid;
+    final name = AuthStore.instance.current?.name ?? '';
+    if (uid != null && uid.isNotEmpty) {
+      notifications = [
+        for (final n in notifications)
+          if (!n.isReadBy(uid))
+            AppNotification(
+              id: n.id,
+              kind: n.kind,
+              title: n.title,
+              message: n.message,
+              ref: n.ref,
+              createdBy: n.createdBy,
+              createdByName: n.createdByName,
+              createdAt: n.createdAt,
+              readBy: [
+                ...n.readBy,
+                NotificationRead(uid: uid, name: name, at: DateTime.now()),
+              ],
+            )
+          else
+            n,
+      ];
+      notifyListeners();
+    }
+    try {
+      await _apiPost('/api/notifications/read-all', {});
+    } catch (_) {
+      // best-effort — the read receipts will resync on the next refresh
+    }
+  }
+
   /// CEO/Admin-only: broadcasts an announcement, which lands in every
   /// user's notification feed exactly like a transaction notification, but
   /// with kind 'announcement' so the UI can show it distinctly and the
@@ -300,7 +371,9 @@ class AppStore extends ChangeNotifier {
       await refreshNotifications();
       return null;
     } catch (e) {
-      return e.toString().replaceFirst('Exception: ', '');
+      debugPrint('sendAnnouncement failed: $e');
+      final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
+      return msg.isEmpty ? 'Something went wrong — please try again.' : msg;
     }
   }
 
@@ -339,7 +412,9 @@ class AppStore extends ChangeNotifier {
       await refreshStaff();
       return null;
     } catch (e) {
-      return e.toString().replaceFirst('Exception: ', '');
+      debugPrint('setStaffRole failed: $e');
+      final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
+      return msg.isEmpty ? 'Something went wrong — please try again.' : msg;
     }
   }
 
@@ -846,6 +921,7 @@ class AppStore extends ChangeNotifier {
     final serverApplied = serverReceiptNo != null && serverReceiptNo.isNotEmpty;
     await _persistSaleSide(sale, enqueue: !serverApplied);
     notifyListeners();
+    pushHomeWidgetStats();
   }
 
   Future<void> _persistSaleSide(Sale sale, {bool enqueue = true}) async {
@@ -893,6 +969,7 @@ class AppStore extends ChangeNotifier {
       unawaited(flushSyncQueue());
     }
     notifyListeners();
+    pushHomeWidgetStats();
   }
 
   /// Records a completed maintenance/service job (CEO/Admin — MILS screen +
@@ -1038,7 +1115,7 @@ class AppStore extends ChangeNotifier {
       method: method,
       forDoc: forDoc,
       signedBy: signedBy,
-      issuedBy: 'Admin',
+      issuedBy: signedBy,
       customerSignature: customerSignature ?? '',
     ));
   }

@@ -45,6 +45,7 @@ class _MilsScreenState extends State<MilsScreen> {
             title: 'MILS — Maintenance Log',
             subtitle:
                 '${store.milsLogs.length} service records · $overdueCount overdue',
+            icon: Icons.build_circle,
             actions: [
               FilledButton.icon(
                 onPressed: () => Navigator.push(
@@ -132,7 +133,16 @@ class _MilsScreenState extends State<MilsScreen> {
     final store = AppStore.instance;
     final result = await pickMilsPhotos();
     if (result == null || result.isEmpty) return;
-    await store.attachMilsPhotos(l.id, result);
+    try {
+      await store.attachMilsPhotos(l.id, result);
+    } catch (e) {
+      debugPrint('attachMilsPhotos failed: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Photos could not be attached — please try again.')));
+      }
+      return;
+    }
     if (context.mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

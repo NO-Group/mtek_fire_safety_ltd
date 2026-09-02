@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import '../core/widget_bridge.dart';
 import '../data/auth_store.dart';
 import '../data/store.dart';
 import 'screens/customers_screen.dart';
@@ -53,14 +54,13 @@ const _settings = Destination('settings', 'Settings', Icons.settings_outlined, I
 /// "any user" gets notified of every transaction); Staff is CEO/Admin-only
 /// (view for both, but only the CEO can actually change a role).
 List<Destination> destinationsFor(String? role) {
-  // Authority: CEO > Admin > Sales. Settings (VAT/serials/seed import/reset)
-  // is CEO-ONLY (owner directive 2026-08-30); stock editing is CEO/Admin.
-  if (role == 'ceo') return _allDestinations;
-  if (role == 'admin') {
-    return _allDestinations.where((d) => d.id != 'settings').toList();
-  }
+  // Authority: CEO > Admin > Sales. Settings is visible to EVERY role
+  // (owner directive 2026-09-01) — Account/Recovery/Preferences/About are
+  // universal, while the management controls inside it (VAT, serial reseed,
+  // stock seed import) stay CEO-only. Stock editing is CEO/Admin.
+  if (role == 'ceo' || role == 'admin') return _allDestinations;
   return const [
-    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications,
+    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications, _settings,
   ];
 }
 
@@ -108,12 +108,25 @@ class _AppShellState extends State<AppShell> {
     _notifyTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       unawaited(AppStore.instance.refreshNotifications());
     });
+    // Jump to a screen requested by a home-widget tap / launcher shortcut.
+    WidgetBridge.requestedScreen.addListener(_applyRequestedScreen);
+    _applyRequestedScreen();
   }
 
   @override
   void dispose() {
+    WidgetBridge.requestedScreen.removeListener(_applyRequestedScreen);
     _notifyTimer?.cancel();
     super.dispose();
+  }
+
+  void _applyRequestedScreen() {
+    final requested = WidgetBridge.requestedScreen.value;
+    if (requested == null) return;
+    WidgetBridge.requestedScreen.value = null;
+    final i = _visible.indexWhere((d) => d.id == requested);
+    if (i == -1) return; // screen not visible for this role — ignore
+    if (_index != i) setState(() => _index = i);
   }
 
   void _openNotifications() {
@@ -130,55 +143,6 @@ class _AppShellState extends State<AppShell> {
     final visible = _visible;
     if (_index >= visible.length) _index = 0;
     final dest = visible[_index];
-
-    final appBar = AppBar(
-      title: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset('assets/branding/logo.png', height: 34,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-          ),
-          const SizedBox(width: 10),
-          Flexible(child: Text(dest.label, style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-      actions: [
-        AnimatedBuilder(
-          animation: AppStore.instance,
-          builder: (context, _) {
-            final unread = AppStore.instance.unreadNotificationCount;
-            return IconButton(
-              tooltip: 'Notifications',
-              icon: Badge(
-                label: Text('$unread'),
-                isLabelVisible: unread > 0,
-                child: const Icon(Icons.notifications_outlined),
-              ),
-              onPressed: _openNotifications,
-            );
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: Center(
-            child: Text(AuthStore.instance.current?.role.toUpperCase() ?? '',
-                style: const TextStyle(fontSize: 11, letterSpacing: 1)),
-          ),
-        ),
-        IconButton(
-          tooltip: 'Sign out',
-          icon: const Icon(Icons.logout),
-          onPressed: () => AuthStore.instance.signOut(),
-        ),
-      ],
-      leading: useRail
-          ? null
-          : IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-            ),
-    );
 
     Widget body;
     if (useRail) {
@@ -200,45 +164,155 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       key: _scaffoldKey,
-      appBar: appBar,
+      appBar: _appBar(dest),
       drawer: useRail ? null : _drawer(context),
       body: body,
       bottomNavigationBar: useBottomBar ? _bottomBar() : null,
     );
   }
 
-  Widget _rail({required bool extended}) {
-    return NavigationRail(
-      selectedIndex: _index,
-      onDestinationSelected: (i) => setState(() => _index = i),
-      extended: extended,
-      labelType: extended ? null : NavigationRailLabelType.all,
-      leading: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.asset('assets/branding/logo.png', width: 40, height: 40,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-        ),
-      ),
-      destinations: [
-        for (final d in _visible)
-          NavigationRailDestination(
-            icon: Icon(d.icon),
-            selectedIcon: Icon(d.selectedIcon),
-            label: Text(d.label),
+  PreferredSizeWidget _appBar(Destination dest) {
+    final user = AuthStore.instance.current;
+    return AppBar(
+      flexibleSpace: Container(decoration: const BoxDecoration(gradient: Mtek.heroGradient)),
+      title: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: Mtek.cardShadow,
+            ),
+            child: Image.asset('assets/branding/logo.png',
+                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
           ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(dest.label,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 17, color: Colors.white)),
+              const SizedBox(height: 1),
+              Text('M-TEK FIRE & SAFETY LTD',
+                  style: TextStyle(
+                      fontSize: 9.5,
+                      letterSpacing: 1.1,
+                      color: Colors.white.withValues(alpha: .55))),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        AnimatedBuilder(
+          animation: AppStore.instance,
+          builder: (context, _) {
+            final unread = AppStore.instance.unreadNotificationCount;
+            return Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: IconButton(
+                tooltip: 'Notifications',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: .08),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: Badge(
+                  label: Text('$unread'),
+                  isLabelVisible: unread > 0,
+                  child: const Icon(Icons.notifications_outlined, color: Colors.white),
+                ),
+                onPressed: _openNotifications,
+              ),
+            );
+          },
+        ),
+        const SizedBox(width: 4),
+        _rolePill(user?.role ?? ''),
+        const SizedBox(width: 4),
+        IconButton(
+          tooltip: 'Sign out',
+          icon: const Icon(Icons.logout, color: Colors.white),
+          onPressed: () => AuthStore.instance.signOut(),
+        ),
       ],
+      leading: useRailTertiary()
+          ? null
+          : IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            ),
+    );
+  }
+
+  bool useRailTertiary() {
+    // Matches the rail body condition; the AppBar hides its own menu button
+    // when the rail is already providing navigation.
+    return MediaQuery.of(context).size.width >= 1000;
+  }
+
+  Widget _rolePill(String role) {
+    final (bg, fg) = switch (role) {
+      'ceo' => (Mtek.goldTint, Mtek.gold600),
+      'admin' => (Mtek.brandTint, Mtek.brand600),
+      _ => (Colors.white.withValues(alpha: .12), Colors.white),
+    };
+    return Container(
+      margin: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(role.toUpperCase(),
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: fg)),
+    );
+  }
+
+  Widget _rail({required bool extended}) {
+    return Container(
+      decoration: const BoxDecoration(gradient: Mtek.navyGradient),
+      child: NavigationRail(
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        extended: extended,
+        labelType: extended ? null : NavigationRailLabelType.all,
+        groupAlignment: -0.9,
+        leading: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Container(
+            width: 44,
+            height: 44,
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: Mtek.cardShadow,
+            ),
+            child: Image.asset('assets/branding/logo.png',
+                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+          ),
+        ),
+        destinations: [
+          for (final d in _visible)
+            NavigationRailDestination(
+              icon: Icon(d.icon),
+              selectedIcon: Icon(d.selectedIcon),
+              label: Text(d.label),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _bottomBar() {
-    final moreSelected = !_bottomBarIndexes.contains(_index);
     final visibleBottom = AuthStore.instance.isManagement
         ? _bottomBarIndexes.where((i) => i < _visible.length).toList()
         : [for (var i = 0; i < _visible.length && i < 4; i++) i];
     return NavigationBar(
-      height: 64,
+      height: 68,
       selectedIndex: visibleBottom.indexOf(_index) == -1
           ? visibleBottom.length
           : visibleBottom.indexOf(_index),
@@ -266,6 +340,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _drawer(BuildContext context) {
+    final user = AuthStore.instance.current;
     return NavigationDrawer(
       selectedIndex: _index,
       onDestinationSelected: (i) {
@@ -273,10 +348,40 @@ class _AppShellState extends State<AppShell> {
         Navigator.pop(context);
       },
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(28, 24, 16, 12),
-          child: Text('M-Tek Fire & Safety',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Colors.white)),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(24, 32, 16, 20),
+          decoration: const BoxDecoration(gradient: Mtek.heroGradient),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Image.asset('assets/branding/logo.png',
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('M-Tek Fire & Safety',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white)),
+                    const SizedBox(height: 2),
+                    Text(user?.name ?? 'Signed in',
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.white.withValues(alpha: .7))),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         for (final d in _visible)
           NavigationDrawerDestination(icon: Icon(d.icon), label: Text(d.label)),
