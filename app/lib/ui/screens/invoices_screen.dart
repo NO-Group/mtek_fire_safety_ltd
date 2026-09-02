@@ -28,6 +28,7 @@ class InvoicesScreen extends StatelessWidget {
           PageHeader(
             title: 'Invoices',
             subtitle: '${store.outstandingInvoicesTotal() == 0 ? "All settled" : "${fmt.naira(store.outstandingInvoicesTotal())} outstanding"}',
+            icon: Icons.request_quote,
             actions: [
               FilledButton.icon(
                 onPressed: () => Navigator.push(

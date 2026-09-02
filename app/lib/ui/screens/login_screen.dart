@@ -46,18 +46,25 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Mtek.navy950,
-      body: Center(
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              color: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(26),
-                child: _signup ? _buildSignup() : _buildLogin(),
+      body: Container(
+        decoration: const BoxDecoration(gradient: Mtek.navyGradient),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Card(
+                  elevation: 0,
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(22)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(26),
+                    child: _signup ? _buildSignup() : _buildLogin(),
+                  ),
+                ),
               ),
             ),
           ),

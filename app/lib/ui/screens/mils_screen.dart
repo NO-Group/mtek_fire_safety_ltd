@@ -45,6 +45,7 @@ class _MilsScreenState extends State<MilsScreen> {
             title: 'MILS — Maintenance Log',
             subtitle:
                 '${store.milsLogs.length} service records · $overdueCount overdue',
+            icon: Icons.build_circle,
             actions: [
               FilledButton.icon(
                 onPressed: () => Navigator.push(

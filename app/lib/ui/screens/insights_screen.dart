@@ -28,6 +28,7 @@ class InsightsScreen extends StatelessWidget {
             const PageHeader(
               title: 'Insights',
               subtitle: 'Money in — today, this week, this month',
+              icon: Icons.insights,
             ),
         const SizedBox(height: 16),
         LayoutBuilder(builder: (context, c) {
@@ -97,7 +98,7 @@ class InsightsScreen extends StatelessWidget {
           );
         }),
         const SizedBox(height: 20),
-        const Text('REVENUE BREAKDOWN', style: TextStyle(fontSize: 12, letterSpacing: 1.2, fontWeight: FontWeight.w700, color: Mtek.gray500)),
+        const SectionTitle('Revenue breakdown'),
         const SizedBox(height: 12),
         LayoutBuilder(builder: (context, c) {
           final two = c.maxWidth > 900;

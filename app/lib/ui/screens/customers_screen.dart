@@ -33,6 +33,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           PageHeader(
             title: 'Customers',
             subtitle: '${store.customers.length} on file — ${store.customers.where((c) => c.isCorporate).length} corporate',
+            icon: Icons.people,
             actions: [
               FilledButton.icon(
                 onPressed: () => _showNewCustomerDialog(context),
@@ -42,13 +43,17 @@ class _CustomersScreenState extends State<CustomersScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          TextField(
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Search customers…',
-            ),
-            onChanged: (v) => setState(() => _query = v),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              MetricPill(label: 'Total', value: '${store.customers.length}', icon: Icons.people_outline, accent: Mtek.brand600),
+              MetricPill(label: 'Corporate', value: '${store.customers.where((c) => c.isCorporate).length}', icon: Icons.business_outlined, accent: Mtek.navy700),
+              MetricPill(label: 'Credit owed', value: fmt.nairaCompact(store.customers.fold(0, (s, c) => s + c.creditBalance)), icon: Icons.hourglass_top_outlined, accent: Mtek.warn),
+            ],
           ),
+          const SizedBox(height: 12),
+          SearchField(hint: 'Search customers…', onChanged: (v) => setState(() => _query = v)),
           const SizedBox(height: 12),
           Expanded(
             child: Card(
@@ -59,12 +64,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 itemBuilder: (context, i) {
                   final c = list[i];
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: c.isCorporate ? Mtek.navy800 : Mtek.brand600,
-                      child: Text(
-                        c.name.split(' ').take(2).map((w) => w[0]).join(),
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
+                    leading: InitialsAvatar(
+                      c.name.split(' ').take(2).map((w) => w[0]).join().toUpperCase(),
+                      background: c.isCorporate ? Mtek.navy800 : Mtek.brand600,
                     ),
                     title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text('${c.isCorporate ? "Corporate" : "Individual"} · ${c.phone}'),

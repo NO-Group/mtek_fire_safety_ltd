@@ -45,9 +45,18 @@ class ReceiptsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(
+          PageHeader(
             title: 'Receipts',
             subtitle: 'Auto-issued when money is received',
+            icon: Icons.receipt_long,
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            children: [
+              MetricPill(label: 'Receipts', value: '${receipts.length}', icon: Icons.receipt_long, accent: Mtek.success),
+              MetricPill(label: 'Total collected', value: fmt.nairaCompact(store.receipts.fold(0, (s, r) => s + r.amount)), icon: Icons.payments_outlined, accent: Mtek.brand600),
+            ],
           ),
           const SizedBox(height: 14),
           Expanded(

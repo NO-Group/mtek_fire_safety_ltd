@@ -35,7 +35,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(title: 'Transactions', subtitle: 'Every naira in and out — one ledger'),
+          const PageHeader(
+            title: 'Transactions',
+            subtitle: 'Every naira in and out — one ledger',
+            icon: Icons.swap_horiz,
+          ),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,

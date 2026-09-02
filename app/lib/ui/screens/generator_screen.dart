@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import '../../core/format.dart' as fmt;
 import '../../core/theme.dart';
+import '../widgets.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
 import '../../data/store.dart';
@@ -68,14 +69,10 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Mtek.ink)),
-              SizedBox(height: 4),
-              Text('Write up a receipt, invoice, MILS log, waybill or delivery note — PDF mirrors your paper books, signed & shared instantly',
-                  style: TextStyle(color: Mtek.gray500)),
-            ],
+          child: PageHeader(
+            title: 'Documents',
+            subtitle: 'Write up a receipt, invoice, MILS log, waybill or delivery note — signed & shared instantly',
+            icon: Icons.draw,
           ),
         ),
         Padding(
@@ -251,7 +248,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
           onChanged: (v) => setState(() => _receipt.amount = double.tryParse(v) ?? 0)),
       _sigTile("Customer's signature"),
       const SizedBox(height: 6),
-      const Text('PAYMENT METHOD', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Payment method'),
       const SizedBox(height: 6),
       Wrap(
         spacing: 8,
@@ -315,7 +312,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_iPhone, 'Phone No. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _invoice.phone = v),
       _field(_iEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _invoice.customerEmail = v),
       const SizedBox(height: 6),
-      const Text('ITEMISED LEDGER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Itemised ledger'),
       ..._invoiceFormRows(),
       TextButton.icon(
         onPressed: () => setState(() => _invoice.rows.add(LedgerRow())),
@@ -409,10 +406,10 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_mInvoiceNo, 'Invoice No.', onChanged: (v) => _mils.invoiceNo = v),
       _field(_mReceiptNo, 'Receipt No.', onChanged: (v) => _mils.receiptNo = v),
       const SizedBox(height: 6),
-      const Text('A — DESCRIPTION (EXTINGUISHERS BY WEIGHT)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('A — Description (extinguishers by weight)'),
       _milsWeightGrid(),
       const SizedBox(height: 10),
-      const Text('B — REPLACEMENT (COMPONENTS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('B — Replacement (components)'),
       Wrap(
         spacing: 6,
         runSpacing: 6,
@@ -564,8 +561,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_wbPhone, 'Phone no. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _waybill.phone = v),
       _field(_wbEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _waybill.customerEmail = v),
       const SizedBox(height: 6),
-      const Text('ITEMS — PRODUCTS / TECH. SPEC / BRAND / QTY',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Items — products / tech. spec / brand / qty'),
       const SizedBox(height: 6),
       for (var i = 0; i < _waybill.rows.length; i++)
         Card(
@@ -655,8 +651,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       _field(_dnPhone, 'Phone no. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.phone = v),
       _field(_dnEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _deliveryNote.customerEmail = v),
       const SizedBox(height: 6),
-      const Text('SHIPPING ADDRESS',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Shipping address'),
       const SizedBox(height: 6),
       _field(_dnLoc, 'Location', onChanged: (v) => _deliveryNote.location = v),
       Row(children: [
@@ -665,8 +660,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
         Expanded(child: _field(_dnReceiverNo, "Receiver's no.", keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.receiverNo = v)),
       ]),
       const SizedBox(height: 6),
-      const Text('DELIVERY DETAILS',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Delivery details'),
       const SizedBox(height: 6),
       _dateTile('Date of Order', _deliveryNote.orderDate, (d) => _deliveryNote.orderDate = d),
       Row(children: [
@@ -686,8 +680,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       ]),
       _field(_dnBanker, 'Banker', onChanged: (v) => _deliveryNote.banker = v),
       const SizedBox(height: 6),
-      const Text('ITEMS — DESCRIPTION / ORDERED / DELIVERED / OUTSTANDING',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Mtek.gray500)),
+      const SectionTitle('Items — ordered / delivered / outstanding'),
       const SizedBox(height: 6),
       for (var i = 0; i < _deliveryNote.rows.length; i++)
         Card(

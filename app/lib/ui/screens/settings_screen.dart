@@ -53,9 +53,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text('Settings', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Mtek.ink)),
-        const SizedBox(height: 4),
-        const Text('Your account, preferences and app information', style: TextStyle(color: Mtek.gray500)),
+        const PageHeader(
+          title: 'Settings',
+          subtitle: 'Your account, preferences and app information',
+          icon: Icons.settings,
+        ),
         const SizedBox(height: 16),
 
         // ---------------- Account (every role) ----------------
@@ -63,13 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Card(
           child: Column(children: [
             ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Mtek.brandTint,
-                child: Text(
-                  _initials(user?.name),
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: Mtek.brand600),
-                ),
-              ),
+              leading: InitialsAvatar(_initials(user?.name), background: Mtek.brand600),
               title: Text(user?.name ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(user?.email ?? ''),
               trailing: StatusChip.neutral((user?.role ?? '').toUpperCase()),
@@ -276,8 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _sectionLabel(String text) => Padding(
         padding: const EdgeInsets.only(left: 4, bottom: 8),
-        child: Text(text,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.gray500)),
+        child: SectionTitle(text),
       );
 
   // ---- server status ----

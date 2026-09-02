@@ -187,6 +187,7 @@ class _StockScreenState extends State<StockScreen> {
             title: 'Stock',
             subtitle:
                 '${store.products.length} items · $lowCount low/out of stock · ${fmt.naira(store.stockValueAtCost())} at cost',
+            icon: Icons.inventory_2,
             actions: [
               // stock is created HERE, in the app — never pre-loaded
               if (AuthStore.instance.isManagement)
@@ -208,10 +209,7 @@ class _StockScreenState extends State<StockScreen> {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search by name or ID…'),
-                  onChanged: (v) => setState(() => _query = v),
-                ),
+                child: SearchField(hint: 'Search by name or ID…', onChanged: (v) => setState(() => _query = v)),
               ),
               const SizedBox(width: 12),
               DropdownButton<String>(

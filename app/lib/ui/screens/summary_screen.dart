@@ -117,6 +117,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
   String _period = 'month';
 
+  String _monthYear(DateTime d) => const [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ][d.month - 1] + ' ${d.year}';
+
   @override
   Widget build(BuildContext context) {
     final store = AppStore.instance;
@@ -135,7 +140,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
       children: [
         PageHeader(
           title: 'Summary',
-          subtitle: 'Business report — $label (Aug 2026)',
+          subtitle: 'Business report — $label · ${_monthYear(now)}',
+          icon: Icons.summarize,
           actions: [
             OutlinedButton.icon(
               onPressed: () => _exportPdf(context, from, label),

@@ -140,8 +140,9 @@ class _BootScreenState extends State<_BootScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Mtek.navy950,
-      body: Center(
+      body: Container(
+        decoration: const BoxDecoration(gradient: Mtek.navyGradient),
+        child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -161,6 +162,7 @@ class _BootScreenState extends State<_BootScreen> {
               child: CircularProgressIndicator(color: Mtek.gold500, strokeWidth: 2.5),
             ),
           ],
+        ),
         ),
       ),
     );

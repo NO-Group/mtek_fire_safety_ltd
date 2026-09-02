@@ -63,6 +63,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             subtitle: list.isEmpty
                 ? 'Nothing yet — every sale, document, stock change and announcement will appear here'
                 : '${list.length} notification${list.length == 1 ? '' : 's'} · ${store.unreadNotificationCount} unread',
+            icon: Icons.notifications,
             actions: [
               IconButton(
                 tooltip: 'Refresh',
