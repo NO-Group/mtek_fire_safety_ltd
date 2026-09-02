@@ -37,7 +37,13 @@ jobs:
           # DELETE + CREATE: the PATCH-update path has been accepted by the API
           # while the runtime kept serving the previous bundle. A fresh create
           # forces a brand-new function activation (few seconds of downtime).
-          supabase functions deploy data-api3 --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
+          # UPDATES to an existing function never take over on this project
+          # (verified by bisect: fresh names activate, updates don't), so
+          # delete fully, wait for propagation, then create fresh.
+          supabase functions delete data-api2 --project-ref "$SUPABASE_PROJECT_ID" --force >> /tmp/deploy.log 2>&1
+          echo "delete exit: $?" >> /tmp/deploy.log
+          sleep 20
+          supabase functions deploy data-api2 --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
           CODE=$?
           set -e
           echo "supabase functions deploy exit code: $CODE"
@@ -52,10 +58,10 @@ jobs:
       # route answer "Unknown API route" — this check makes that visible.
       - name: Verify live bundle version
         run: |
-          WANT='bisect3-60'
+          WANT='2026-09-02i'
           BODY=""
           for i in $(seq 1 40); do
-            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api3/health?poll=${GITHUB_RUN_ID}-$i" || true)
+            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api2/health?poll=${GITHUB_RUN_ID}-$i" || true)
             BODY=$(cat /tmp/h.json 2>/dev/null || true)
             echo "try $i (HTTP $CODE): ${BODY:0:160}"
             case "$BODY" in
