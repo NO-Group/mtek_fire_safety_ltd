@@ -1010,13 +1010,18 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
         signaturePngBytes: signatureBytes,
         customerSignaturePngBytes: dataUrlToBytes(_customerSigDataUrl),
       );
-      final outcome = await dispatchPdf(bytes: bytes, filename: filename);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor: outcome.result == ShareResult.failed ? Mtek.danger : Mtek.success,
-        content: Text('✓ $docLabel No: $serial signed by ${signer.name} — ${outcome.message}'),
-      ));
+      // The PDF is built — offer BOTH an explicit Share button (share sheet:
+      // WhatsApp / Gmail / Drive…) and a Download button (saves the file),
+      // instead of auto-opening the share sheet.
+      _showPdfReady(
+        bytes: bytes,
+        filename: filename,
+        docLabel: docLabel,
+        serial: serial,
+        signerName: signer.name,
+      );
     } catch (e) {
       debugPrint('Document PDF build/export failed: $e');
       if (!mounted) return;
@@ -1024,6 +1029,111 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
         backgroundColor: Mtek.danger,
         content: Text('Document recorded, but the PDF could not be generated — please try again.'),
       ));
+    }
+  }
+
+  /// Bottom sheet shown once a document PDF is built — the document was
+  /// already recorded; this lets the user pick Share (share sheet) or
+  /// Download (save the file) with one tap each.
+  void _showPdfReady({
+    required Uint8List bytes,
+    required String filename,
+    required String docLabel,
+    required int serial,
+    required String signerName,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: Mtek.brandGradient,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.picture_as_pdf_outlined, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(docLabel,
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        const SizedBox(height: 2),
+                        Text('No: $serial · signed by $signerName',
+                            style: const TextStyle(color: Mtek.gray500, fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                icon: const Icon(Icons.ios_share, size: 18),
+                label: const Text('Share PDF'),
+                onPressed: () {
+                  Navigator.of(sheetCtx).pop();
+                  _sharePdf(bytes, filename);
+                },
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: const Text('Download PDF'),
+                onPressed: () {
+                  Navigator.of(sheetCtx).pop();
+                  _downloadPdf(bytes, filename);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sharePdf(Uint8List bytes, String filename) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final outcome = await dispatchPdf(bytes: bytes, filename: filename);
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: outcome.result == ShareResult.failed ? Mtek.danger : Mtek.success,
+        content: Text(outcome.message),
+      ));
+    } catch (e) {
+      debugPrint('Share failed: $e');
+      messenger.showSnackBar(const SnackBar(
+          backgroundColor: Mtek.danger,
+          content: Text('Could not share the PDF — please try again.')));
+    }
+  }
+
+  Future<void> _downloadPdf(Uint8List bytes, String filename) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final outcome = await savePdf(bytes: bytes, filename: filename);
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: outcome.result == ShareResult.failed ? Mtek.danger : Mtek.success,
+        content: Text(outcome.message),
+      ));
+    } catch (e) {
+      debugPrint('Download failed: $e');
+      messenger.showSnackBar(const SnackBar(
+          backgroundColor: Mtek.danger,
+          content: Text('Could not download the PDF — please try again.')));
     }
   }
 }

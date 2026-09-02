@@ -38,3 +38,32 @@ Future<ShareOutcome> dispatchPdfImpl({
         'Could not save the PDF — please try again.');
   }
 }
+
+/// Explicit "Download" (save) action: write the PDF to a persistent,
+/// user-accessible folder and report success WITHOUT opening the share
+/// sheet. Downloads directory on desktop; the app documents directory as a
+/// safe fallback on Android. Never surfaces a raw filesystem path.
+Future<ShareOutcome> savePdfImpl({
+  required Uint8List bytes,
+  required String filename,
+}) async {
+  try {
+    Directory dir;
+    try {
+      dir = await getDownloadsDirectory() ??
+          await getApplicationDocumentsDirectory();
+    } catch (_) {
+      // getDownloadsDirectory is unsupported on some platforms (Android) —
+      // fall back to the app's own persistent documents directory.
+      dir = await getApplicationDocumentsDirectory();
+    }
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
+    return const ShareOutcome(ShareResult.savedOnly,
+        'PDF downloaded — saved on this device.');
+  } catch (e) {
+    debugPrint('savePdf (io) failed: $e');
+    return const ShareOutcome(ShareResult.failed,
+        'Could not download the PDF — please try again.');
+  }
+}

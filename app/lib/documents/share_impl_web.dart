@@ -29,3 +29,11 @@ Future<ShareOutcome> dispatchPdfImpl({
         'Could not download the PDF — please try again.');
   }
 }
+
+/// Web: an explicit "Download" is the same as the share fallback — trigger a
+/// browser download of the PDF straight to the user's Downloads folder.
+Future<ShareOutcome> savePdfImpl({
+  required Uint8List bytes,
+  required String filename,
+}) =>
+    dispatchPdfImpl(bytes: bytes, filename: filename);

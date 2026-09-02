@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 /// and website, extended with gradients, shadows and a refined component
 /// theme so every screen shares one cohesive look.
 abstract final class Mtek {
-  // Brand (red) palette
-  static const brand700 = Color(0xFF8E0D1A);
+  // Brand (red) palette — original M-Tek tokens, unchanged.
+  static const brand700 = Color(0xFFA50F1E);
   static const brand600 = Color(0xFFC8102E);
   static const brand500 = Color(0xFFE11D2E);
   static const brand400 = Color(0xFFEF2D3C);
@@ -58,7 +58,7 @@ abstract final class Mtek {
 
   // Gradients
   static const brandGradient = LinearGradient(
-    colors: [Color(0xFFC8102E), Color(0xFF8E0D1A)],
+    colors: [Color(0xFFC8102E), Color(0xFFA50F1E)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
