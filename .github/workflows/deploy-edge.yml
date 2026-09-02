@@ -49,7 +49,7 @@ jobs:
       # route answer "Unknown API route" — this check makes that visible.
       - name: Verify live bundle version
         run: |
-          WANT='2026-09-02d'
+          WANT='2026-09-02e-lazy'
           BODY=""
           for i in $(seq 1 36); do
             BODY=$(curl -s "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health" || true)
@@ -60,6 +60,13 @@ jobs:
           echo "live /health: $BODY"
           echo "$BODY" | grep -q '"ok":true' || echo "::error::/health never returned ok:true — bundle did not activate (boot failure?)"
           echo "$BODY" | grep -q "\"version\":\"$WANT\"" || echo "::error::live bundle version is NOT $WANT"
+          # Deep probes (only meaningful once the bundle activated):
+          DEEP=$(curl -s "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/?deep=1" || true)
+          echo "deep /: $DEEP"
+          echo "$DEEP" | grep -q '"ok":true' || echo "::error::deep /?deep=1 failed — MongoDB boot/connect problem"
+          SIGNUP=$(curl -s -X POST "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/api/auth/signup" -H 'Content-Type: application/json' -d '{}' || true)
+          echo "signup probe: $SIGNUP"
+          echo "$SIGNUP" | grep -q 'Unknown API route' && echo "::error::signup route MISSING — old bundle still serving" || true
         env:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       # TEMPORARY diagnostics: the Actions log host is unreachable from the
