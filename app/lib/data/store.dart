@@ -122,11 +122,18 @@ class AppStore extends ChangeNotifier {
       if (u is Map) {
         remoteRole = '${u['role'] ?? ''}';
         // Reconcile the authoritative server role into the signed-in
-        // identity so a promoted/demoted account (e.g. the CEO) reflects
-        // immediately on the next data reload — no re-login required.
+        // identity so a promoted/demoted account reflects immediately on
+        // the next data reload — no re-login required. EXCEPT the CEO, whose
+        // role is LOCKED to their email: a stale deployed function that
+        // answers role 'sales' must never downgrade the boss to Sales UI.
         final cur = AuthStore.instance.current;
-        if (remoteRole.isNotEmpty && cur != null && cur.role != remoteRole) {
+        final lockedCeo = cur != null && cur.email == AuthStore.ceoEmail;
+        if (remoteRole.isNotEmpty && cur != null && cur.role != remoteRole && !lockedCeo) {
           cur.role = remoteRole;
+          AuthStore.instance.ping();
+        }
+        if (lockedCeo && cur!.role != 'ceo') {
+          cur.role = 'ceo';
           AuthStore.instance.ping();
         }
       }
