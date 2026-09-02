@@ -37,7 +37,7 @@ jobs:
           # DELETE + CREATE: the PATCH-update path has been accepted by the API
           # while the runtime kept serving the previous bundle. A fresh create
           # forces a brand-new function activation (few seconds of downtime).
-          supabase functions deploy data-api2 --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
+          supabase functions deploy data-api2 --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
           CODE=$?
           set -e
           echo "supabase functions deploy exit code: $CODE"
