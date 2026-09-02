@@ -37,7 +37,14 @@ const SERVICE_ROLE =
 // a specific Supabase Auth UID if MTEK_CEO_UID is set as a secret.
 const CEO_EMAIL = 'mtekfiresafetyltd@gmail.com';
 const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
-const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
+// The CEO signature passcode. A Supabase Function Secret (MTEK_CEO_SIG)
+// overrides this when set; the in-code fallback keeps the CEO account
+// signing even on a fresh/forgotten deploy where the secret is missing
+// (owner directive 2026-09-02 — passcode reset to 093618).
+const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') || '093618';
+// True when this GoTrue user is the locked CEO identity (by UID or email).
+const isCeoUser = (id: unknown, email: unknown) =>
+  String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
 
 // CORS: the Android/Windows apps call this function directly (no browser
 // origin to restrict to), so allow any origin but only the methods/headers
@@ -183,6 +190,23 @@ async function auth(req: Request): Promise<Profile> {
     await profiles.updateOne({ _id: user.id }, { $set: { role: 'ceo' } });
     p.role = 'ceo';
   }
+  // Self-heal the CEO's SIGNATURE PASSCODE too: whenever the CEO identity
+  // makes any authenticated call, re-bind the stored sig_hash to the
+  // current CEO_SIG (secret or the in-code fallback 093618). This is what
+  // makes a passcode change (owner directive 2026-09-02 → 093618) take
+  // effect for the CEO's EXISTING profile — an old stored hash would
+  // otherwise reject the new passcode forever. Also guarantees role='ceo'.
+  if (isCeo && CEO_SIG) {
+    const salt = String(p.sig_salt ?? '').slice(0, 16) || crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+    const wantHash = await hashPass(CEO_SIG, salt);
+    if (p.role !== 'ceo' || p.sig_hash !== wantHash) {
+      await profiles.updateOne(
+        { _id: user.id },
+        { $set: { role: 'ceo', sig_salt: salt, sig_hash: wantHash, email: String(user.email ?? '').toLowerCase() } });
+      p.role = 'ceo'; p.sig_salt = salt; p.sig_hash = wantHash;
+      p.email = String(user.email ?? '').toLowerCase();
+    }
+  }
   const value: Profile = {
     uid: user.id, email: String(p.email), name: String(p.full_name),
     role: String(p.role), sig_hash: String(p.sig_hash ?? ''), sig_salt: String(p.sig_salt ?? ''),
@@ -272,13 +296,16 @@ Deno.serve(async (req: Request) => {
       try {
         profile = await auth(new Request('https://internal/', { headers: { authorization: `Bearer ${token}` } }));
       } catch { /* profile warming is best-effort */ }
+      const loginCeo = isCeoUser(u.id, u.email);
       return json({
         access_token: token,
         refresh_token: String(j.refresh_token ?? ''),
         user: {
           uid: String(u.id ?? ''), email: String(u.email ?? ''),
           name: profile?.name ?? String((u.user_metadata as Record<string, unknown> | undefined)?.full_name ?? String(u.email ?? '').split('@')[0]),
-          role: profile?.role ?? 'sales',
+          // The CEO identity is locked by email — a failed/best-effort
+          // profile warm-up must NEVER downgrade the boss to 'sales'.
+          role: profile?.role ?? (loginCeo ? 'ceo' : 'sales'),
         },
       });
     }
@@ -308,13 +335,16 @@ Deno.serve(async (req: Request) => {
       try {
         profile = await auth(new Request('https://internal/', { headers: { authorization: `Bearer ${token}` } }));
       } catch { /* profile warming is best-effort */ }
+      const refreshCeo = isCeoUser(u.id, u.email);
       return json({
         access_token: token,
         refresh_token: String(j.refresh_token ?? refreshToken),
         user: {
           uid: String(u.id ?? ''), email: String(u.email ?? ''),
           name: profile?.name ?? String((u.user_metadata as Record<string, unknown> | undefined)?.full_name ?? String(u.email ?? '').split('@')[0]),
-          role: profile?.role ?? 'sales',
+          // Same CEO lock as /api/auth/login — session restore must not
+          // downgrade the boss either.
+          role: profile?.role ?? (refreshCeo ? 'ceo' : 'sales'),
         },
       });
     }

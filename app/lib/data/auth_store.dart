@@ -372,6 +372,12 @@ class AuthStore extends ChangeNotifier {
         }
       }
     }
+    // The CEO identity is LOCKED to this email across the whole system
+    // (mirrors the offline signIn() lock). Without this, any 'sales' role
+    // coming from the server — an old/stale deployed edge function, a
+    // failed profile warm-up, a cached refresh session — would pin the boss
+    // to the Sales UI for good. Owner directive 2026-09-02.
+    if (mail == ceoEmail && role != 'ceo') role = 'ceo';
     remoteSignInUid = uid;
     users.removeWhere((x) => x.email == mail);
     users.add(StaffUser(
@@ -462,11 +468,15 @@ class AuthStore extends ChangeNotifier {
   void _restoreCachedIdentity(Map<String, dynamic> saved) {
     final mail = '${saved['email'] ?? ''}';
     if (mail.isEmpty) return;
+    // Offline/transient boot must respect the CEO lock too — a stale
+    // 'sales' role saved earlier must never show the boss the Sales UI.
+    var cachedRole = '${saved['role'] ?? 'sales'}';
+    if (mail == ceoEmail && cachedRole != 'ceo') cachedRole = 'ceo';
     users.removeWhere((x) => x.email == mail);
     users.add(StaffUser(
       name: '${saved['name'] ?? mail.split('@').first}',
       email: mail,
-      role: '${saved['role'] ?? 'sales'}',
+      role: cachedRole,
       passwordHash: '',
       signaturePasscodeHash: '',
     ));
