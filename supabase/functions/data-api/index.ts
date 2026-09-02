@@ -22,6 +22,7 @@
 // ============================================================================
 
 // deno-lint-ignore no-import-assertions
+import { MongoClient, ObjectId } from 'https://deno.land/x/mongo@v0.32.0/mod.ts';
 // DRIVER SWAP (edge-runtime activation fix): the official npm:mongodb driver
 // bundles to many MB and the function uploaded but NEVER activated — the
 // platform silently kept serving the last healthy deployment (proven with a
@@ -59,7 +60,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = 'bisect-noimport-2';
+const BUNDLE_VERSION = '2026-09-02g';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -81,7 +82,7 @@ const DB = {
 };
 const SECTION_DBS = Object.values(DB);
 
-let client: any = null; // BISECT: import removed
+let client: MongoClient | null = null;
 async function db(name: string) {
   if (!client) {
     client = new MongoClient();
@@ -287,9 +288,10 @@ Deno.serve(async (req: Request) => {
   const route = `${req.method} ${path}`;
 
   try {
-    if (route === 'GET /' || route === 'GET /health') {
-      // Deliberately NO DB work here: /health is the boot/activation probe.
-      // Deep (DB-touching) check: GET /?deep=1
+    // Boot/activation probe — responds to ANY method (GET/HEAD/POST alike)
+    // so HEAD-only fetchers can read the live bundle version. Deliberately NO
+    // DB work; deep (DB-touching) check: GET /?deep=1
+    if (path === '/' || path === '/health') {
       if (url.searchParams.get('deep') === '1') {
         await ensureCore();
         return json({ ok: true, version: BUNDLE_VERSION, databases: SECTION_DBS, serials: await peekSerials() });
