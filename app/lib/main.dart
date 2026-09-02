@@ -31,22 +31,28 @@ class _FriendlyError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Card(
-        margin: const EdgeInsets.all(24),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.error_outline, size: 40, color: Mtek.gold500),
-              SizedBox(height: 12),
-              Text('Something went wrong here.',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              SizedBox(height: 6),
-              Text('Please go back and try again.',
-                  style: TextStyle(color: Mtek.gray500)),
-            ],
+    // Full-screen branded surface — a caught build error must never read as
+    // a "black screen" (the bare Center previously rendered on a black
+    // fallback background when no Material ancestor was above it).
+    return Scaffold(
+      backgroundColor: Mtek.gray50,
+      body: Center(
+        child: Card(
+          margin: const EdgeInsets.all(24),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.error_outline, size: 40, color: Mtek.gold500),
+                SizedBox(height: 12),
+                Text('Something went wrong here.',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                SizedBox(height: 6),
+                Text('Please go back and try again.',
+                    style: TextStyle(color: Mtek.gray500)),
+              ],
+            ),
           ),
         ),
       ),
@@ -101,6 +107,20 @@ class MtekApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       scrollBehavior: MtekScrollBehavior(),
       theme: MtekTheme.light(),
+      // Clamp the device text-scale (owner's phone uses a very large system
+      // font). At scale ≥1.5 every fixed-width row in the app overflowed,
+      // painting the yellow/black "overflow" stripes over each screen and
+      // blowing dialogs wider than the display. 1.4 keeps text accessible
+      // while layouts stay intact; layouts themselves are responsive.
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(
+            textScaler: mq.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.4),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: AnimatedBuilder(
         animation: Listenable.merge([AuthStore.instance, AppStore.instance]),
         builder: (context, _) {

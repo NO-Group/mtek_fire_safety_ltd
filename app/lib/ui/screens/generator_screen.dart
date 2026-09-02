@@ -77,17 +77,42 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: SegmentedButton<DocType>(
-            segments: const [
-              ButtonSegment(value: DocType.receipt, icon: Icon(Icons.receipt_long_outlined), label: Text('Receipt')),
-              ButtonSegment(value: DocType.invoice, icon: Icon(Icons.request_quote_outlined), label: Text('Invoice')),
-              ButtonSegment(value: DocType.mils, icon: Icon(Icons.build_circle_outlined), label: Text('MILS')),
-              ButtonSegment(value: DocType.waybill, icon: Icon(Icons.local_shipping_outlined), label: Text('Waybill')),
-              ButtonSegment(value: DocType.deliveryNote, icon: Icon(Icons.inventory_2_outlined), label: Text('Delivery')),
-            ],
-            selected: {_type},
-            onSelectionChanged: (s) => setState(() => _type = s.first),
-          ),
+          // Responsive type switcher: the 5-segment SegmentedButton is wider
+          // than a phone screen and painted overflow stripes; narrow widths
+          // get a wrapping chip row instead.
+          child: LayoutBuilder(builder: (context, box) {
+            const specs = <(DocType, IconData, String)>[
+              (DocType.receipt, Icons.receipt_long_outlined, 'Receipt'),
+              (DocType.invoice, Icons.request_quote_outlined, 'Invoice'),
+              (DocType.mils, Icons.build_circle_outlined, 'MILS'),
+              (DocType.waybill, Icons.local_shipping_outlined, 'Waybill'),
+              (DocType.deliveryNote, Icons.inventory_2_outlined, 'Delivery'),
+            ];
+            if (box.maxWidth < 640) {
+              return Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (t, ic, lb) in specs)
+                    ChoiceChip(
+                      avatar: Icon(ic, size: 15, color: _type == t ? Mtek.brand600 : Mtek.gray500),
+                      label: Text(lb),
+                      selected: _type == t,
+                      selectedColor: Mtek.brandTint,
+                      onSelected: (_) => setState(() => _type = t),
+                    ),
+                ],
+              );
+            }
+            return SegmentedButton<DocType>(
+              segments: [
+                for (final (t, ic, lb) in specs)
+                  ButtonSegment(value: t, icon: Icon(ic), label: Text(lb)),
+              ],
+              selected: {_type},
+              onSelectionChanged: (s) => setState(() => _type = s.first),
+            );
+          }),
         ),
         Expanded(
           child: ListView(
@@ -337,47 +362,87 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
           margin: const EdgeInsets.only(bottom: 8),
           child: Padding(
             padding: const EdgeInsets.all(10),
-            child: Row(children: [
-              Expanded(
-                flex: 4,
-                child: TextFormField(
-                  initialValue: _invoice.rows[i].description,
-                  decoration: const InputDecoration(labelText: 'Description', isDense: true),
-                  onChanged: (v) => _invoice.rows[i].description = v,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextFormField(
-                  initialValue: _invoice.rows[i].qty == 1 ? '1' : _invoice.rows[i].qty.toString(),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Qty', isDense: true),
-                  onChanged: (v) => setState(() => _invoice.rows[i].qty = double.tryParse(v) ?? 0),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: TextFormField(
-                  initialValue: _invoice.rows[i].rate == 0 ? '' : _invoice.rows[i].rate.toString(),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Rate (₦)', isDense: true),
-                  onChanged: (v) => setState(() => _invoice.rows[i].rate = double.tryParse(v) ?? 0),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 86,
-                child: Text(fmt.naira(_invoice.rows[i].amount), textAlign: TextAlign.right,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              ),
-              IconButton(
+            // Responsive ledger row: the desktop one-line row (description +
+            // qty + rate + amount + delete) needs ~520px; below that it
+            // overflowed, so phones get a two-line layout instead.
+            child: LayoutBuilder(builder: (context, box) {
+              final row = _invoice.rows[i];
+              final deleteBtn = IconButton(
                 icon: const Icon(Icons.close, size: 16),
                 onPressed: _invoice.rows.length > 1
                     ? () => setState(() => _invoice.rows.removeAt(i))
                     : null,
-              ),
-            ]),
+              );
+              final amountText = () => Text(fmt.naira(row.amount),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
+              if (box.maxWidth < 520) {
+                return Column(
+                  children: [
+                    TextFormField(
+                      initialValue: row.description,
+                      decoration: const InputDecoration(labelText: 'Description', isDense: true),
+                      onChanged: (v) => row.description = v,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: row.qty == 1 ? '1' : row.qty.toString(),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'Qty', isDense: true),
+                          onChanged: (v) => setState(() => row.qty = double.tryParse(v) ?? 0),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: row.rate == 0 ? '' : row.rate.toString(),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'Rate (₦)', isDense: true),
+                          onChanged: (v) => setState(() => row.rate = double.tryParse(v) ?? 0),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: amountText()),
+                      deleteBtn,
+                    ]),
+                  ],
+                );
+              }
+              return Row(children: [
+                Expanded(
+                  flex: 4,
+                  child: TextFormField(
+                    initialValue: row.description,
+                    decoration: const InputDecoration(labelText: 'Description', isDense: true),
+                    onChanged: (v) => row.description = v,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    initialValue: row.qty == 1 ? '1' : row.qty.toString(),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Qty', isDense: true),
+                    onChanged: (v) => setState(() => row.qty = double.tryParse(v) ?? 0),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: TextFormField(
+                    initialValue: row.rate == 0 ? '' : row.rate.toString(),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Rate (₦)', isDense: true),
+                    onChanged: (v) => setState(() => row.rate = double.tryParse(v) ?? 0),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(width: 86, child: amountText()),
+                deleteBtn,
+              ]);
+            }),
           ),
         ),
     ];
@@ -449,39 +514,82 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(10),
-        child: Column(
-          children: [
-            for (final wc in MtekForms.weightClasses)
-              Row(children: [
-                SizedBox(width: 52, child: Text(wc.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                Expanded(
-                  child: Slider(
-                    value: _mils.weightQty[wc.kg] ?? 0,
-                    min: 0,
-                    max: 60,
-                    divisions: 60,
-                    label: '${(_mils.weightQty[wc.kg] ?? 0).round()}',
-                    activeColor: Mtek.brand600,
-                    onChanged: (v) => setState(() => _mils.weightQty[wc.kg] = v),
-                  ),
-                ),
-                SizedBox(
-                  width: 44,
-                  child: Text('${(_mils.weightQty[wc.kg] ?? 0).round()}',
-                      textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w800)),
-                ),
-                SizedBox(
-                  width: 110,
-                  child: TextFormField(
-                    initialValue: _mils.weightRate[wc.kg]?.toString() ?? '',
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Rate', isDense: true),
-                    onChanged: (v) => _mils.weightRate[wc.kg] = double.tryParse(v) ?? 0,
-                  ),
-                ),
-              ]),
-          ],
-        ),
+        // Responsive: the single-line row (label + slider + qty + rate) needs
+        // ~480px; phones get a two-line row so nothing overflows.
+        child: LayoutBuilder(builder: (context, box) {
+          final narrow = box.maxWidth < 480;
+          return Column(
+            children: [
+              for (final wc in MtekForms.weightClasses)
+                if (narrow) ...[
+                  Row(children: [
+                    SizedBox(
+                        width: 52,
+                        child: Text(wc.label,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                    const Spacer(),
+                    Text('${(_mils.weightQty[wc.kg] ?? 0).round()}',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ]),
+                  Row(children: [
+                    Expanded(
+                      child: Slider(
+                        value: _mils.weightQty[wc.kg] ?? 0,
+                        min: 0,
+                        max: 60,
+                        divisions: 60,
+                        label: '${(_mils.weightQty[wc.kg] ?? 0).round()}',
+                        activeColor: Mtek.brand600,
+                        onChanged: (v) => setState(() => _mils.weightQty[wc.kg] = v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 110,
+                      child: TextFormField(
+                        initialValue: _mils.weightRate[wc.kg]?.toString() ?? '',
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Rate', isDense: true),
+                        onChanged: (v) => _mils.weightRate[wc.kg] = double.tryParse(v) ?? 0,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 6),
+                ] else
+                  Row(children: [
+                    SizedBox(
+                        width: 52,
+                        child: Text(wc.label,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                    Expanded(
+                      child: Slider(
+                        value: _mils.weightQty[wc.kg] ?? 0,
+                        min: 0,
+                        max: 60,
+                        divisions: 60,
+                        label: '${(_mils.weightQty[wc.kg] ?? 0).round()}',
+                        activeColor: Mtek.brand600,
+                        onChanged: (v) => setState(() => _mils.weightQty[wc.kg] = v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 44,
+                      child: Text('${(_mils.weightQty[wc.kg] ?? 0).round()}',
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                    SizedBox(
+                      width: 110,
+                      child: TextFormField(
+                        initialValue: _mils.weightRate[wc.kg]?.toString() ?? '',
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Rate', isDense: true),
+                        onChanged: (v) => _mils.weightRate[wc.kg] = double.tryParse(v) ?? 0,
+                      ),
+                    ),
+                  ]),
+            ],
+          );
+        }),
       ),
     );
   }
@@ -489,27 +597,43 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
   Widget _milsComponentRow(String c) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Row(children: [
-        SizedBox(width: 90, child: Text(c, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-        Expanded(
-          child: TextFormField(
-            initialValue: (_mils.componentQty[c] ?? 0).toString(),
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Qty', isDense: true),
-            onChanged: (v) => setState(() => _mils.componentQty[c] = double.tryParse(v) ?? 0),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
+      child: LayoutBuilder(builder: (context, box) {
+        final qtyField = TextFormField(
+          initialValue: (_mils.componentQty[c] ?? 0).toString(),
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Qty', isDense: true),
+          onChanged: (v) => setState(() => _mils.componentQty[c] = double.tryParse(v) ?? 0),
+        );
+        final rateField = Expanded(
           flex: 2,
           child: TextFormField(
             initialValue: _mils.componentRate[c]?.toString() ?? '',
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Rate (₦)', isDense: true),
-            onChanged: (v) => setState(() => _mils.componentRate[c] = double.tryParse(v) ?? 0),
+            decoration: const InputDecoration(labelText: 'Rate (\u20a6)', isDense: true),
+            onChanged: (v) => _mils.componentRate[c] = double.tryParse(v) ?? 0,
           ),
-        ),
-      ]),
+        );
+        if (box.maxWidth < 400) {
+          // Narrow: stacked label-over-fields so the 90px label never
+          // squeezes the fields into an overflow.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(c, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 4),
+              Row(children: [Expanded(child: qtyField), const SizedBox(width: 8), rateField]),
+            ],
+          );
+        }
+        return Row(children: [
+          SizedBox(
+              width: 90,
+              child: Text(c, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+          Expanded(child: qtyField),
+          const SizedBox(width: 8),
+          rateField,
+        ]);
+      }),
     );
   }
 

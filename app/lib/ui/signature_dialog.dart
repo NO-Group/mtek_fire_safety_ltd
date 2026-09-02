@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
@@ -9,6 +12,21 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
   final auth = AuthStore.instance;
   final passcode = TextEditingController();
   String? error;
+
+  // Decode the stored signature ONCE, defensively: a malformed/legacy
+  // signature value must never throw inside the dialog's build method.
+  Uint8List? sigBytes;
+  final storedSig = auth.current?.signaturePng;
+  if (storedSig != null && storedSig.isNotEmpty) {
+    try {
+      final raw = storedSig.startsWith('data:')
+          ? Uri.parse(storedSig).data?.contentAsBytes()
+          : null;
+      sigBytes = raw ?? base64Decode(storedSig.split(',').last);
+    } catch (_) {
+      sigBytes = null;
+    }
+  }
 
   final ok = await showDialog<bool>(
     context: context,
@@ -30,14 +48,9 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
               'This document will be digitally signed by ${auth.current?.name}.',
               style: const TextStyle(color: Colors.grey),
             ),
-            if (auth.current?.signaturePng != null) ...[
+            if (sigBytes != null) ...[
               const SizedBox(height: 10),
-              Image.memory(
-                // stored as data URL; strip the prefix for Image.memory
-                Uri.parse(auth.current!.signaturePng!).data!.contentAsBytes(),
-                height: 44,
-                alignment: Alignment.centerLeft,
-              ),
+              Image.memory(sigBytes, height: 44, alignment: Alignment.centerLeft),
             ],
             const SizedBox(height: 14),
             TextField(
@@ -47,6 +60,9 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
               decoration: InputDecoration(
                 labelText: 'Signature passcode',
                 errorText: error,
+                helperText: auth.isCeo
+                    ? 'CEO default: 093618 — rotate it in Settings → Account'
+                    : null,
                 prefixIcon: const Icon(Icons.password_outlined),
               ),
               onSubmitted: (_) => setState(() {}),

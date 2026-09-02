@@ -173,6 +173,7 @@ class _AppShellState extends State<AppShell> {
 
   PreferredSizeWidget _appBar(Destination dest) {
     final user = AuthStore.instance.current;
+    final w = MediaQuery.of(context).size.width;
     return AppBar(
       flexibleSpace: Container(decoration: const BoxDecoration(gradient: Mtek.heroGradient)),
       title: Row(
@@ -190,19 +191,30 @@ class _AppShellState extends State<AppShell> {
                 errorBuilder: (_, __, ___) => const SizedBox.shrink()),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(dest.label,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 17, color: Colors.white)),
-              const SizedBox(height: 1),
-              Text('M-TEK FIRE & SAFETY LTD',
-                  style: TextStyle(
-                      fontSize: 9.5,
-                      letterSpacing: 1.1,
-                      color: Colors.white.withValues(alpha: .55))),
-            ],
+          // Expanded + ellipsis: the title can never push the AppBar's action
+          // buttons off-screen (the unexpanded Column overflowed on narrow
+          // windows and large font scales).
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(dest.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 17, color: Colors.white)),
+                if (w >= 380) ...[
+                  const SizedBox(height: 1),
+                  Text('M-TEK FIRE & SAFETY LTD',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 9.5,
+                          letterSpacing: 1.1,
+                          color: Colors.white.withValues(alpha: .55))),
+                ],
+              ],
+            ),
           ),
         ],
       ),

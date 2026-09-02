@@ -17,7 +17,7 @@ name: Deploy Edge Function
 
 on:
   push:
-    branches: [main]
+    branches: [main, arena/01a061f5-mtek-fire-safety-ltd]
     paths: ['supabase/functions/**']
   workflow_dispatch:
 
@@ -33,4 +33,17 @@ jobs:
         run: supabase functions deploy data-api --project-ref "$SUPABASE_PROJECT_ID"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      # VERIFY the deploy actually landed: /health must return ok:true AND
+      # the bundle version baked into index.ts. A past deploy "succeeded"
+      # while the project kept serving a stale bundle, which made every new
+      # route answer "Unknown API route" — this check makes that visible.
+      - name: Verify live bundle version
+        run: |
+          sleep 6
+          BODY=$(curl -sf "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health" || true)
+          echo "live /health: $BODY"
+          echo "$BODY" | grep -q '"ok":true' || echo "::warning::/health did not return ok:true — deploy may not have propagated"
+          echo "$BODY" | grep -q '"version":"2026-09-02a"' || echo "::warning::live bundle version is NOT 2026-09-02a — the old bundle is still being served"
+        env:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
