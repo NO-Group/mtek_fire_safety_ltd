@@ -21,17 +21,15 @@
 //                 Authorization: Bearer <Supabase JWT>
 // ============================================================================
 
-// LAZY driver import — edge-runtime boot fix. A STATIC `import 'npm:mongodb'`
-// at module scope made this function upload but NEVER activate: the platform
-// silently kept serving the last healthy deployment (verified with a minimal
-// canary bundle that activated instantly). Loading the driver on first DB use
-// lets the worker boot instantly; data routes import it on demand.
-type Mongo = typeof import('npm:mongodb@6.3.0');
-let mongoMod: Mongo | null = null;
-async function mongo(): Promise<Mongo> {
-  if (!mongoMod) mongoMod = await import('npm:mongodb@6.3.0');
-  return mongoMod;
-}
+// deno-lint-ignore no-import-assertions
+import { MongoClient, ObjectId } from 'https://deno.land/x/mongo@v0.32.0/mod.ts';
+// DRIVER SWAP (edge-runtime activation fix): the official npm:mongodb driver
+// bundles to many MB and the function uploaded but NEVER activated — the
+// platform silently kept serving the last healthy deployment (proven with a
+// minimal canary that activated instantly, and with a lazy-import variant
+// that still failed). x/mongo is a small pure-Deno driver with the same
+// CRUD surface this API uses (find/sort/limit/toArray, insertOne, updateOne,
+// updateMany, $-operators are all server-side and driver-agnostic).
 
 // ---- environment (Function secrets — see header comment above) --------------
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Supabase
@@ -62,7 +60,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-02e-lazy';
+const BUNDLE_VERSION = '2026-09-02f-xmongo';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -84,14 +82,13 @@ const DB = {
 };
 const SECTION_DBS = Object.values(DB);
 
-let client: InstanceType<Mongo['MongoClient']> | null = null;
+let client: MongoClient | null = null;
 async function db(name: string) {
-  const { MongoClient } = await mongo();
   if (!client) {
-    client = new MongoClient(Deno.env.get('MONGODB_URI') ?? '', { appName: 'mtek-edge' });
+    client = new MongoClient();
+    await client.connect(Deno.env.get('MONGODB_URI') ?? '');
   }
-  if (!client.topology || !client.topology.isConnected()) await client.connect();
-  return client.db(name);
+  return client.database(name);
 }
 const coll = {
   serials: () => db(DB.core).then(d => d.collection('serials')),
@@ -898,7 +895,6 @@ Deno.serve(async (req: Request) => {
         const b = await req.json();
         const id = String(b.id ?? '');
         if (!id) throw new HttpErr(400, 'Notification id required');
-        const { ObjectId } = await mongo();
         let oid: InstanceType<typeof ObjectId>;
         try {
           oid = new ObjectId(id);

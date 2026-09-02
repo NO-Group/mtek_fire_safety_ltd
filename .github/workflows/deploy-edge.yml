@@ -49,7 +49,7 @@ jobs:
       # route answer "Unknown API route" — this check makes that visible.
       - name: Verify live bundle version
         run: |
-          WANT='2026-09-02e-lazy'
+          WANT='2026-09-02f-xmongo'
           BODY=""
           for i in $(seq 1 36); do
             BODY=$(curl -s "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health" || true)
