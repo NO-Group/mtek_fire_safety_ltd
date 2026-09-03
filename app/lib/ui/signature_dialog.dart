@@ -66,9 +66,6 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
               decoration: InputDecoration(
                 labelText: 'Signature passcode',
                 errorText: error,
-                helperText: auth.isCeo
-                    ? 'CEO default: 093618 — rotate it in Settings → Account'
-                    : null,
                 prefixIcon: const Icon(Icons.password_outlined),
               ),
               onSubmitted: (_) => setState(() {}),

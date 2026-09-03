@@ -8,12 +8,10 @@
 /// (The anon key is a PUBLIC client key by design; all authority is
 /// enforced server-side by the data API.)
 abstract final class Env {
-  /// TEMPORARY (owner directive 2026-09-03): the "Sign to issue" passcode
-  /// pop-up is switched OFF for every user. Documents are still stamped
-  /// with the signed-in user's name/signature — only the passcode prompt
-  /// is skipped. Set back to false to restore the gate (the server side
-  /// is controlled by the SIGNATURE_GATE constant in data-api2/index.ts).
-  static const bool signatureGateDisabled = true;
+  /// "Sign to issue" passcode gate. `true` skips the passcode prompt for
+  /// everyone (was used temporarily on 2026-09-03). Keep in step with the
+  /// SIGNATURE_GATE constant in supabase/functions/data-api2/index.ts.
+  static const bool signatureGateDisabled = false;
 
   static const supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',

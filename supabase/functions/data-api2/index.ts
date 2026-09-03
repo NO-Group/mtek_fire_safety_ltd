@@ -59,7 +59,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-03g';
+const BUNDLE_VERSION = '2026-09-03h';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -247,9 +247,9 @@ function requireRole(user: Profile, roles: string[], what: string) {
   }
 }
 
-// TEMPORARY (owner directive 2026-09-03): signature passcode gate OFF for
-// everyone. Set to true to restore the passcode check server-side.
-const SIGNATURE_GATE = false;
+// Signature passcode gate (restored 2026-09-03). Set to false to skip the
+// passcode check server-side (keep in step with Env.signatureGateDisabled).
+const SIGNATURE_GATE = true;
 
 async function verifyPasscode(user: Profile, passcode: string) {
   if (!SIGNATURE_GATE) return; // gate disabled — every signed-in user may issue
