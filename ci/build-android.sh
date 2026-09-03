@@ -38,7 +38,24 @@ cd "$(cd "$(dirname "$0")" && pwd)/../app"
 flutter pub get
 # Render every document type headlessly first: a PDF layout/asset bug must
 # fail the build here with the real exception (see app/test/pdf_build_test.dart).
-flutter test test/pdf_build_test.dart
+set +e
+flutter test test/pdf_build_test.dart > "${RUNNER_TEMP:-/tmp}/pdf-test.log" 2>&1
+TEST_RC=$?
+set -e
+tail -80 "${RUNNER_TEMP:-/tmp}/pdf-test.log"
+# publish the test log to the rolling release so it can be read remotely
+R="${GITHUB_REPOSITORY:-NO-Group/mtek_fire_safety_ltd}"
+if command -v gh >/dev/null && [ -n "${GH_TOKEN:-}" ]; then
+  RID=$(gh api "repos/$R/releases/tags/ci" -q .id 2>/dev/null || true)
+  if [ -n "$RID" ]; then
+    AID=$(gh api "repos/$R/releases/$RID/assets" -q '.[] | select(.name=="pdf-test.log") | .id' 2>/dev/null || true)
+    [ -n "$AID" ] && gh api -X DELETE "repos/$R/releases/assets/$AID" >/dev/null 2>&1 || true
+    curl -sf -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: text/plain" \
+      --data-binary @"${RUNNER_TEMP:-/tmp}/pdf-test.log" \
+      "https://uploads.github.com/repos/$R/releases/$RID/assets?name=pdf-test.log" >/dev/null || true
+  fi
+fi
+[ "$TEST_RC" -eq 0 ] || { echo "PDF render test FAILED (see pdf-test.log on the ci release)"; exit "$TEST_RC"; }
 flutter build apk --release
 
 APK="build/app/outputs/flutter-apk/app-release.apk"
