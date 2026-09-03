@@ -60,7 +60,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-03d';
+const BUNDLE_VERSION = '2026-09-03e';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -309,6 +309,23 @@ Deno.serve(async (req: Request) => {
     // Boot/activation probe — responds to ANY method (GET/HEAD/POST alike)
     // so HEAD-only fetchers can read the live bundle version. Deliberately NO
     // DB work; deep (DB-touching) check: GET /?deep=1
+    // TEMPORARY diagnostics: describe the MONGODB_URI secret WITHOUT leaking
+    // it (user, host, password length + whether it holds URL-special chars).
+    if (path === '/health/mongo') {
+      const raw = Deno.env.get('MONGODB_URI') ?? '';
+      let info: Record<string, unknown> = { set: raw.length > 0, length: raw.length };
+      const m = raw.match(/^(mongodb(?:\+srv)?):\/\/([^:@\/]*)(?::([^@]*))?@([^\/?]+)([^?]*)?(\?.*)?$/);
+      if (m) {
+        info = { ...info, scheme: m[1], user: m[2], passwordLength: (m[3] ?? '').length,
+          passwordHasSpecial: /[^A-Za-z0-9]/.test(m[3] ?? ''), passwordHasPercent: (m[3] ?? '').includes('%'),
+          host: m[4], path: m[5] ?? '', query: m[6] ?? '' };
+      } else {
+        info = { ...info, parse: 'FAILED — not user:pass@host form', startsWith: raw.slice(0, 14), hasSpaces: /\s/.test(raw), hasQuotes: /["'<>]/.test(raw) };
+      }
+      let connect = 'not tried';
+      try { await db(DB.core); connect = 'ok'; } catch (e) { connect = String((e as Error)?.message ?? e).slice(0, 200); }
+      return json({ ...info, connect });
+    }
     if (path === '/' || path === '/health') {
       if (url.searchParams.get('deep') === '1') {
         await ensureCore();
