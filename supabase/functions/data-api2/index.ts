@@ -21,15 +21,14 @@
 //                 Authorization: Bearer <Supabase JWT>
 // ============================================================================
 
-// deno-lint-ignore no-import-assertions
-import { MongoClient, ObjectId } from 'https://deno.land/x/mongo@v0.32.0/mod.ts';
-// DRIVER SWAP (edge-runtime activation fix): the official npm:mongodb driver
-// bundles to many MB and the function uploaded but NEVER activated — the
-// platform silently kept serving the last healthy deployment (proven with a
-// minimal canary that activated instantly, and with a lazy-import variant
-// that still failed). x/mongo is a small pure-Deno driver with the same
-// CRUD surface this API uses (find/sort/limit/toArray, insertOne, updateOne,
-// updateMany, $-operators are all server-side and driver-agnostic).
+import { MongoClient, ObjectId } from 'npm:mongodb@6.3.0';
+// DRIVER: official npm:mongodb. A 3-driver probe from a GitHub runner
+// (2026-09-03, same URI/second) showed Node mongodb + Deno npm:mongodb
+// CONNECTED while deno.land/x/mongo@v0.32.0 failed with Atlas "bad auth" —
+// the pure-Deno driver's SCRAM handshake is rejected by this cluster, so the
+// weeks of "bad auth" were never a credentials problem. The earlier npm
+// activation trouble was tied to the corrupted `data-api` function name,
+// which is no longer used (this is data-api2, delete+create on each deploy).
 
 // ---- environment (Function secrets — see header comment above) --------------
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Supabase
@@ -60,7 +59,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-03e';
+const BUNDLE_VERSION = '2026-09-03f';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -85,10 +84,11 @@ const SECTION_DBS = Object.values(DB);
 let client: MongoClient | null = null;
 async function db(name: string) {
   if (!client) {
-    client = new MongoClient();
-    await client.connect(Deno.env.get('MONGODB_URI') ?? '');
+    const c = new MongoClient(Deno.env.get('MONGODB_URI') ?? '', { serverSelectionTimeoutMS: 8000 });
+    await c.connect();
+    client = c;
   }
-  return client.database(name);
+  return client.db(name);
 }
 const coll = {
   serials: () => db(DB.core).then(d => d.collection('serials')),
@@ -110,10 +110,9 @@ const coll = {
 
 // ---- helpers ----------------------------------------------------------------
 const pad9 = (n: number) => String(n).padStart(9, '0');
-// x/mongo's insertOne resolves to the new _id itself; the npm driver resolves
-// to { insertedId }. Wrap so the rest of the file can keep using .insertedId.
+// insertOne helper (npm driver resolves to { insertedId }).
 // deno-lint-ignore no-explicit-any
-const ins = async (c: Promise<any>, doc: Record<string, unknown>) => ({ insertedId: await (await c).insertOne(doc) });
+const ins = async (c: Promise<any>, doc: Record<string, unknown>) => (await c).insertOne(doc);
 const fmtN = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
 const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote'];
 const now = () => new Date().toISOString();
@@ -278,10 +277,9 @@ async function ensureCore() {
     c.updateOne({ _id: 'settings' }, { $setOnInsert: { vat_enabled: false, vat_rate: 0.075, watermark: true } }, { upsert: true }));
 }
 async function nextSerial(type: string): Promise<number> {
-  // deno.land/x/mongo has no findOneAndUpdate (that is the npm driver API);
-  // its equivalent is findAndModify with { update, new, upsert }.
-  const out = await (await coll.serials()).findAndModify(
-    { _id: type }, { update: { $inc: { last_used: 1 } }, new: true, upsert: true });
+  const out = await (await coll.serials()).findOneAndUpdate(
+    { _id: type } as Record<string, unknown>, { $inc: { last_used: 1 } },
+    { upsert: true, returnDocument: 'after' });
   return Number(out?.last_used ?? 1);
 }
 async function peekSerials(): Promise<Record<string, number>> {
@@ -801,7 +799,7 @@ Deno.serve(async (req: Request) => {
           customerName = String(c.name);
         } else if (b.customer && String(b.customer.name ?? '').trim().length > 1) {
           const doc = { name: String(b.customer.name).trim(), kind: 'individual', phone: String(b.customer.phone ?? ''), email: String(b.customer.email ?? ''), address: '', credit_balance: 0, created_by: user.uid, created_at: now() };
-          const r = { insertedId: await customers.insertOne(doc) };
+          const r = await customers.insertOne(doc);
           customerId = String(r.insertedId);
           customerName = doc.name;
         }
