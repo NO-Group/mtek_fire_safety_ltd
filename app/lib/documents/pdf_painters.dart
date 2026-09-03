@@ -145,7 +145,7 @@ pw.MultiPage _receiptPage(
       pw.SizedBox(height: 10),
 
       // The Sum of | Being Payment for
-      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Expanded(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(8),
