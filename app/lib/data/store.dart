@@ -23,8 +23,9 @@ export 'seed_import.dart';
 /// built against, now:
 ///   1. loads from the LOCAL CACHE (local_store, JSON per collection),
 ///   2. falls back to the bundled TXT seed (the owner's REAL catalogue),
-///   3. every mutation PERSISTS locally and enqueues a sync record,
-///   4. a sync flush pushes the queue to Supabase REST when configured
+///   3. every mutation PERSISTS locally (offline key per record),
+///   4. a sync flush uploads every record the server does not hold yet
+///      to POST /api/sync/import (idempotent) whenever the API is reachable
 ///      (env.dart) — the app stays fully usable offline (SPEC §5, §12 Phase B).
 class AppStore extends ChangeNotifier {
   AppStore._();
@@ -43,7 +44,6 @@ class AppStore extends ChangeNotifier {
   final List<IssuedDocument> docHistory = [];
 
   StoreSettings settings = StoreSettings();
-  final List<Map<String, dynamic>> _syncQueue = [];
   bool _loaded = false;
   bool get isLoaded => _loaded;
 
@@ -83,7 +83,20 @@ class AppStore extends ChangeNotifier {
     }
     var loadedAny = false;
     if (Env.apiConfigured && AuthStore.instance.accessToken != null) {
-      loadedAny = await _loadRemote();
+      // OFFLINE → SERVER: anything recorded on this device while the data
+      // API was disconnected is uploaded FIRST. Only when nothing is pending
+      // (or the upload succeeded) do we switch to the server dataset —
+      // otherwise the local files would be overwritten and the offline
+      // records silently lost.
+      final clean = await _uploadOfflineData();
+      if (clean) {
+        loadedAny = await _loadRemote();
+        if (loadedAny) {
+          await _markAllKnown();
+        } else {
+          _clearAll(); // partial server data must not mix with the local files
+        }
+      }
     }
     if (!loadedAny) loadedAny = await _loadLocal();
     if (!loadedAny) {
@@ -238,6 +251,22 @@ class AppStore extends ChangeNotifier {
   Future<void> reloadRemote() async {
     if (!Env.apiConfigured || _api == null) return;
     _api!.accessToken = AuthStore.instance.accessToken;
+    // never discard local records the server has not received yet
+    if (!await _uploadOfflineData()) return;
+    _clearAll();
+    final okRemote = await _loadRemote();
+    if (okRemote) {
+      await _persistAll();
+      await _markAllKnown();
+    } else {
+      _clearAll();
+      await _loadLocal();
+    }
+    notifyListeners();
+    pushHomeWidgetStats();
+  }
+
+  void _clearAll() {
     products.clear();
     customers.clear();
     sales.clear();
@@ -247,10 +276,6 @@ class AppStore extends ChangeNotifier {
     milsLogs.clear();
     adjustments.clear();
     docHistory.clear();
-    final okRemote = await _loadRemote();
-    if (okRemote) await _persistAll();
-    notifyListeners();
-    pushHomeWidgetStats();
   }
 
   /// Pushes the three headline figures onto the Android home-screen widget.
@@ -279,6 +304,7 @@ class AppStore extends ChangeNotifier {
   /// signed-in user — CEO, Admin and Sales all see the same feed (owner
   /// directive 2026-09-01). Safe to call repeatedly (e.g. from a poll timer).
   Future<void> refreshNotifications() async {
+    unawaited(flushSyncQueue()); // piggy-back: retry pending offline uploads
     final api = _api;
     if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) {
       await _loadLocalNotifications();
@@ -515,7 +541,9 @@ class AppStore extends ChangeNotifier {
       }
     }
     await _persistAll();
-    if (!serverApplied) {
+    if (serverApplied) {
+      await _markKnown('products', imported.map(productToJson));
+    } else {
       enqueueSync('products', imported.map(productToJson).toList());
       unawaited(flushSyncQueue());
     }
@@ -537,7 +565,9 @@ class AppStore extends ChangeNotifier {
       products[idx] = p;
     }
     await _persistAll();
-    if (!serverApplied) {
+    if (serverApplied) {
+      await _markKnown('products', [productToJson(p)]);
+    } else {
       enqueueSync('products', [productToJson(p)]);
       unawaited(flushSyncQueue());
     }
@@ -695,43 +725,260 @@ class AppStore extends ChangeNotifier {
     }
     await writeStore('products', products.map(productToJson).toList());
     enqueueSync('products', products.map(productToJson).toList());
+    unawaited(flushSyncQueue());
     notifyListeners();
     return added;
   }
 
   // ---------------------------------------------------------------- sync
-  void enqueueSync(String table, List<Map<String, dynamic>> rows) {
-    _syncQueue.add({'table': table, 'rows': rows, 'at': DateTime.now().toIso8601String()});
-    writeStore('sync_queue', _syncQueue);
+  // OFFLINE ↔ SERVER RECONCILIATION. Every record has a stable offline key
+  // (<device>:<table>:<id>:<date>). `_known` holds the keys the server
+  // already has (loaded from it, applied by it, or uploaded). A flush posts
+  // every local record NOT in that set to POST /api/sync/import, which is
+  // idempotent server-side ($setOnInsert by offline_key), so a retry after a
+  // half-failed upload can never duplicate anything.
+  final Set<String> _known = {};
+  bool _knownLoaded = false;
+  String _deviceId = '';
+  bool _uploading = false;
+
+  Future<void> _loadSyncState() async {
+    if (_knownLoaded) return;
+    final st = await readStore('sync_state');
+    _deviceId = '${st['device'] ?? ''}';
+    if (_deviceId.isEmpty) {
+      _deviceId = 'd${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+      await writeStore('sync_state', {'device': _deviceId, 'known': const []});
+    }
+    for (final k in (st['known'] as List? ?? const [])) {
+      _known.add('$k');
+    }
+    _knownLoaded = true;
   }
 
-  /// Pushes the offline queue to Supabase (PostgREST). No-op when the
-  /// backend isn't configured or the device is offline — the queue stays.
-  Future<void> flushSyncQueue() async {
-    if (!Env.apiConfigured || _api == null || _syncQueue.isEmpty) return;
-    if (AuthStore.instance.accessToken != null) _api!.accessToken = AuthStore.instance.accessToken;
-    // Offline-made mutations are replayed to the data API, collection by
-    // collection (never on a failing server response — those stay queued).
-    const endpoints = {
-      'products': '/api/products/upsert',
-      'customers': '/api/customers',
-    };
-    final pending = List.of(_syncQueue);
-    for (final job in pending) {
-      final table = job['table'] as String;
-      final path = endpoints[table];
-      if (path == null) { _syncQueue.remove(job); continue; } // sales/etc are RPC-backed now
-      final rows = job['rows'] as List<dynamic>;
-      try {
-        final res = await _api!.post(path, table == 'products'
-            ? {'products': rows}
-            : (rows.isNotEmpty ? rows.first as Map<String, dynamic> : <String, dynamic>{}));
-        if (res != null && res.ok) _syncQueue.remove(job);
-      } catch (_) {
-        break; // server refused — keep the queue for the next flush
-      }
+  Future<void> _saveSyncState() =>
+      writeStore('sync_state', {'device': _deviceId, 'known': _known.toList()});
+
+  static final _objectId = RegExp(r'^[0-9a-f]{24}$');
+  // Mongo ObjectIds, or customers already uploaded under their offline key
+  // (their server _id IS the key, so they come back as '<device>:c:<id>').
+  static bool _isServerId(String id) => _objectId.hasMatch(id) || id.contains(':c:');
+
+  /// Offline key for a LOCAL JSON row (the same shape the files hold).
+  String? _keyFor(String table, Map<String, dynamic> r) {
+    String id;
+    switch (table) {
+      case 'customers':
+        id = '${r['id'] ?? ''}';
+        if (id.isEmpty || _isServerId(id)) return null; // server customers need no upload
+        return '$_deviceId:c:$id';
+      case 'products':
+        id = '${r['id'] ?? ''}';
+        return id.isEmpty ? null : '$_deviceId:p:$id';
+      case 'sales':
+        id = '${r['id'] ?? ''}';
+        if (id.isEmpty || _isServerId(id)) return null;
+        return '$_deviceId:s:$id:${r['date']}';
+      case 'transactions':
+        id = '${r['id'] ?? ''}';
+        if (id.isEmpty || _isServerId(id)) return null;
+        return '$_deviceId:t:$id:${r['date']}';
+      case 'receipts':
+        id = '${r['number'] ?? ''}';
+        return id.isEmpty ? null : '$_deviceId:r:$id:${r['date']}';
+      case 'invoices':
+        id = '${r['number'] ?? ''}';
+        return id.isEmpty ? null : '$_deviceId:i:$id:${r['issued']}';
+      case 'documents':
+        return '$_deviceId:d:${r['type']}:${r['serial']}';
+      case 'mils_logs':
+        id = '${r['mils_no'] ?? ''}';
+        return id.isEmpty ? null : '$_deviceId:m:$id:${r['service_date']}';
+      case 'stock_adjustments':
+        id = '${r['id'] ?? ''}';
+        if (id.isEmpty || _isServerId(id)) return null;
+        return '$_deviceId:a:$id:${r['date']}';
     }
-    await writeStore('sync_queue', _syncQueue);
+    return null;
+  }
+
+  /// Marks rows the SERVER already holds (applied online or loaded from it).
+  Future<void> _markKnown(String table, Iterable<Map<String, dynamic>> rows) async {
+    await _loadSyncState();
+    var changed = false;
+    for (final r in rows) {
+      final k = _keyFor(table, r);
+      if (k != null && _known.add(k)) changed = true;
+    }
+    if (changed) await _saveSyncState();
+  }
+
+  Future<void> _markAllKnown() async {
+    await _loadSyncState();
+    await _markKnown('customers', customers.map(customerToJson));
+    await _markKnown('products', products.map(productToJson));
+    await _markKnown('sales', sales.map(saleToJson));
+    await _markKnown('transactions', transactions.map(txnToJson));
+    await _markKnown('receipts', receipts.map(receiptToJson));
+    await _markKnown('invoices', invoices.map(invoiceToJson));
+    await _markKnown('documents', docHistory.map((d) => d.toJson()));
+    await _markKnown('mils_logs', milsLogs.map(milsLogToJson));
+    await _markKnown('stock_adjustments', adjustments.map(adjToJson));
+  }
+
+  /// Flags rows as changed so the next flush re-sends them (products carry
+  /// their stock level, so an edit must reach the server again).
+  void enqueueSync(String table, List<Map<String, dynamic>> rows) {
+    if (table != 'products') return; // other tables are append-only by key
+    unawaited(() async {
+      await _loadSyncState();
+      for (final r in rows) {
+        final k = _keyFor(table, r);
+        if (k != null) _known.remove(k);
+      }
+      await _saveSyncState();
+    }());
+  }
+
+  /// Pushes pending offline records to the data API. No-op when the backend
+  /// isn't configured or nothing is pending; safe to call often.
+  Future<void> flushSyncQueue() async {
+    await _uploadOfflineData();
+  }
+
+  Future<List<Map<String, dynamic>>> _rows(String file, Iterable<Map<String, dynamic>> Function() live) async {
+    if (_loaded) return live().toList();
+    return [for (final e in await _readList(file)) if (e is Map) e.cast<String, dynamic>()];
+  }
+
+  /// True when nothing is pending or the upload succeeded; false when
+  /// offline records still wait (server unreachable / rejected).
+  Future<bool> _uploadOfflineData() async {
+    if (!Env.apiConfigured || _api == null || AuthStore.instance.accessToken == null) return false;
+    if (_uploading) return false;
+    _uploading = true;
+    try {
+      await _loadSyncState();
+      _api!.accessToken = AuthStore.instance.accessToken;
+      final custRows = await _rows('customers', () => customers.map(customerToJson));
+      final prodRows = await _rows('products', () => products.map(productToJson));
+      final saleRows = await _rows('sales', () => sales.map(saleToJson));
+      final txnRows = await _rows('transactions', () => transactions.map(txnToJson));
+      final recRows = await _rows('receipts', () => receipts.map(receiptToJson));
+      final invRows = await _rows('invoices', () => invoices.map(invoiceToJson));
+      final docRows = await _rows('doc_history', () => docHistory.map((d) => d.toJson()));
+      final milsRows = await _rows('mils_logs', () => milsLogs.map(milsLogToJson));
+      final adjRows = await _rows('adjustments', () => adjustments.map(adjToJson));
+      final serialsRaw = _loaded ? SerialService.instance.toJson() : await readStore('serials');
+
+      final custName = {for (final c in custRows) '${c['id']}': '${c['name'] ?? ''}'};
+      String? custRef(dynamic id) {
+        final s = '$id';
+        if (s.isEmpty || s == 'null') return null;
+        if (_isServerId(s)) return s;
+        return custName.containsKey(s) ? '$_deviceId:c:$s' : null;
+      }
+      final prodName = {for (final p in prodRows) '${p['id']}': '${p['name'] ?? ''}'};
+
+      final sent = <String>[];
+      List<Map<String, dynamic>> pick(String table, List<Map<String, dynamic>> rows,
+          Map<String, dynamic> Function(Map<String, dynamic>) shape) {
+        final out = <Map<String, dynamic>>[];
+        for (final r in rows) {
+          final k = _keyFor(table, r);
+          if (k == null || _known.contains(k)) continue;
+          out.add({...shape(r), 'offline_key': k});
+          sent.add(k);
+        }
+        return out;
+      }
+
+      final payload = <String, dynamic>{
+        'device': _deviceId,
+        'customers': pick('customers', custRows, (r) => {
+          'name': r['name'], 'is_corporate': r['is_corporate'] == true, 'phone': r['phone'],
+          'email': r['email'], 'address': r['address'], 'credit_balance': r['credit_balance'],
+        }),
+        'products': pick('products', prodRows, (r) => r),
+        'sales': pick('sales', saleRows, (r) {
+          final items = [
+            for (final it in (r['items'] as List? ?? const []))
+              if (it is Map) {
+                'product_id': '${it['product']}', 'name': prodName['${it['product']}'] ?? 'Item',
+                'qty': it['qty'], 'unit_price': it['unit_price'],
+              }
+          ];
+          var subtotal = 0;
+          for (final it in items) subtotal += _asInt(it['qty']) * _asInt(it['unit_price']);
+          return {
+            'id': r['id'], 'created_at': r['date'], 'customer_id': custRef(r['customer']),
+            'customer_name': custName['${r['customer']}'] ?? 'Walk-in customer',
+            'method': r['method'], 'discount': r['discount'], 'items': items,
+            'total': subtotal - _asInt(r['discount']) < 0 ? 0 : subtotal - _asInt(r['discount']),
+          };
+        }),
+        'transactions': pick('transactions', txnRows, (r) => {
+          'txn_type': r['type'], 'method': r['method'], 'amount': r['amount'],
+          'reference': r['reference'], 'txn_date': r['date'],
+        }),
+        'receipts': pick('receipts', recRows, (r) => {
+          'no': r['number'], 'created_at': r['date'], 'amount': r['amount'], 'method': r['method'],
+          'source': '${r['for_doc']}'.startsWith('MTK-INV') ? 'invoice' : 'sale',
+          'reference': r['for_doc'], 'customer_name': r['customer'], 'issued_name': r['issued_by'],
+          'customer_signature': r['customer_signature'],
+        }),
+        'invoices': pick('invoices', invRows, (r) => {
+          'no': r['number'], 'created_at': r['issued'], 'due': r['due'],
+          'customer_id': custRef(r['customer_id']), 'customer_name': r['customer'],
+          'amount_paid': r['amount_paid'], 'total': r['total'],
+          'items': [
+            for (final it in (r['items'] as List? ?? const []))
+              if (it is Map) {'product_id': '${it['product']}', 'name': it['name'], 'qty': it['qty'], 'unit_price': it['unit_price']}
+          ],
+        }),
+        'documents': pick('documents', docRows, (r) => {
+          'doc_type': r['type'], 'serial': r['serial'], 'customer': r['customer'],
+          'customer_contact': r['customer_contact'], 'total': r['total'],
+          'signed_name': r['signed_by'], 'verify_hash': r['verify_hash'], 'issued_at': r['issued_at'],
+        }),
+        'mils': pick('mils_logs', milsRows, (r) => {...r, 'customer_id': custRef(r['customer_id'])}),
+        'adjustments': pick('stock_adjustments', adjRows, (r) => {
+          'product_id': r['product'], 'delta': r['delta'], 'reason': r['reason'],
+          'note': r['note'], 'created_at': r['date'],
+        }),
+        'serials': {
+          ...serialsRaw,
+          'receiptIssue': recRows.fold<int>(0, (m, r) {
+            final n = int.tryParse('${r['number']}'.replaceFirst('MTK-REC-', '')) ?? 0;
+            return n > m ? n : m;
+          }),
+          'invoice': invRows.fold<int>(_asInt(serialsRaw['invoice']), (m, r) {
+            final n = int.tryParse('${r['number']}'.replaceFirst('MTK-INV-', '')) ?? 0;
+            return n > m ? n : m;
+          }),
+        },
+      };
+      if (sent.isEmpty) return true;
+      final res = await _api!.post('/api/sync/import', payload);
+      if (res == null || !res.ok) {
+        debugPrint('offline sync: server unavailable/rejected (${sent.length} pending)');
+        return false;
+      }
+      final body = res.json is Map ? (res.json as Map) : const {};
+      final skipped = {for (final k in (body['skipped'] as List? ?? const [])) '$k'};
+      _known.addAll(sent.where((k) => !skipped.contains(k)));
+      // rows the server refused for this role (e.g. Sales uploading stock
+      // edits) are dropped from the retry set too — they would fail forever
+      _known.addAll(skipped);
+      await _saveSyncState();
+      debugPrint('offline sync: uploaded ${sent.length - skipped.length} records');
+      return true;
+    } catch (e) {
+      debugPrint('offline sync failed: $e');
+      return false;
+    } finally {
+      _uploading = false;
+    }
   }
 
   // ---------------------------------------------------------------- docs
@@ -759,9 +1006,9 @@ class AppStore extends ChangeNotifier {
     unawaited(addLocalNotification('document', 'Document issued',
         '$signedBy issued $type No ${serial.toString().padLeft(9, '0')} for $customer',
         '$type $serial'));
-    if (!serverIssued) {
-      // server already recorded it via mtek_issue_document — local mirror only
-      enqueueSync('documents', [doc.toJson()]);
+    if (serverIssued) {
+      await _markKnown('documents', [doc.toJson()]); // server archive already has it
+    } else {
       unawaited(flushSyncQueue());
     }
     notifyListeners();
@@ -821,6 +1068,10 @@ class AppStore extends ChangeNotifier {
     await writeStore('sales', sales.map(saleToJson).toList());
     await writeStore('adjustments', adjustments.map(adjToJson).toList());
     await writeStore('mils_logs', milsLogs.map(milsLogToJson).toList());
+    await writeStore('transactions', transactions.map(txnToJson).toList());
+    await writeStore('receipts', receipts.map(receiptToJson).toList());
+    await writeStore('invoices', invoices.map(invoiceToJson).toList());
+    await writeStore('doc_history', docHistory.map((d) => d.toJson()).toList());
   }
 
   // ------------------------------------------------------------ analytics
@@ -1013,9 +1264,15 @@ class AppStore extends ChangeNotifier {
     await writeStore('receipts', receipts.map(receiptToJson).toList());
     await writeStore('invoices', invoices.map(invoiceToJson).toList());
     if (enqueue) {
-      // only queue when the server has NOT already applied this sale
-      enqueueSync('sales', [saleToJson(sale)]);
-      unawaited(flushSyncQueue());
+      unawaited(flushSyncQueue()); // server did not apply it — upload when reachable
+    } else {
+      // the server already holds this sale + its receipt/transaction/invoice
+      await _markKnown('sales', [saleToJson(sale)]);
+      if (transactions.isNotEmpty) await _markKnown('transactions', [txnToJson(transactions.last)]);
+      if (receipts.isNotEmpty) await _markKnown('receipts', [receiptToJson(receipts.last)]);
+      if (sale.method == PaymentMethod.credit && invoices.isNotEmpty) {
+        await _markKnown('invoices', [invoiceToJson(invoices.last)]);
+      }
     }
   }
 
@@ -1046,8 +1303,14 @@ class AppStore extends ChangeNotifier {
     await writeStore('invoices', invoices.map(invoiceToJson).toList());
     await writeStore('transactions', transactions.map(txnToJson).toList());
     await writeStore('receipts', receipts.map(receiptToJson).toList());
-    if (!serverApplied) {
-      enqueueSync('invoices', [invoiceToJson(invoices[idx])]);
+    if (serverApplied) {
+      if (transactions.isNotEmpty) await _markKnown('transactions', [txnToJson(transactions.last)]);
+      if (receipts.isNotEmpty) await _markKnown('receipts', [receiptToJson(receipts.last)]);
+    } else {
+      // re-send the invoice so the server picks up the new amount_paid
+      await _loadSyncState();
+      final k = _keyFor('invoices', invoiceToJson(invoices[idx]));
+      if (k != null) _known.remove(k);
       unawaited(flushSyncQueue());
     }
     notifyListeners();
@@ -1110,8 +1373,9 @@ class AppStore extends ChangeNotifier {
     }
     milsLogs.insert(0, log);
     await writeStore('mils_logs', milsLogs.map(milsLogToJson).toList());
-    if (!serverApplied) {
-      enqueueSync('mils_logs', [milsLogToJson(log)]);
+    if (serverApplied) {
+      await _markKnown('mils_logs', [milsLogToJson(log)]);
+    } else {
       unawaited(flushSyncQueue());
     }
     notifyListeners();
@@ -1137,8 +1401,11 @@ class AppStore extends ChangeNotifier {
     adjustments.insert(0, adj);
     await writeStore('products', products.map(productToJson).toList());
     await writeStore('adjustments', adjustments.map(adjToJson).toList());
-    if (!serverApplied) {
-      enqueueSync('stock_adjustments', [adjToJson(adj)]);
+    if (serverApplied) {
+      await _markKnown('stock_adjustments', [adjToJson(adj)]);
+      await _markKnown('products', [productToJson(products[idx])]);
+    } else {
+      enqueueSync('products', [productToJson(products[idx])]);
       unawaited(flushSyncQueue());
     }
     notifyListeners();
@@ -1162,7 +1429,6 @@ class AppStore extends ChangeNotifier {
     customers.add(c);
     unawaited(() async {
       await writeStore('customers', customers.map(customerToJson).toList());
-      enqueueSync('customers', [customerToJson(c)]);
       unawaited(flushSyncQueue());
     }());
     notifyListeners();

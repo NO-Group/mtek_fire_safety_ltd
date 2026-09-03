@@ -59,7 +59,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-03f';
+const BUNDLE_VERSION = '2026-09-03g';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -887,6 +887,125 @@ Deno.serve(async (req: Request) => {
         await audit('documents', 'issue', `${type} ${pad9(serial)}`, user);
         await notify('document', 'Document issued', `${user.name} issued ${type} No ${pad9(serial)} for ${record.customer}`, `${type} ${pad9(serial)}`, user);
         return json({ serial, doc: record, serials: await peekSerials() });
+      }
+      // ---- OFFLINE → SERVER replay -------------------------------------
+      // The apps ran in offline-first mode (Env.offlineDataMode) for a while;
+      // every record made on a device is replayed here IDEMPOTENTLY when the
+      // API is reconnected. Each row carries `offline_key`
+      // (<device>:<table>:<localId>); rows are inserted with $setOnInsert
+      // upserts so a second upload is a no-op. Device-issued numbers
+      // (receipt/invoice/MILS/document serials) are kept EXACTLY as printed,
+      // and the serial counters are raised ($max) past anything a device
+      // already used so future server-issued numbers never collide.
+      case 'POST /api/sync/import': {
+        const b = await req.json();
+        const device = String(b.device ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+        if (!device) throw new HttpErr(400, 'device id required');
+        const canManage = user.role === 'ceo' || user.role === 'admin';
+        const accepted: string[] = [];
+        const skipped: string[] = [];
+        const rowsOf = (k: string): Record<string, unknown>[] =>
+          Array.isArray(b[k]) ? b[k].filter((r: unknown) => r && typeof r === 'object') : [];
+        // deno-lint-ignore no-explicit-any
+        const put = async (c: Promise<any>, key: string, doc: Record<string, unknown>, id?: string) => {
+          const filter = id ? { _id: id } : { offline_key: key };
+          await (await c).updateOne(filter as Record<string, unknown>,
+            { $setOnInsert: { ...doc, offline_key: key, offline_device: device, synced_by: user.uid, synced_at: now() } },
+            { upsert: true });
+          accepted.push(key);
+        };
+        // customers: _id = offline key so sales/invoices/MILS can reference
+        // them by the same string the device used.
+        for (const r of rowsOf('customers')) {
+          const key = String(r.offline_key ?? '');
+          if (!key) continue;
+          await put(coll.customers(), key, {
+            name: String(r.name ?? '').slice(0, 120), kind: r.is_corporate ? 'corporate' : 'individual',
+            phone: String(r.phone ?? ''), email: String(r.email ?? ''), address: String(r.address ?? ''),
+            credit_balance: Number(r.credit_balance) || 0, created_by: user.uid, created_at: String(r.created_at ?? now()),
+          }, key);
+        }
+        for (const r of rowsOf('products')) {
+          const key = String(r.offline_key ?? '');
+          if (!key || !r.id || !r.name) continue;
+          if (!canManage) { skipped.push(key); continue; }
+          // device stock levels are authoritative for the offline period
+          await (await coll.products()).updateOne({ _id: String(r.id) }, { $set: {
+            name: String(r.name), category: r.category ?? 'Fire',
+            cost_price: Number(r.cost_price) || 0, selling_price: Number(r.selling_price) || 0,
+            qty_on_hand: Math.max(0, Math.trunc(Number(r.qty_on_hand) || 0)),
+            reorder_level: Math.max(0, Math.trunc(Number(r.reorder_level) || 0)),
+            unit: r.unit ?? 'unit', is_service: !!r.is_service, updated_at: now(),
+          } }, { upsert: true });
+          accepted.push(key);
+        }
+        for (const r of rowsOf('sales')) {
+          const key = String(r.offline_key ?? ''); if (!key) continue;
+          await put(coll.sales(), key, {
+            customer_id: r.customer_id ?? null, customer_name: String(r.customer_name ?? 'Walk-in customer'),
+            customer_contact: String(r.customer_contact ?? ''), method: String(r.method ?? 'cash'),
+            discount: Number(r.discount) || 0, total: Number(r.total) || 0,
+            items: Array.isArray(r.items) ? r.items : [], signed_by: user.uid, signed_name: String(r.signed_name ?? user.name),
+            customer_signature: String(r.customer_signature ?? ''), created_at: String(r.created_at ?? now()), offline_id: String(r.id ?? ''),
+          });
+        }
+        for (const r of rowsOf('transactions')) {
+          const key = String(r.offline_key ?? ''); if (!key) continue;
+          await put(coll.txns(), key, {
+            txn_type: String(r.txn_type ?? 'salePayment'), method: String(r.method ?? 'cash'), amount: Number(r.amount) || 0,
+            reference: String(r.reference ?? ''), txn_date: String(r.txn_date ?? now()), created_by: user.uid,
+          });
+        }
+        for (const r of rowsOf('receipts')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.no) continue;
+          await put(coll.receipts(), key, {
+            no: String(r.no), amount: Number(r.amount) || 0, method: String(r.method ?? 'cash'),
+            source: String(r.source ?? 'sale'), customer_id: r.customer_id ?? null, customer_name: String(r.customer_name ?? '—'),
+            customer_contact: String(r.customer_contact ?? ''), issued_by: user.uid, issued_name: String(r.issued_name ?? user.name),
+            customer_signature: String(r.customer_signature ?? ''), created_at: String(r.created_at ?? now()),
+          });
+        }
+        for (const r of rowsOf('invoices')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.no) continue;
+          const total = Number(r.total) || 0, paid = Number(r.amount_paid) || 0;
+          await put(coll.invoices(), key, {
+            no: String(r.no), customer_id: r.customer_id ?? null, customer_name: String(r.customer_name ?? '—'),
+            status: paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'sent',
+            subtotal: total, vat: 0, total, amount_paid: paid, items: Array.isArray(r.items) ? r.items : [],
+            issued_by: user.uid, created_at: String(r.created_at ?? now()), updated_at: now(),
+          });
+        }
+        for (const r of rowsOf('mils')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.equipment) continue;
+          if (!canManage) { skipped.push(key); continue; }
+          const { offline_key: _k, ...rest } = r;
+          await put(coll.mils(), key, { ...rest, recorded_by: user.uid, recorded_name: String(r.technician ?? user.name), created_at: String(r.created_at ?? r.service_date ?? now()) });
+        }
+        for (const r of rowsOf('adjustments')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.product_id) continue;
+          if (!canManage) { skipped.push(key); continue; }
+          await put(coll.adjustments(), key, {
+            product_id: String(r.product_id), delta: Math.trunc(Number(r.delta) || 0), reason: String(r.reason ?? 'correction'),
+            note: String(r.note ?? ''), by: user.uid, by_name: user.name, created_at: String(r.created_at ?? now()),
+          });
+        }
+        for (const r of rowsOf('documents')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.doc_type) continue;
+          await put(coll.archive(), key, {
+            doc_type: String(r.doc_type), serial: Number(r.serial) || 0, customer: String(r.customer ?? '—').slice(0, 120),
+            customer_contact: String(r.customer_contact ?? ''), total: Number(r.total) || 0,
+            signed_by: user.uid, signed_name: String(r.signed_name ?? user.name), verify_hash: String(r.verify_hash ?? '').slice(0, 64),
+            filename: `mtek_${r.doc_type}_${r.serial}_offline.pdf`, issued_at: String(r.issued_at ?? now()),
+          });
+        }
+        // raise serial counters past anything the device already issued
+        const serials = (b.serials && typeof b.serials === 'object') ? b.serials as Record<string, unknown> : {};
+        for (const t of BOOK_TYPES) {
+          const v = Math.trunc(Number(serials[t]) || 0);
+          if (v > 0) await (await coll.serials()).updateOne({ _id: t } as Record<string, unknown>, { $max: { last_used: v } }, { upsert: true });
+        }
+        if (accepted.length) await audit('core', 'offline-sync', `${device}: ${accepted.length} records`, user);
+        return json({ ok: true, accepted, skipped, serials: await peekSerials() });
       }
       case 'GET /api/docs/history': {
         const docs = await (await coll.archive()).find({}).sort({ issued_at: -1 }).limit(500).toArray();
