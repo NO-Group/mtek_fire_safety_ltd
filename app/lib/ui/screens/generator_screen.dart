@@ -1167,9 +1167,12 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
     } catch (e) {
       debugPrint('Document PDF build/export failed: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      final why = e.toString().replaceFirst('Exception: ', '').split('\n').first;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: Mtek.danger,
-        content: Text('Document recorded, but the PDF could not be generated — please try again.'),
+        duration: const Duration(seconds: 8),
+        content: Text('Document recorded, but the PDF could not be generated — '
+            '${why.length > 140 ? '${why.substring(0, 140)}…' : why}'),
       ));
     }
   }

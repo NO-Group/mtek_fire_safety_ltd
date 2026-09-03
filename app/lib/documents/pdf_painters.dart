@@ -31,10 +31,8 @@ Future<Uint8List> buildDocument(
 }) async {
   await MtekPdfFonts.load();
   final logo = pw.MemoryImage(logoBytes);
-  final signature = signaturePngBytes == null ? null : pw.MemoryImage(signaturePngBytes);
-  final customerSig = customerSignaturePngBytes == null
-      ? null
-      : pw.MemoryImage(customerSignaturePngBytes);
+  final signature = _safeImage(signaturePngBytes);
+  final customerSig = _safeImage(customerSignaturePngBytes);
 
   final doc = pw.Document();
   switch (type) {
@@ -50,6 +48,21 @@ Future<Uint8List> buildDocument(
       doc.addPage(_deliveryNotePage(logo, signature, customerSig, deliveryNote!, signedBy));
   }
   return doc.save();
+}
+
+/// A PNG that fails to decode (empty capture, legacy/corrupt data URL) is
+/// simply omitted from the document instead of aborting the whole PDF.
+pw.ImageProvider? _safeImage(Uint8List? bytes) {
+  if (bytes == null || bytes.length < 24) return null;
+  try {
+    final img = pw.MemoryImage(bytes);
+    // force header parse now so a bad image fails HERE, not inside save()
+    img.width;
+    img.height;
+    return img;
+  } catch (_) {
+    return null;
+  }
 }
 
 pw.PageTheme _theme(pw.ImageProvider logo, PdfPageFormat format) {
@@ -76,7 +89,7 @@ pw.MultiPage _receiptPage(
 
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4.landscape),
-    maxPages: 2,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 10),
@@ -282,7 +295,7 @@ pw.MultiPage _invoicePage(
 
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4),
-    maxPages: 10,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 8),
@@ -433,7 +446,7 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
 
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4),
-    maxPages: 5,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 6),
@@ -593,7 +606,7 @@ pw.MultiPage _waybillPage(
   ];
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4.portrait),
-    maxPages: 2,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 8),
@@ -762,7 +775,7 @@ pw.MultiPage _deliveryNotePage(
       );
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4.portrait),
-    maxPages: 2,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 8),
