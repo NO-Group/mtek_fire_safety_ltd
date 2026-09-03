@@ -191,33 +191,53 @@ pw.MultiPage _receiptPage(
       ]),
       pw.SizedBox(height: 12),
 
-      // Sign-off boxes
+      // Sign-off boxes. NOTE: no Spacer/Expanded inside these — under
+      // MultiPage that resolves to an infinite height and the pdf package
+      // throws "Widget won't fit into the page (height Infinity)", which
+      // is exactly what made every receipt fail to generate.
       pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Expanded(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(8),
-            height: 52,
+            height: 56,
             decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
-            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text('For: M-TEK FIRE & SAFETY LTD',
-                  style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-              pw.Spacer(),
-              pw.Text(signedBy, style: const pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic)),
-            ]),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('For: M-TEK FIRE & SAFETY LTD',
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                  if (signature != null)
+                    pw.Image(signature, width: 62, height: 20, fit: pw.BoxFit.contain),
+                  if (signature != null) pw.SizedBox(width: 6),
+                  pw.Text(signedBy, style: const pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic)),
+                ]),
+              ],
+            ),
           ),
         ),
         pw.SizedBox(width: 12),
         pw.Expanded(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(8),
-            height: 52,
+            height: 56,
             decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
-            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text("For: CUSTOMER'S/CLIENT",
-                  style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-              pw.Spacer(),
-              if (signature != null) pw.Image(signature, width: 70, height: 24, fit: pw.BoxFit.contain),
-            ]),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text("For: CUSTOMER'S/CLIENT",
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                customerSig != null
+                    ? pw.Image(customerSig, width: 70, height: 24, fit: pw.BoxFit.contain)
+                    : pw.Container(
+                        width: 120,
+                        height: 1,
+                        margin: const pw.EdgeInsets.only(bottom: 4),
+                        color: PdfColors.grey600),
+              ],
+            ),
           ),
         ),
       ]),
