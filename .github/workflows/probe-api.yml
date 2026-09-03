@@ -3,6 +3,9 @@
 name: Probe data-api2
 on:
   workflow_dispatch:
+  push:
+    branches: [arena/**]
+    paths: ['.github/workflows/probe-api.yml']
 jobs:
   probe:
     runs-on: ubuntu-latest
