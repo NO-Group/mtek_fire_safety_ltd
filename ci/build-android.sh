@@ -36,6 +36,9 @@ flutter --version
 # --- 2. Build -----------------------------------------------------------------
 cd "$(cd "$(dirname "$0")" && pwd)/../app"
 flutter pub get
+# Render every document type headlessly first: a PDF layout/asset bug must
+# fail the build here with the real exception (see app/test/pdf_build_test.dart).
+flutter test test/pdf_build_test.dart
 flutter build apk --release
 
 APK="build/app/outputs/flutter-apk/app-release.apk"
