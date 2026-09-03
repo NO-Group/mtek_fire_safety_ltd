@@ -31,6 +31,23 @@ jobs:
           try{await c.connect();console.log('NODE official driver: CONNECTED', JSON.stringify(await c.db('admin').command({ping:1})));
           console.log('databases:', (await c.db().admin().listDatabases()).databases.map(d=>d.name).join(', '));}
           catch(e){console.log('NODE official driver: FAILED ->', e.message)}finally{await c.close()}})()"
+      - name: Remove CI probe test data
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/probe-mongo.txt") 2>&1
+          cd /tmp/n && node -e "
+          const {MongoClient}=require('mongodb');
+          (async()=>{const c=new MongoClient(process.env.URI);await c.connect();
+          const del=async(db,col,q)=>{const r=await c.db(db).collection(col).deleteMany(q);console.log('cleanup',db+'.'+col,r.deletedCount)};
+          const probe={\$regex:'^probe'};
+          await del('mtek_people','profiles',{email:{\$regex:'^probe-.*@example.com$'}});
+          await del('mtek_people','customers',{\$or:[{name:'Probe Customer'},{name:'Offline Cust'},{offline_device:probe}]});
+          for (const col of ['sales','transactions','receipts','invoices','invoice_payments']) await del('mtek_billing',col,{offline_device:probe});
+          await del('mtek_documents','archive',{offline_device:probe});
+          await del('mtek_core','notifications',{created_by_name:'CI Probe'});
+          await del('mtek_audit','events',{by_name:'CI Probe'});
+          await c.db('mtek_core').collection('serials').updateMany({},{\$set:{last_used:0}});
+          console.log('serials reset to 0');
+          await c.close()})()"
       - name: Deno x/mongo v0.32.0 (what the edge function uses)
         if: always()
         run: |
