@@ -9,6 +9,8 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Sign up a probe user, sign in, hit /api/docs/issue
         run: |
