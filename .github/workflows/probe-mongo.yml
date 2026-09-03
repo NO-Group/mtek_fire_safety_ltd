@@ -1,0 +1,68 @@
+# Diagnostics: test the Atlas credentials from a GitHub runner with BOTH the
+# official Node driver and the Deno x/mongo driver the edge function uses.
+# The URI comes from the MONGODB_URI_TEST secret (masked, never in git).
+name: Probe MongoDB
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/**]
+    paths: ['.github/workflows/probe-mongo.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      URI: ${{ secrets.MONGODB_URI_TEST }}
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v1.x }
+      - name: Official Node driver
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/probe-mongo.txt") 2>&1
+          echo "--- secret set: $([ -n "$URI" ] && echo yes || echo NO)  length=${#URI}"
+          echo "--- user=$(echo "$URI" | sed -E 's#.*//([^:]*):.*#\1#') host=$(echo "$URI" | sed -E 's#.*@([^/?]*).*#\1#')"
+          mkdir -p /tmp/n && cd /tmp/n && npm init -y >/dev/null && npm i mongodb@6 --silent
+          node -e "
+          const {MongoClient}=require('mongodb');
+          (async()=>{const c=new MongoClient(process.env.URI,{serverSelectionTimeoutMS:20000});
+          try{await c.connect();console.log('NODE official driver: CONNECTED', JSON.stringify(await c.db('admin').command({ping:1})));
+          console.log('databases:', (await c.db().admin().listDatabases()).databases.map(d=>d.name).join(', '));}
+          catch(e){console.log('NODE official driver: FAILED ->', e.message)}finally{await c.close()}})()"
+      - name: Deno x/mongo v0.32.0 (what the edge function uses)
+        if: always()
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/probe-mongo.txt") 2>&1
+          cat > /tmp/x.ts <<'TS'
+          import { MongoClient } from 'https://deno.land/x/mongo@v0.32.0/mod.ts';
+          const c = new MongoClient();
+          try { await c.connect(Deno.env.get('URI')!); const dbs = await c.listDatabases(); console.log('DENO x/mongo: CONNECTED, dbs:', dbs.map((d: any) => d.name).join(', ')); }
+          catch (e) { console.log('DENO x/mongo: FAILED ->', String(e).slice(0, 300)); }
+          Deno.exit(0);
+          TS
+          deno run -A /tmp/x.ts
+      - name: Deno npm:mongodb (alternative for the edge function)
+        if: always()
+        run: |
+          exec > >(tee -a "$GITHUB_WORKSPACE/probe-mongo.txt") 2>&1
+          cat > /tmp/y.ts <<'TS'
+          import { MongoClient } from 'npm:mongodb@6.3.0';
+          const c = new MongoClient(Deno.env.get('URI')!, { serverSelectionTimeoutMS: 20000 });
+          try { await c.connect(); console.log('DENO npm:mongodb: CONNECTED', JSON.stringify(await c.db('admin').command({ ping: 1 }))); }
+          catch (e) { console.log('DENO npm:mongodb: FAILED ->', String((e as Error).message).slice(0, 300)); } finally { await c.close(); }
+          Deno.exit(0);
+          TS
+          deno run -A /tmp/y.ts
+      - name: Publish result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          R=$GITHUB_REPOSITORY
+          RID=$(gh api repos/$R/releases/tags/ci -q .id)
+          AID=$(gh api repos/$R/releases/$RID/assets -q '.[] | select(.name=="probe-mongo.txt") | .id' || true)
+          [ -n "$AID" ] && gh api -X DELETE repos/$R/releases/assets/$AID || true
+          curl -sf -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: text/plain" \
+            --data-binary @"$GITHUB_WORKSPACE/probe-mongo.txt" "https://uploads.github.com/repos/$R/releases/$RID/assets?name=probe-mongo.txt" >/dev/null
