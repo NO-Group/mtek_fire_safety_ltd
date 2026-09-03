@@ -56,6 +56,18 @@ if command -v gh >/dev/null && [ -n "${GH_TOKEN:-}" ]; then
   fi
 fi
 [ "$TEST_RC" -eq 0 ] || { echo "PDF render test FAILED (see pdf-test.log on the ci release)"; exit "$TEST_RC"; }
+# Rasterise the rendered PDFs (page 1, 70 dpi) and commit them to docs/previews
+# so document layout can be reviewed without a device. Best-effort.
+if command -v pdftoppm >/dev/null || (sudo apt-get install -y -qq poppler-utils >/dev/null 2>&1); then
+  mkdir -p ../docs/previews
+  for f in build/pdf_preview/*.pdf; do
+    pdftoppm -png -r 70 -f 1 -l 1 "$f" "../docs/previews/$(basename "${f%.pdf}")" && \
+      mv "../docs/previews/$(basename "${f%.pdf}")-1.png" "../docs/previews/$(basename "${f%.pdf}").png" 2>/dev/null || true
+  done
+  ( cd .. && git config user.name ci-bot && git config user.email ci@users.noreply.github.com && \
+    git add docs/previews && git diff --cached --quiet || \
+    ( git commit -qm "ci: refresh PDF layout previews [skip ci]" && git push -q origin "HEAD:${GITHUB_REF_NAME}" ) ) || true
+fi
 flutter build apk --release
 
 APK="build/app/outputs/flutter-apk/app-release.apk"

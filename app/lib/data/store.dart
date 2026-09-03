@@ -240,7 +240,10 @@ class AppStore extends ChangeNotifier {
           if (log != null) milsLogs.add(log);
         }
       }
-      return products.isNotEmpty;
+      // A successful bootstrap IS the live dataset, even when the catalogue
+      // is still empty on the server (fresh cluster) — the device's own
+      // records were uploaded just before this call.
+      return true;
     } catch (_) {
       return false;
     }

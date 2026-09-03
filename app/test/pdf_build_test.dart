@@ -40,6 +40,9 @@ void main() {
         signaturePngBytes: Uint8List.fromList([1, 2, 3]), // deliberately bad → must be ignored
         customerSignaturePngBytes: null);
     expect(bytes.length, greaterThan(1000), reason: '$type produced an empty PDF');
+    // keep the output so CI can rasterise it for layout review
+    final out = File('build/pdf_preview/${type.name}.pdf')..parent.createSync(recursive: true);
+    out.writeAsBytesSync(bytes);
   }
 
   for (final t in GeneratedDoc.values) {
