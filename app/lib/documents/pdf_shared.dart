@@ -39,10 +39,14 @@ pw.Widget documentWatermark(pw.ImageProvider? logo) {
       );
 
   return pw.Stack(alignment: pw.Alignment.center, children: [
-    pw.Column(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-      microBand(),
-      microBand(),
-    ]),
+    pw.Padding(
+      // bands sit at the very page edges, well clear of the letterhead
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Column(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        microBand(),
+        microBand(),
+      ]),
+    ),
     pw.Opacity(
       opacity: 0.055,
       child: pw.Transform.rotate(
@@ -86,44 +90,79 @@ String _fnv(String input) {
   return h.toRadixString(16).padLeft(8, '0');
 }
 
-/// Corporate header used IDENTICALLY on all three documents
-/// (owner decision: consistent dual-office headers).
+/// Corporate letterhead used IDENTICALLY on every document (owner decision:
+/// consistent dual-office headers). Sized so it never wraps on A4 portrait
+/// (the narrowest page): company name on ONE line, the equipment catalogue
+/// as a two-column table (label column | text), office block on the right.
 pw.Widget corporateHeader(pw.ImageProvider? logo) {
-  return pw.Column(children: [
-    pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      if (logo != null) pw.Padding(padding: const pw.EdgeInsets.only(right: 8), child: pw.Image(logo, width: 52, height: 52)),
-      pw.Expanded(
-        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          pw.Text(MtekBranding.companyName,
-              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
-          pw.Text(MtekBranding.servicesLine,
-              style: const pw.TextStyle(fontSize: 6.5)),
-          pw.SizedBox(height: 2),
-          _equipLine('FIRE EQUIPMENT:', MtekBranding.fireEquipment),
-          _equipLine('SAFETY EQUIPMENT:', MtekBranding.safetyEquipment),
-          _equipLine('SECURITY EQUIPMENT:', MtekBranding.securityEquipment),
-          _equipLine('SOLAR EQUIPMENT:', MtekBranding.solarEquipment),
+  const labelW = 78.0;
+  pw.Widget equip(String label, String body) => pw.Padding(
+        padding: const pw.EdgeInsets.only(top: 1),
+        child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.SizedBox(
+              width: labelW,
+              child: pw.Text(label,
+                  style: pw.TextStyle(fontSize: 5.6, fontWeight: pw.FontWeight.bold, color: PdfColors.red800))),
+          pw.Expanded(
+              child: pw.Text(body.replaceAll(RegExp(r'^[A-Z ]+: '), ''),
+                  style: const pw.TextStyle(fontSize: 5.6, lineSpacing: 0.5))),
         ]),
-      ),
-      pw.SizedBox(width: 10),
-      pw.Container(
-        width: 190,
-        padding: const pw.EdgeInsets.all(6),
-        decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: PdfColors.blue300, width: 1),
+      );
+  pw.Widget office(String label, String body) => pw.RichText(
+        text: pw.TextSpan(style: const pw.TextStyle(fontSize: 5.8, lineSpacing: 0.8), children: [
+          pw.TextSpan(text: '$label ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+          pw.TextSpan(text: body),
+        ]),
+      );
+  return pw.Container(
+    // solid white so the background micro-text never prints through the letterhead
+    color: PdfColors.white,
+    padding: const pw.EdgeInsets.only(bottom: 4),
+    child: pw.Column(children: [
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        if (logo != null)
+          pw.Padding(padding: const pw.EdgeInsets.only(right: 8, top: 2), child: pw.Image(logo, width: 54, height: 54)),
+        pw.Expanded(
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              alignment: pw.Alignment.centerLeft,
+              child: pw.Text(MtekBranding.companyName,
+                  maxLines: 1,
+                  style: pw.TextStyle(fontSize: 19, fontWeight: pw.FontWeight.bold, color: PdfColors.red900, letterSpacing: 0.4)),
+            ),
+            pw.Text('${MtekBranding.rcNumber}   ${MtekBranding.servicesLine}',
+                maxLines: 1, style: pw.TextStyle(fontSize: 6, color: PdfColors.blueGrey800, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 2),
+            equip('FIRE EQUIPMENT:', MtekBranding.fireEquipment),
+            equip('SAFETY EQUIPMENT:', MtekBranding.safetyEquipment),
+            equip('SECURITY EQUIPMENT:', MtekBranding.securityEquipment),
+            equip('SOLAR EQUIPMENT:', MtekBranding.solarEquipment),
+          ]),
         ),
-        child: pw.Text(MtekBranding.dualOfficeBlock,
-            style: const pw.TextStyle(fontSize: 6.5)),
-      ),
+        pw.SizedBox(width: 8),
+        pw.Container(
+          width: 168,
+          padding: const pw.EdgeInsets.fromLTRB(5, 4, 5, 4),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.blue50,
+            border: pw.Border.all(color: PdfColors.blue300, width: .8),
+          ),
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            office('HEAD OFFICE:', 'YY12, Kazaure Road, By Lagos Street Round About, Kaduna. Tel: ${MtekBranding.headOfficeTel.replaceFirst('Tel: ', '')}'),
+            pw.SizedBox(height: 2),
+            office('BRANCH OFFICE:', 'Plot 45, Sir Patrick Ibrahim Yakowa Way By Milton School, Kamazou Kaduna. Tel: ${MtekBranding.branchOfficeTel}'),
+            pw.SizedBox(height: 2),
+            office('E-mail:', MtekBranding.email),
+            office('Website:', MtekBranding.website),
+          ]),
+        ),
+      ]),
+      pw.Container(height: 2.2, color: PdfColors.red900, margin: const pw.EdgeInsets.only(top: 5)),
+      pw.Container(height: 0.8, color: PdfColors.blue900, margin: const pw.EdgeInsets.only(top: 1.2)),
     ]),
-    pw.Container(height: 2, color: PdfColors.red900, margin: const pw.EdgeInsets.only(top: 5)),
-  ]);
+  );
 }
-
-pw.Widget _equipLine(String label, String body) => pw.Row(children: [
-      pw.Text(label, style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
-      pw.Expanded(child: pw.Text(body.replaceAll(RegExp(r'^[A-Z ]+: '), ''), style: const pw.TextStyle(fontSize: 6))),
-    ]);
 
 /// Shared small helpers -------------------------------------------------
 
@@ -162,7 +201,8 @@ pw.Widget ruledField(String label, {String value = '', double fontSize = 8.5, bo
           margin: const pw.EdgeInsets.only(left: 3),
           padding: const pw.EdgeInsets.only(bottom: 1, left: 2),
           decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey600, width: .7))),
-          child: pw.Text(value, style: pw.TextStyle(fontSize: fontSize + 1)),
+          child: pw.Text(value, maxLines: 1, softWrap: false, overflow: pw.TextOverflow.clip,
+              style: pw.TextStyle(fontSize: fontSize + 1)),
         ),
       ),
     ]),

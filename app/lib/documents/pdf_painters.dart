@@ -346,9 +346,10 @@ pw.MultiPage _invoicePage(
       ]),
       pw.Row(children: [
         pw.Expanded(flex: 3, child: ruledField('Name:', value: v.name)),
-        pw.Expanded(flex: 2, child: ruledField('Address:', value: v.address)),
+        pw.Expanded(flex: 3, child: ruledField('Address:', value: v.address)),
         pw.Expanded(flex: 2, child: ruledField('Phone No:', value: v.phone)),
-        pw.Expanded(child: ruledField('Date:', value: _d(v.date))),
+        pw.SizedBox(width: 6),
+        pw.SizedBox(width: 92, child: ruledField('Date:', value: _d(v.date))),
       ]),
       pw.SizedBox(height: 4),
 
@@ -387,7 +388,7 @@ pw.MultiPage _invoicePage(
         ),
       ]),
       pw.SizedBox(height: 6),
-      ruledField('Amount in words:', value: '${v.amountInWords} ONLY', fontSize: 8.5),
+      ruledField('Amount in words:', value: v.amountInWords, fontSize: 8.5),
       pw.SizedBox(height: 4),
       pw.Row(children: [
         pw.Expanded(
@@ -495,10 +496,16 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
       // Top field row
       pw.Row(children: [
         pw.Expanded(child: ruledField('Entry Date:', value: _d(m.entryDate), fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('Collection Date:', value: _d(m.collectionDate), fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('Next Service Date:', value: _d(m.nextServiceDate), fontSize: 7.5)),
+      ]),
+      pw.Row(children: [
         pw.Expanded(child: ruledField('Invoice No:', value: m.invoiceNo, fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('Receipt No:', value: m.receiptNo, fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('LPO NO.:', value: m.lpoNo, fontSize: 7.5)),
       ]),
       pw.SizedBox(height: 4),
@@ -553,7 +560,7 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
             ruledField("Customer's Name:", value: m.name, fontSize: 8.5),
             ruledField('Address:', value: m.address, fontSize: 8.5),
             ruledField('Phone Number:', value: m.phone, fontSize: 8.5),
-            ruledField('Bill in words:', value: '${m.amountInWords} ONLY', fontSize: 8.5),
+            ruledField('Bill in words:', value: m.amountInWords, fontSize: 8.5),
           ]),
         ),
         pw.SizedBox(width: 14),
@@ -947,9 +954,9 @@ pw.Widget _signOffRow(pw.ImageProvider? signature, String signedBy, List<String>
 }
 
 String _d(DateTime d) =>
-    '${d.day}/${d.month}/${d.year}';
+    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 String _dt(DateTime d) =>
-    '${d.day}/${d.month}/${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    '${_d(d)} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 String _money(num n) => n.toStringAsFixed(n.truncateToDouble() == n ? 0 : 2)
     .replaceAll(RegExp(r'\B(?=(\d{3})+(?!\d))'), ',');
 String _qty(num q) => q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(1);
