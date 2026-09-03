@@ -223,6 +223,7 @@ class NotificationRead {
   final DateTime at;
   const NotificationRead({required this.uid, required this.name, required this.at});
 
+  Map<String, dynamic> toJson() => {'uid': uid, 'name': name, 'at': at.toIso8601String()};
   factory NotificationRead.fromJson(Map<String, dynamic> j) => NotificationRead(
         uid: '${j['uid'] ?? ''}',
         name: '${j['name'] ?? ''}',
@@ -259,6 +260,12 @@ class AppNotification {
 
   bool isReadBy(String uid) => readBy.any((r) => r.uid == uid);
 
+  Map<String, dynamic> toJson() => {
+        '_id': id, 'kind': kind, 'title': title, 'message': message, 'ref': ref,
+        'created_by': createdBy, 'created_by_name': createdByName,
+        'created_at': createdAt.toIso8601String(),
+        'read_by': readBy.map((r) => r.toJson()).toList(),
+      };
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
         id: '${j['_id'] ?? ''}',
         kind: '${j['kind'] ?? ''}',

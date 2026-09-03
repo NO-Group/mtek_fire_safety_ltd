@@ -78,8 +78,8 @@ class AppStore extends ChangeNotifier {
         apiKey: Env.supabaseAnonKey,
       );
     }
-    if (Env.apiConfigured) {
-      _api = ApiClient(baseUrl: Env.apiBase);
+    if (Env.authApiConfigured) {
+      _api = ApiClient(baseUrl: Env.apiBase); // auth routes always; data routes only when apiConfigured
     }
     var loadedAny = false;
     if (Env.apiConfigured && AuthStore.instance.accessToken != null) {
@@ -280,7 +280,10 @@ class AppStore extends ChangeNotifier {
   /// directive 2026-09-01). Safe to call repeatedly (e.g. from a poll timer).
   Future<void> refreshNotifications() async {
     final api = _api;
-    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) return;
+    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) {
+      await _loadLocalNotifications();
+      return;
+    }
     api.accessToken = AuthStore.instance.accessToken;
     try {
       final res = await api.get('/api/notifications');
@@ -323,6 +326,7 @@ class AppStore extends ChangeNotifier {
       );
       notifyListeners();
     }
+    await _saveLocalNotifications();
     try {
       await _apiPost('/api/notifications/read', {'id': id});
     } catch (_) {
@@ -360,6 +364,7 @@ class AppStore extends ChangeNotifier {
       ];
       notifyListeners();
     }
+    await _saveLocalNotifications();
     try {
       await _apiPost('/api/notifications/read-all', {});
     } catch (_) {
@@ -372,6 +377,12 @@ class AppStore extends ChangeNotifier {
   /// with kind 'announcement' so the UI can show it distinctly and the
   /// sender can see who has read it via `readBy`.
   Future<String?> sendAnnouncement(String title, String message) async {
+    if (!Env.apiConfigured) {
+      if (title.trim().isEmpty) return 'Announcement title is required';
+      if (message.trim().isEmpty) return 'Announcement message is required';
+      await addLocalNotification('announcement', title.trim(), message.trim(), '');
+      return null;
+    }
     try {
       final applied = await _apiPost('/api/announcements', {'title': title, 'message': message});
       if (!applied) return 'Network unreachable — check your connection';
@@ -384,13 +395,56 @@ class AppStore extends ChangeNotifier {
     }
   }
 
+  // ---- device-local notification feed (offline-first) ----
+  bool _localNotifsLoaded = false;
+  Future<void> _loadLocalNotifications() async {
+    if (_localNotifsLoaded) return;
+    _localNotifsLoaded = true;
+    final raw = await _readList('notifications');
+    notifications = [
+      for (final e in raw)
+        if (e is Map) AppNotification.fromJson(e.cast<String, dynamic>()),
+    ];
+    notifyListeners();
+  }
+
+  Future<void> _saveLocalNotifications() =>
+      writeStore('notifications', notifications.take(500).map((n) => n.toJson()).toList());
+
+  /// Records an in-app notification on this device (mirrors what the server
+  /// used to write for transactions, documents, stock, MILS, announcements).
+  Future<void> addLocalNotification(String kind, String title, String message, String ref) async {
+    await _loadLocalNotifications();
+    final me = AuthStore.instance.current;
+    notifications.insert(0, AppNotification(
+      id: 'L${DateTime.now().microsecondsSinceEpoch}',
+      kind: kind, title: title, message: message, ref: ref,
+      createdBy: AuthStore.instance.remoteSignInUid ?? me?.email ?? '',
+      createdByName: me?.name ?? '',
+      createdAt: DateTime.now(),
+      readBy: const [],
+    ));
+    notifyListeners();
+    await _saveLocalNotifications();
+  }
+
   // ------------------------------------------------------------------ staff
   /// CEO/Admin staff directory (name/email/phone/role). Only the CEO can
   /// actually change a role via [setStaffRole] — the server enforces this
   /// too, so an Admin calling it will get a 403 back.
   Future<void> refreshStaff() async {
     final api = _api;
-    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) return;
+    if (!Env.apiConfigured || api == null || AuthStore.instance.accessToken == null) {
+      // OFFLINE-FIRST: the directory is every account known to this device.
+      staff
+        ..clear()
+        ..addAll([
+          for (final u in AuthStore.instance.users)
+            StaffMember(uid: u.email, name: u.name, email: u.email, phone: '', role: u.role),
+        ]);
+      notifyListeners();
+      return;
+    }
     api.accessToken = AuthStore.instance.accessToken;
     try {
       final res = await api.get('/api/staff');
@@ -413,6 +467,16 @@ class AppStore extends ChangeNotifier {
   /// to Sales. Throws (as a message string) on any refusal — including a
   /// non-CEO caller, since the server is the source of truth on authority.
   Future<String?> setStaffRole(String uid, String role) async {
+    if (!Env.apiConfigured) {
+      if (!AuthStore.instance.isCeo) return 'Only the CEO can promote or demote staff';
+      final u = AuthStore.instance.users.where((x) => x.email == uid).firstOrNull;
+      if (u == null) return 'Staff member not found';
+      if (u.role == 'ceo' || u.email == AuthStore.ceoEmail) return 'The CEO role cannot be changed here';
+      u.role = role;
+      await AuthStore.instance.persistUsers();
+      await refreshStaff();
+      return null;
+    }
     try {
       final applied = await _apiPost('/api/staff/role', {'uid': uid, 'role': role});
       if (!applied) return 'Network unreachable — check your connection';
@@ -528,7 +592,6 @@ class AppStore extends ChangeNotifier {
   Future<bool> _loadLocal() async {
     final rawProducts = await _readList('products');
     final rawCustomers = await _readList('customers');
-    if (rawProducts.isEmpty && rawCustomers.isEmpty) return false;
 
     products.addAll(parseProducts(rawProducts));
     for (final e in rawCustomers) {
@@ -577,6 +640,13 @@ class AppStore extends ChangeNotifier {
           signedBy: '${m['signed_by'] ?? 'Admin'}',
           issuedBy: '${m['issued_by'] ?? 'Admin'}',
         ));
+      }
+    }
+    final rawInvoices = await _readList('invoices');
+    for (final e in rawInvoices) {
+      if (e is Map) {
+        final inv = _invoiceFromLocal((e).cast<String, dynamic>(), products, customers);
+        if (inv != null) invoices.add(inv);
       }
     }
     final rawDocs = await _readList('doc_history');
@@ -686,6 +756,9 @@ class AppStore extends ChangeNotifier {
     );
     docHistory.insert(0, doc);
     await writeStore('doc_history', docHistory.map((d) => d.toJson()).toList());
+    unawaited(addLocalNotification('document', 'Document issued',
+        '$signedBy issued $type No ${serial.toString().padLeft(9, '0')} for $customer',
+        '$type $serial'));
     if (!serverIssued) {
       // server already recorded it via mtek_issue_document — local mirror only
       enqueueSync('documents', [doc.toJson()]);
@@ -927,6 +1000,8 @@ class AppStore extends ChangeNotifier {
     }
     final serverApplied = serverReceiptNo != null && serverReceiptNo.isNotEmpty;
     await _persistSaleSide(sale, enqueue: !serverApplied);
+    unawaited(addLocalNotification('transaction', 'Sale recorded',
+        '$signedBy recorded a ${fmt.naira(sale.total)} sale for ${customer.name}', sale.id));
     notifyListeners();
     pushHomeWidgetStats();
   }
@@ -1193,8 +1268,45 @@ Map<String, dynamic> receiptToJson(Receipt r) => {
 Map<String, dynamic> invoiceToJson(Invoice i) => {
       'number': i.number, 'issued': i.issued.toIso8601String(),
       'due': i.due.toIso8601String(), 'customer': i.customer.name,
+      'customer_id': i.customer.id,
       'amount_paid': i.amountPaid, 'total': i.total,
+      'items': i.items.map((x) => {'product': x.product.id, 'name': x.product.name, 'qty': x.qty, 'unit_price': x.unitPrice}).toList(),
     };
+
+/// Offline-first: rebuild an invoice from disk. Line items that no longer
+/// match a product fall back to a detached product so totals stay right.
+Invoice? _invoiceFromLocal(Map<String, dynamic> m, List<Product> products, List<Customer> customers) {
+  final number = '${m['number'] ?? ''}';
+  if (number.isEmpty) return null;
+  final items = <SaleItem>[];
+  for (final it in (m['items'] as List? ?? const [])) {
+    if (it is! Map) continue;
+    final pid = '${it['product'] ?? ''}';
+    final found = products.where((p) => p.id == pid).toList();
+    final product = found.isNotEmpty
+        ? found.first
+        : Product(id: pid, name: '${it['name'] ?? 'Item'}', category: ProductCategory.safety, unit: 'unit',
+            costPrice: 0, sellingPrice: _asInt(it['unit_price']), qtyOnHand: 0, reorderLevel: 0, isService: true);
+    items.add(SaleItem(product: product, qty: _asInt(it['qty']), unitPrice: _asInt(it['unit_price'])));
+  }
+  if (items.isEmpty) {
+    // legacy record without lines — keep the total as one summary line
+    final total = _asInt(m['total']);
+    if (total <= 0) return null;
+    items.add(SaleItem(
+        product: Product(id: 'legacy', name: 'Invoice total', category: ProductCategory.safety, unit: 'unit',
+            costPrice: 0, sellingPrice: total, qtyOnHand: 0, reorderLevel: 0, isService: true),
+        qty: 1, unitPrice: total));
+  }
+  return Invoice(
+    number: number,
+    issued: DateTime.tryParse('${m['issued']}') ?? DateTime.now(),
+    due: DateTime.tryParse('${m['due']}') ?? DateTime.now(),
+    customer: _lookupCustomer(customers, m['customer_id'] as String?, '${m['customer'] ?? '—'}'),
+    items: items,
+    amountPaid: _asInt(m['amount_paid']),
+  );
+}
 
 Map<String, dynamic> adjToJson(StockAdjustment a) => {
       'id': a.id, 'date': a.date.toIso8601String(), 'product': a.product.id,

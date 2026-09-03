@@ -28,6 +28,21 @@ abstract final class Env {
     defaultValue: 'https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api2',
   );
 
+  /// OFFLINE-FIRST MODE (owner directive 2026-09-03): the MongoDB data API
+  /// is DISCONNECTED. Only user authentication (sign-in / sign-up / token
+  /// refresh, via the data-api auth routes which proxy Supabase Auth) goes
+  /// to the server. Every business record — stock, customers, sales,
+  /// receipts, invoices, MILS, waybills, delivery notes, document history,
+  /// serial numbers, settings, notifications — is created, read and kept
+  /// ON THE DEVICE. Set to false to reconnect the data API.
+  static const bool offlineDataMode = true;
+
   static bool get backendConfigured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
-  static bool get apiConfigured => apiBase.isNotEmpty;
+
+  /// Data-API (MongoDB sections) available? FALSE in offline mode so every
+  /// store/auth call takes its existing local/offline branch.
+  static bool get apiConfigured => !offlineDataMode && apiBase.isNotEmpty;
+
+  /// Auth routes are still served by the same function URL, even offline.
+  static bool get authApiConfigured => apiBase.isNotEmpty;
 }

@@ -1103,7 +1103,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       total: docTotal,
       signedBy: signer.name,
       verifyHash: hash,
-      serverIssued: Env.backendConfigured,
+      serverIssued: Env.apiConfigured,
     );
 
     if (_type == DocType.mils) {
