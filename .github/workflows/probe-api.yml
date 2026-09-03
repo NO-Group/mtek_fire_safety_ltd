@@ -31,6 +31,11 @@ jobs:
           echo "--- issue (expect 403 for sales role, NOT 500)"
           curl -s -X POST "$B/api/docs/issue" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
             -d '{"type":"receipt","customer":"Probe","total":1,"hash":"x","passcode":"","contact":"0800"}'; echo
+          echo "--- offline sync import (run twice: second must accept nothing new)"
+          BODY='{"device":"probe'$GITHUB_RUN_ID'","customers":[{"offline_key":"probe'$GITHUB_RUN_ID':c:C1","name":"Offline Cust","phone":"0801"}],"sales":[{"offline_key":"probe'$GITHUB_RUN_ID':s:S1:x","id":"S1","customer_id":"probe'$GITHUB_RUN_ID':c:C1","customer_name":"Offline Cust","method":"cash","total":500,"items":[{"product_id":"P1","name":"Ext","qty":1,"unit_price":500}],"created_at":"2026-09-02T10:00:00Z"}],"receipts":[{"offline_key":"probe'$GITHUB_RUN_ID':r:MTK-REC-000000007:x","no":"MTK-REC-000000007","amount":500,"method":"cash","customer_name":"Offline Cust","created_at":"2026-09-02T10:00:00Z"}],"documents":[{"offline_key":"probe'$GITHUB_RUN_ID':d:receipt:2140","doc_type":"receipt","serial":2140,"customer":"Offline Cust","total":500}],"serials":{"receiptIssue":7,"receipt":2140}}'
+          curl -s -X POST "$B/api/sync/import" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d "$BODY"; echo
+          curl -s -X POST "$B/api/sync/import" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d "$BODY"; echo
+          echo "--- history after sync"; curl -s "$B/api/docs/history" -H "Authorization: Bearer $TOK" | head -c 400; echo
           echo "--- mils create (admin-only too)"
           curl -s -X POST "$B/api/customers" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
             -d '{"name":"Probe Customer","phone":"0800"}'; echo
