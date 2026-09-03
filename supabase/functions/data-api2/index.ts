@@ -60,7 +60,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-03a';
+const BUNDLE_VERSION = '2026-09-03b';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -110,6 +110,10 @@ const coll = {
 
 // ---- helpers ----------------------------------------------------------------
 const pad9 = (n: number) => String(n).padStart(9, '0');
+// x/mongo's insertOne resolves to the new _id itself; the npm driver resolves
+// to { insertedId }. Wrap so the rest of the file can keep using .insertedId.
+// deno-lint-ignore no-explicit-any
+const ins = async (c: Promise<any>, doc: Record<string, unknown>) => ({ insertedId: await (await c).insertOne(doc) });
 const fmtN = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
 const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote'];
 const now = () => new Date().toISOString();
@@ -274,9 +278,11 @@ async function ensureCore() {
     c.updateOne({ _id: 'settings' }, { $setOnInsert: { vat_enabled: false, vat_rate: 0.075, watermark: true } }, { upsert: true }));
 }
 async function nextSerial(type: string): Promise<number> {
-  const out = await (await coll.serials()).findOneAndUpdate(
-    { _id: type }, { $inc: { last_used: 1 } }, { returnDocument: 'after', upsert: true });
-  return out!.last_used as number;
+  // deno.land/x/mongo has no findOneAndUpdate (that is the npm driver API);
+  // its equivalent is findAndModify with { update, new, upsert }.
+  const out = await (await coll.serials()).findAndModify(
+    { _id: type }, { update: { $inc: { last_used: 1 } }, new: true, upsert: true });
+  return Number(out?.last_used ?? 1);
 }
 async function peekSerials(): Promise<Record<string, number>> {
   const rows = await (await coll.serials()).find({}).toArray();
@@ -700,7 +706,7 @@ Deno.serve(async (req: Request) => {
           phone: String(b.phone ?? ''), email: String(b.email ?? ''), address: String(b.address ?? ''),
           credit_balance: 0, created_by: user.uid, created_at: now(),
         };
-        const out = await (await coll.customers()).insertOne(doc);
+        const out = await ins(coll.customers(), doc);
         await audit('customers', 'create', String(out.insertedId), user);
         await notify('customer', 'New customer added', `${user.name} added ${doc.name} as a customer`, String(out.insertedId), user);
         return json({ customer: { ...doc, _id: out.insertedId } }, 201);
@@ -778,15 +784,15 @@ Deno.serve(async (req: Request) => {
           customerName = String(c.name);
         } else if (b.customer && String(b.customer.name ?? '').trim().length > 1) {
           const doc = { name: String(b.customer.name).trim(), kind: 'individual', phone: String(b.customer.phone ?? ''), email: String(b.customer.email ?? ''), address: '', credit_balance: 0, created_by: user.uid, created_at: now() };
-          const r = await customers.insertOne(doc);
+          const r = { insertedId: await customers.insertOne(doc) };
           customerId = String(r.insertedId);
           customerName = doc.name;
         }
 
         const t = now();
         const sale = { customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), method, discount, total, items: lines, signed_by: user.uid, signed_name: user.name, customer_signature: String(b.customer_signature ?? ''), created_at: t };
-        const saleOut = await (await coll.sales()).insertOne(sale);
-        const txnOut = await (await coll.txns()).insertOne({ txn_type: 'salePayment', method, amount: total, reference: String(saleOut.insertedId), txn_date: t, created_by: user.uid });
+        const saleOut = await ins(coll.sales(), sale);
+        const txnOut = await ins(coll.txns(), { txn_type: 'salePayment', method, amount: total, reference: String(saleOut.insertedId), txn_date: t, created_by: user.uid });
         const recNo = 'MTK-REC-' + pad9(await nextSerial('receiptIssue'));
         await (await coll.receipts()).insertOne({ no: recNo, amount: total, method, source: 'sale', customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), issued_by: user.uid, issued_name: user.name, customer_signature: String(b.customer_signature ?? ''), txn_id: String(txnOut.insertedId), sale_id: String(saleOut.insertedId), created_at: t });
         let invoiceNo: string | null = null;
@@ -816,7 +822,7 @@ Deno.serve(async (req: Request) => {
           { no: String(inv.no), $expr: { $lte: ['$amount_paid', '$total'] } },
           { $inc: { amount_paid: pay }, $set: { status: Number(inv.amount_paid ?? 0) + pay >= Number(inv.total) ? 'paid' : 'partial', updated_at: t } });
         if (!upd.modifiedCount) throw new HttpErr(409, 'Payment raced another update — retry');
-        const txnOut = await (await coll.txns()).insertOne({ txn_type: 'invoicePayment', method, amount: pay, reference: String(inv.no), txn_date: t, created_by: user.uid });
+        const txnOut = await ins(coll.txns(), { txn_type: 'invoicePayment', method, amount: pay, reference: String(inv.no), txn_date: t, created_by: user.uid });
         const recNo = 'MTK-REC-' + pad9(await nextSerial('receiptIssue'));
         await (await coll.receipts()).insertOne({ no: recNo, amount: pay, method, source: 'invoice', invoice_no: inv.no, customer_id: inv.customer_id ?? null, customer_name: inv.customer_name ?? '—', customer_contact: String(b.customer_contact ?? ''), issued_by: user.uid, issued_name: user.name, txn_id: String(txnOut.insertedId), created_at: t });
         await (await coll.payments()).insertOne({ invoice_no: inv.no, amount: pay, method, receipt_no: recNo, created_by: user.uid, created_at: t });
@@ -884,7 +890,7 @@ Deno.serve(async (req: Request) => {
         requireRole(user, ['ceo', 'admin'], 'record MILS jobs');
         const b = await req.json();
         const doc = { ...b, mils_no: b.mils_no || 'MILS-' + pad9(await nextSerial('mils')), recorded_by: user.uid, recorded_name: user.name, created_at: now() };
-        const out = await (await coll.mils()).insertOne(doc);
+        const out = await ins(coll.mils(), doc);
         await audit('mils', 'create', String(out.insertedId), user);
         await notify('mils', 'MILS job recorded', `${user.name} recorded MILS job ${doc.mils_no}`, doc.mils_no, user);
         return json({ ok: true, id: String(out.insertedId), mils_no: doc.mils_no, mils: doc }, 201);
@@ -942,7 +948,7 @@ Deno.serve(async (req: Request) => {
           created_by: user.uid, created_by_name: user.name, created_at: now(),
           read_by: [] as Array<{ uid: string; name: string; at: string }>,
         };
-        const out = await (await coll.notifications()).insertOne(doc);
+        const out = await ins(coll.notifications(), doc);
         await audit('core', 'announcement', title, user);
         return json({ ok: true, id: String(out.insertedId) }, 201);
       }
