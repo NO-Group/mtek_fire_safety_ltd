@@ -1,4 +1,4 @@
-# Temporary diagnostics: call the live data-api2 from a GitHub runner
+# Temporary diagnostics (rerun 2026-09-03f): call the live data-api2 from a GitHub runner
 # (the owner's tooling cannot reach Supabase directly). Manual only.
 name: Probe data-api2
 on:
