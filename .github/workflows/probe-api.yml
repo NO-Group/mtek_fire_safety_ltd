@@ -12,6 +12,7 @@ jobs:
     steps:
       - name: Sign up a probe user, sign in, hit /api/docs/issue
         run: |
+          exec > >(tee -a probe.txt) 2>&1
           B=https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api2
           E="probe-$GITHUB_RUN_ID@example.com"
           echo "--- health"; curl -s "$B/health"; echo
@@ -31,3 +32,10 @@ jobs:
           echo "--- mils create (admin-only too)"
           curl -s -X POST "$B/api/customers" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
             -d '{"name":"Probe Customer","phone":"0800"}'; echo
+      - name: Publish result where it can be read (release asset + summary)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo '```'; cat probe.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          gh release upload ci probe.txt --clobber
