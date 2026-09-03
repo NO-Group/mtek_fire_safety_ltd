@@ -1,0 +1,30 @@
+# Temporary diagnostics: call the live data-api2 from a GitHub runner
+# (the owner's tooling cannot reach Supabase directly). Manual only.
+name: Probe data-api2
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sign up a probe user, sign in, hit /api/docs/issue
+        run: |
+          B=https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api2
+          E="probe-$GITHUB_RUN_ID@example.com"
+          echo "--- health"; curl -s "$B/health"; echo
+          echo "--- signup"
+          curl -s -X POST "$B/api/auth/signup" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"CI Probe\",\"email\":\"$E\",\"phone\":\"0800000000\",\"password\":\"Probe12345!\",\"signature_passcode\":\"4321\",\"recovery_string\":\"probe recovery string here\"}"; echo
+          echo "--- login"
+          TOK=$(curl -s -X POST "$B/api/auth/login" -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$E\",\"password\":\"Probe12345!\"}" | tee /dev/stderr | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("access_token") or d.get("session",{}).get("access_token",""))')
+          echo; echo "token len ${#TOK}"
+          for r in "GET /api/docs/history" "GET /api/customers" "GET /api/notifications"; do
+            set -- $r; echo "--- $r"; curl -s -X $1 "$B$2" -H "Authorization: Bearer $TOK" | head -c 300; echo
+          done
+          echo "--- issue (expect 403 for sales role, NOT 500)"
+          curl -s -X POST "$B/api/docs/issue" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
+            -d '{"type":"receipt","customer":"Probe","total":1,"hash":"x","passcode":"","contact":"0800"}'; echo
+          echo "--- mils create (admin-only too)"
+          curl -s -X POST "$B/api/customers" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
+            -d '{"name":"Probe Customer","phone":"0800"}'; echo

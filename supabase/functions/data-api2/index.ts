@@ -60,7 +60,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-03b';
+const BUNDLE_VERSION = '2026-09-03c';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -996,6 +996,10 @@ Deno.serve(async (req: Request) => {
     // never to the app) and return one plain, user-safe message. Raw driver
     // errors / stack text must never reach a production screen.
     console.error('data-api unhandled error:', e);
-    return err(500, 'Something went wrong on the server — please try again');
+    // TEMPORARY diagnostics (2026-09-03): the Supabase log viewer is not
+    // reachable from the owner's tooling, so surface a short, sanitised
+    // error detail to the app until the issue path is proven stable.
+    const detail = String((e as Error)?.message ?? e).replace(/mongodb(\+srv)?:\/\/\S+/gi, '[uri]').slice(0, 160);
+    return err(500, `Something went wrong on the server — ${detail}`);
   }
 });
