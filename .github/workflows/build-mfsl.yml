@@ -23,7 +23,7 @@ name: Build MFSL Inventory (APK + EXE)
 on:
   workflow_dispatch:
   push:
-    branches: [main, arena/01a061f5-mtek-fire-safety-ltd]
+    branches: [main, arena/**]
     paths: ['app/**', 'ci/**', '.github/workflows/build-mfsl.yml']
 
 # Serialize runs so two builds never fight over the rolling "ci" release.
