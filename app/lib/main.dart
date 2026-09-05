@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import 'core/notification_service.dart';
 import 'core/permission_gate.dart';
 import 'core/theme.dart';
 import 'core/theme_controller.dart';
@@ -22,6 +23,7 @@ Future<void> main() async {
     return const _FriendlyError();
   };
   await ThemeController.instance.load();
+  await NotificationService.instance.initialize();
   // Subscribe to home-widget / launcher-shortcut taps (Android only).
   unawaited(WidgetBridge.init());
   runApp(const MtekApp());

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../core/format.dart' as fmt;
+import '../core/notification_service.dart';
 import '../core/widget_bridge.dart';
 import 'api_client.dart';
 import 'auth_store.dart';
@@ -51,6 +52,7 @@ class AppStore extends ChangeNotifier {
   /// change, plus CEO/Admin announcements) — newest first. Populated by
   /// [refreshNotifications], polled periodically by the app shell.
   List<AppNotification> notifications = [];
+  bool _remoteNotificationsPrimed = false;
   int get unreadNotificationCount {
     final uid = AuthStore.instance.remoteSignInUid;
     if (uid == null || uid.isEmpty) return notifications.length;
@@ -438,12 +440,27 @@ class AppStore extends ChangeNotifier {
       if (res == null || !res.ok || res.json is! Map) return;
       final list = (res.json as Map)['notifications'];
       if (list is! List) return;
+      final previousIds = notifications.map((item) => item.id).toSet();
+      final incoming = [
+        for (final e in list)
+          if (e is Map) AppNotification.fromJson(e.cast<String, dynamic>()),
+      ];
       notifications
         ..clear()
-        ..addAll([
-          for (final e in list)
-            if (e is Map) AppNotification.fromJson(e.cast<String, dynamic>()),
-        ]);
+        ..addAll(incoming);
+      if (_remoteNotificationsPrimed) {
+        for (final item in incoming.reversed) {
+          if (previousIds.contains(item.id)) continue;
+          unawaited(NotificationService.instance.show(
+            key: 'remote:${item.id}',
+            title: item.title,
+            body: item.message,
+            payload: item.ref,
+            critical: item.kind == 'stock' || item.kind == 'approval' || item.kind == 'staff',
+          ));
+        }
+      }
+      _remoteNotificationsPrimed = true;
       notifyListeners();
     } catch (_) {
       // offline — keep whatever was last loaded
@@ -572,8 +589,16 @@ class AppStore extends ChangeNotifier {
       createdAt: DateTime.now(),
       readBy: const [],
     ));
+    final created = notifications.first;
     notifyListeners();
     await _saveLocalNotifications();
+    unawaited(NotificationService.instance.show(
+      key: 'local:${created.id}',
+      title: created.title,
+      body: created.message,
+      payload: created.ref,
+      critical: kind == 'stock' || kind == 'approval' || kind == 'staff',
+    ));
   }
 
   // ------------------------------------------------------------------ staff
@@ -1385,6 +1410,19 @@ class AppStore extends ChangeNotifier {
     await _persistSaleSide(sale, enqueue: !serverApplied);
     unawaited(addLocalNotification('transaction', 'Sale recorded',
         '$signedBy recorded a ${fmt.naira(sale.total)} sale for ${customer.name}', sale.id));
+    for (final item in items) {
+      final matches = products.where((p) => p.id == item.product.id).toList();
+      final product = matches.isEmpty ? null : matches.first;
+      if (product != null && !product.isService && product.qtyOnHand <= product.reorderLevel) {
+        unawaited(addLocalNotification(
+          'stock',
+          'Low stock warning',
+          '${product.name} has ${product.qtyOnHand} ${product.unit} remaining '
+              '(reorder level ${product.reorderLevel}).',
+          product.id,
+        ));
+      }
+    }
     notifyListeners();
     pushHomeWidgetStats();
   }
