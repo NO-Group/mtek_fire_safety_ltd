@@ -156,10 +156,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: _online == true ? Mtek.success : Mtek.gray500),
               title: Text(_online == null
                   ? 'Checking server…'
-                  : (_online == true ? 'Server connected' : 'Server unreachable')),
-              subtitle: Text(_online == true
-                  ? 'Your account is synced with the live server.'
-                  : 'Working offline — changes will sync when reconnected.'),
+                  : (_online == true
+                      ? (Env.offlineDataMode ? 'Sign-in server connected' : 'Server connected')
+                      : 'Server unreachable')),
+              subtitle: Text(Env.offlineDataMode
+                  ? 'Offline-first mode: all records are stored on this device. Only sign-in uses the server.'
+                  : (_online == true
+                      ? 'Your account is synced with the live server.'
+                      : 'Working offline — changes will sync when reconnected.')),
               trailing: IconButton(
                 tooltip: 'Check again',
                 icon: const Icon(Icons.refresh, size: 20, color: Mtek.gray500),
@@ -280,7 +284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _online = null);
     final api = AppStore.instance.api;
     var ok = false;
-    if (Env.apiConfigured && api != null) {
+    if (Env.authApiConfigured && api != null) {
       // ANY HTTP response — even a 4xx/5xx — proves the server is reachable
       // (the request round-tripped). "Unreachable" is reserved for a true
       // transport failure (offline / timeout), where httpJson returns null.

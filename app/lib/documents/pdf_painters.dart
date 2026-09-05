@@ -31,10 +31,8 @@ Future<Uint8List> buildDocument(
 }) async {
   await MtekPdfFonts.load();
   final logo = pw.MemoryImage(logoBytes);
-  final signature = signaturePngBytes == null ? null : pw.MemoryImage(signaturePngBytes);
-  final customerSig = customerSignaturePngBytes == null
-      ? null
-      : pw.MemoryImage(customerSignaturePngBytes);
+  final signature = _safeImage(signaturePngBytes);
+  final customerSig = _safeImage(customerSignaturePngBytes);
 
   final doc = pw.Document();
   switch (type) {
@@ -50,6 +48,21 @@ Future<Uint8List> buildDocument(
       doc.addPage(_deliveryNotePage(logo, signature, customerSig, deliveryNote!, signedBy));
   }
   return doc.save();
+}
+
+/// A PNG that fails to decode (empty capture, legacy/corrupt data URL) is
+/// simply omitted from the document instead of aborting the whole PDF.
+pw.ImageProvider? _safeImage(Uint8List? bytes) {
+  if (bytes == null || bytes.length < 24) return null;
+  try {
+    final img = pw.MemoryImage(bytes);
+    // force header parse now so a bad image fails HERE, not inside save()
+    img.width;
+    img.height;
+    return img;
+  } catch (_) {
+    return null;
+  }
 }
 
 pw.PageTheme _theme(pw.ImageProvider logo, PdfPageFormat format) {
@@ -76,7 +89,7 @@ pw.MultiPage _receiptPage(
 
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4.landscape),
-    maxPages: 2,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 10),
@@ -132,7 +145,7 @@ pw.MultiPage _receiptPage(
       pw.SizedBox(height: 10),
 
       // The Sum of | Being Payment for
-      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Expanded(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(8),
@@ -178,33 +191,53 @@ pw.MultiPage _receiptPage(
       ]),
       pw.SizedBox(height: 12),
 
-      // Sign-off boxes
+      // Sign-off boxes. NOTE: no Spacer/Expanded inside these — under
+      // MultiPage that resolves to an infinite height and the pdf package
+      // throws "Widget won't fit into the page (height Infinity)", which
+      // is exactly what made every receipt fail to generate.
       pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Expanded(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(8),
-            height: 52,
+            height: 56,
             decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
-            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text('For: M-TEK FIRE & SAFETY LTD',
-                  style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-              pw.Spacer(),
-              pw.Text(signedBy, style: const pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic)),
-            ]),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('For: M-TEK FIRE & SAFETY LTD',
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                  if (signature != null)
+                    pw.Image(signature, width: 62, height: 20, fit: pw.BoxFit.contain),
+                  if (signature != null) pw.SizedBox(width: 6),
+                  pw.Text(signedBy, style: const pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic)),
+                ]),
+              ],
+            ),
           ),
         ),
         pw.SizedBox(width: 12),
         pw.Expanded(
           child: pw.Container(
             padding: const pw.EdgeInsets.all(8),
-            height: 52,
+            height: 56,
             decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
-            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text("For: CUSTOMER'S/CLIENT",
-                  style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-              pw.Spacer(),
-              if (signature != null) pw.Image(signature, width: 70, height: 24, fit: pw.BoxFit.contain),
-            ]),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text("For: CUSTOMER'S/CLIENT",
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                customerSig != null
+                    ? pw.Image(customerSig, width: 70, height: 24, fit: pw.BoxFit.contain)
+                    : pw.Container(
+                        width: 120,
+                        height: 1,
+                        margin: const pw.EdgeInsets.only(bottom: 4),
+                        color: PdfColors.grey600),
+              ],
+            ),
           ),
         ),
       ]),
@@ -282,7 +315,7 @@ pw.MultiPage _invoicePage(
 
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4),
-    maxPages: 10,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 8),
@@ -313,9 +346,10 @@ pw.MultiPage _invoicePage(
       ]),
       pw.Row(children: [
         pw.Expanded(flex: 3, child: ruledField('Name:', value: v.name)),
-        pw.Expanded(flex: 2, child: ruledField('Address:', value: v.address)),
+        pw.Expanded(flex: 3, child: ruledField('Address:', value: v.address)),
         pw.Expanded(flex: 2, child: ruledField('Phone No:', value: v.phone)),
-        pw.Expanded(child: ruledField('Date:', value: _d(v.date))),
+        pw.SizedBox(width: 6),
+        pw.SizedBox(width: 92, child: ruledField('Date:', value: _d(v.date))),
       ]),
       pw.SizedBox(height: 4),
 
@@ -354,7 +388,7 @@ pw.MultiPage _invoicePage(
         ),
       ]),
       pw.SizedBox(height: 6),
-      ruledField('Amount in words:', value: '${v.amountInWords} ONLY', fontSize: 8.5),
+      ruledField('Amount in words:', value: v.amountInWords, fontSize: 8.5),
       pw.SizedBox(height: 4),
       pw.Row(children: [
         pw.Expanded(
@@ -433,7 +467,7 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
 
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4),
-    maxPages: 5,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 6),
@@ -462,10 +496,16 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
       // Top field row
       pw.Row(children: [
         pw.Expanded(child: ruledField('Entry Date:', value: _d(m.entryDate), fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('Collection Date:', value: _d(m.collectionDate), fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('Next Service Date:', value: _d(m.nextServiceDate), fontSize: 7.5)),
+      ]),
+      pw.Row(children: [
         pw.Expanded(child: ruledField('Invoice No:', value: m.invoiceNo, fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('Receipt No:', value: m.receiptNo, fontSize: 7.5)),
+        pw.SizedBox(width: 10),
         pw.Expanded(child: ruledField('LPO NO.:', value: m.lpoNo, fontSize: 7.5)),
       ]),
       pw.SizedBox(height: 4),
@@ -520,7 +560,7 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
             ruledField("Customer's Name:", value: m.name, fontSize: 8.5),
             ruledField('Address:', value: m.address, fontSize: 8.5),
             ruledField('Phone Number:', value: m.phone, fontSize: 8.5),
-            ruledField('Bill in words:', value: '${m.amountInWords} ONLY', fontSize: 8.5),
+            ruledField('Bill in words:', value: m.amountInWords, fontSize: 8.5),
           ]),
         ),
         pw.SizedBox(width: 14),
@@ -593,7 +633,7 @@ pw.MultiPage _waybillPage(
   ];
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4.portrait),
-    maxPages: 2,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 8),
@@ -762,7 +802,7 @@ pw.MultiPage _deliveryNotePage(
       );
   return pw.MultiPage(
     pageTheme: _theme(logo, PdfPageFormat.a4.portrait),
-    maxPages: 2,
+    maxPages: 20,
     build: (context) => [
       corporateHeader(logo),
       pw.SizedBox(height: 8),
@@ -914,9 +954,9 @@ pw.Widget _signOffRow(pw.ImageProvider? signature, String signedBy, List<String>
 }
 
 String _d(DateTime d) =>
-    '${d.day}/${d.month}/${d.year}';
+    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 String _dt(DateTime d) =>
-    '${d.day}/${d.month}/${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    '${_d(d)} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 String _money(num n) => n.toStringAsFixed(n.truncateToDouble() == n ? 0 : 2)
     .replaceAll(RegExp(r'\B(?=(\d{3})+(?!\d))'), ',');
 String _qty(num q) => q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(1);

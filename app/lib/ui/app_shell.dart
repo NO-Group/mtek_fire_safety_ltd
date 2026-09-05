@@ -92,10 +92,11 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Timer? _notifyTimer;
+  Timer? _dataTimer;
 
   List<Destination> get _visible => destinationsFor(AuthStore.instance.current?.role);
 
@@ -108,6 +109,17 @@ class _AppShellState extends State<AppShell> {
     _notifyTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       unawaited(AppStore.instance.refreshNotifications());
     });
+    // LIVE DATA SYNC: re-pull the shared dataset every 30s (and whenever the
+    // app comes back to the foreground) so stock, customers, sales,
+    // receipts, invoices, MILS and documents recorded on ANY device show up
+    // on every page of every other device without a restart.
+    WidgetsBinding.instance.addObserver(this);
+    // Near-instant: a tiny change-stamp poll every 8s; the full dataset is
+    // only re-downloaded when the server reports something changed.
+    unawaited(AppStore.instance.refreshRemote());
+    _dataTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      unawaited(AppStore.instance.pollChanges());
+    });
     // Jump to a screen requested by a home-widget tap / launcher shortcut.
     WidgetBridge.requestedScreen.addListener(_applyRequestedScreen);
     _applyRequestedScreen();
@@ -115,9 +127,19 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     WidgetBridge.requestedScreen.removeListener(_applyRequestedScreen);
     _notifyTimer?.cancel();
+    _dataTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(AppStore.instance.refreshRemote());
+      unawaited(AppStore.instance.refreshNotifications());
+    }
   }
 
   void _applyRequestedScreen() {
@@ -166,7 +188,12 @@ class _AppShellState extends State<AppShell> {
       key: _scaffoldKey,
       appBar: _appBar(dest),
       drawer: useRail ? null : _drawer(context),
-      body: body,
+      // Every page re-renders whenever the store changes (local edit OR a
+      // background refresh from the server), not just the notification badge.
+      body: AnimatedBuilder(
+        animation: AppStore.instance,
+        builder: (context, _) => body,
+      ),
       bottomNavigationBar: useBottomBar ? _bottomBar() : null,
     );
   }

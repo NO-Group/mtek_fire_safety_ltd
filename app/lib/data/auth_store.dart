@@ -81,14 +81,41 @@ class AuthStore extends ChangeNotifier {
   /// Management-level authority (CEO or Admin): settings, seeds, approvals.
   bool get isManagement => isAdmin || isCeo;
 
+  // ---- device-local account directory (offline-first) --------------------
+  // Every account that has ever signed in / signed up on this device is kept
+  // here (password hash only), so sign-in keeps working with no server.
+  bool _usersLoaded = false;
+  Future<void> loadUsers() async {
+    if (_usersLoaded) return;
+    _usersLoaded = true;
+    final raw = await localRead('users');
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final list = jsonDecode(raw);
+      if (list is List) {
+        for (final e in list) {
+          if (e is Map) {
+            final u = StaffUser.fromJson(e.cast<String, dynamic>());
+            users.removeWhere((x) => x.email == u.email);
+            users.add(u);
+          }
+        }
+      }
+    } catch (_) {/* corrupt cache — start clean */}
+  }
+
+  Future<void> persistUsers() => _persistUsers();
+  Future<void> _persistUsers() =>
+      localWrite('users', jsonEncode(users.map((u) => u.toJson()).toList()));
+
   String? signIn(String email, String password) {
     if (users.isEmpty) {
-      return 'No backend configured in this build — sign-in needs the M-TEK'
-          ' Supabase settings. Accounts you create appear here.';
+      return 'No account on this device yet — connect once to sign in, or create an account.';
     }
     final mail = email.trim().toLowerCase();
     final user = users.where((u) => u.email == mail).firstOrNull;
     if (user == null) return 'No account with that email';
+    if (user.passwordHash.isEmpty) return 'This account has not signed in on this device while online yet';
     if (user.passwordHash != demoHash(password)) return 'Wrong password';
     if (mail == ceoEmail && user.role != 'ceo') user.role = 'ceo'; // locked
     current = user;
@@ -130,6 +157,7 @@ class AuthStore extends ChangeNotifier {
     ));
     current = users.last;
     notifyListeners();
+    unawaited(_persistUsers());
     return null;
   }
 
@@ -152,7 +180,7 @@ class AuthStore extends ChangeNotifier {
     required String recoveryString,
   }) async {
     final api = AppStore.instance.api;
-    if (!Env.apiConfigured || api == null) {
+    if (!Env.authApiConfigured || api == null) {
       return 'No backend configured in this build.';
     }
     final mail = email.trim().toLowerCase();
@@ -164,17 +192,27 @@ class AuthStore extends ChangeNotifier {
       'signature_passcode': signaturePasscode,
       'recovery_string': recoveryString,
     });
-    if (res == null) return 'Network unreachable — check your connection';
-    final j = res.json;
-    if (!res.ok) {
+    final j = res?.json;
+    final serverOk = res != null && res.ok && j is Map && j['access_token'] is String && j['user'] is Map;
+    if (!serverOk && res != null && res.status < 500) {
+      // a real validation/duplicate answer from the auth service — show it
       final msg = (j is Map ? j['error'] : null);
       return msg is String ? msg : 'Could not create the account — please try again.';
     }
-    if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {
-      return 'Unexpected response from the server';
+    if (serverOk) {
+      await _adoptSession(j);
+      await AppStore.instance.reloadRemote();
+      return null;
     }
-    await _adoptSession(j);
-    await AppStore.instance.reloadRemote();
+    // OFFLINE-FIRST: server unreachable / server-side failure → create the
+    // account ON THIS DEVICE so work can continue. It syncs nothing; the
+    // credentials live in the local directory (persisted in [users]).
+    final localErr = signUp(
+      name: name, email: mail, password: password,
+      signaturePasscode: signaturePasscode, role: 'sales',
+    );
+    if (localErr != null) return localErr;
+    await _persistUsers();
     return null;
   }
 
@@ -189,7 +227,7 @@ class AuthStore extends ChangeNotifier {
     String? newSignaturePasscode,
   }) async {
     final api = AppStore.instance.api;
-    if (!Env.apiConfigured || api == null) {
+    if (!Env.authApiConfigured || api == null) {
       return 'No backend configured in this build.';
     }
     final res = await api.postPublic('/api/auth/reset-password', {
@@ -217,7 +255,7 @@ class AuthStore extends ChangeNotifier {
     required String newRecoveryString,
   }) async {
     final api = AppStore.instance.api;
-    if (!Env.apiConfigured || api == null) {
+    if (!Env.authApiConfigured || api == null) {
       return 'No backend configured in this build.';
     }
     final res = await api.postPublic('/api/auth/reset-recovery', {
@@ -241,7 +279,7 @@ class AuthStore extends ChangeNotifier {
     required String newPassword,
   }) async {
     final api = AppStore.instance.api;
-    if (!Env.apiConfigured || api == null || accessToken == null) {
+    if (!Env.authApiConfigured || api == null || accessToken == null) {
       return 'You must be signed in to change your password.';
     }
     final res = await api.post('/api/auth/change-password', {
@@ -264,7 +302,7 @@ class AuthStore extends ChangeNotifier {
     required String newPasscode,
   }) async {
     final api = AppStore.instance.api;
-    if (!Env.apiConfigured || api == null || accessToken == null) {
+    if (!Env.authApiConfigured || api == null || accessToken == null) {
       return 'You must be signed in to change your signature passcode.';
     }
     final res = await api.post('/api/auth/change-passcode', {
@@ -290,16 +328,25 @@ class AuthStore extends ChangeNotifier {
   /// The passcode last verified OK (kept in RAM only) — passed to the data
   /// API which re-verifies it against the stored hash in MongoDB.
   String? lastVerifiedPasscode;
+  /// True when the last verification BOUND a new passcode (staff account
+  /// created while the gate was off) — the dialog tells the user to keep it.
+  bool lastSignatureBound = false;
 
   /// Real backend path: verify against the stored hash (scrypt) in
   /// MongoDB via the data API. Falls back to the local check only when the
   /// API is not configured or unreachable.
   Future<bool> verifySignatureAny(String passcode) async {
+    // TEMPORARY: signature gate disabled app-wide (see signature_dialog.dart).
+    if (Env.signatureGateDisabled) {
+      lastVerifiedPasscode = passcode;
+      return true;
+    }
     final api = AppStore.instance.api;
     if (Env.apiConfigured && api != null && accessToken != null) {
       final res = await api.post('/api/auth/signature', {'passcode': passcode});
       if (res != null && res.ok) {
         lastVerifiedPasscode = passcode;
+        lastSignatureBound = res.json is Map && (res.json as Map)['bound'] == true;
         return true;
       }
       if (res != null) return false; // server actively rejected
@@ -317,10 +364,16 @@ class AuthStore extends ChangeNotifier {
     if (!Env.backendConfigured || remote == null) return null; // caller falls back to local
     final mail = email.trim().toLowerCase();
     final res = await remote.authSignInRaw(mail, password);
-    if (res == null) return 'Network unreachable — check your connection';
+    if (res == null) {
+      // Offline: accept a device-local account (created offline, or the
+      // cached identity of the last successful server sign-in).
+      final local = signIn(mail, password);
+      return local == null ? null : 'Network unreachable — check your connection';
+    }
     final j = res.json;
     if (!res.ok) {
       final msg = (j is Map ? (j['error_description'] ?? j['error'] ?? j['msg']) : null);
+      if (signIn(mail, password) == null) return null; // local account matches
       return msg is String ? msg : 'Sign-in failed — please try again.';
     }
     if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {
@@ -339,7 +392,7 @@ class AuthStore extends ChangeNotifier {
         'name': j['user']['name'],
         'role': j['user']['role'],
       },
-    });
+    }, passwordHash: demoHash(password));
     // pull the live dataset from MongoDB for this account
     await AppStore.instance.reloadRemote();
     return null;
@@ -350,7 +403,7 @@ class AuthStore extends ChangeNotifier {
   /// (access + refresh token) to disk so exiting the app never signs the
   /// user out (owner directive 2026-09-01). Used by sign-in, sign-up and
   /// the silent boot-time [restoreSession].
-  Future<void> _adoptSession(Map j) async {
+  Future<void> _adoptSession(Map j, {String? passwordHash}) async {
     final remote = AppStore.instance.remote;
     final api = AppStore.instance.api;
     final accessTok = '${j['access_token'] ?? ''}';
@@ -362,7 +415,7 @@ class AuthStore extends ChangeNotifier {
     final mail = '${u['email'] ?? ''}'.toLowerCase();
     String role = '${u['role'] ?? 'sales'}';
     String name = '${u['name'] ?? mail.split('@').first}';
-    if (Env.apiConfigured && api != null && (u['role'] == null || u['name'] == null)) {
+    if (Env.apiConfigured && api != null && (u['role'] == null || u['name'] == null)) { // data route — skipped offline
       final me = await api.get('/api/me');
       if (me != null && me.ok && me.json is Map) {
         final mu = (me.json as Map)['user'];
@@ -379,16 +432,21 @@ class AuthStore extends ChangeNotifier {
     // to the Sales UI for good. Owner directive 2026-09-02.
     if (mail == ceoEmail && role != 'ceo') role = 'ceo';
     remoteSignInUid = uid;
+    final prev = users.where((x) => x.email == mail).firstOrNull;
     users.removeWhere((x) => x.email == mail);
     users.add(StaffUser(
       name: name,
       email: mail,
       role: role,
-      passwordHash: '',
-      signaturePasscodeHash: '',
+      // keep the device copy of the password hash so this account can sign
+      // in again with the server unreachable (offline-first)
+      passwordHash: passwordHash ?? prev?.passwordHash ?? '',
+      signaturePasscodeHash: prev?.signaturePasscodeHash ?? '',
+      signaturePng: prev?.signaturePng,
     ));
     current = users.last;
     notifyListeners();
+    unawaited(_persistUsers());
     if (refreshTok.isNotEmpty) {
       await localWrite('session', jsonEncode({
         'access_token': accessTok,
@@ -400,8 +458,12 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
-  /// Supabase auth.users id of the signed-in account (null offline).
-  String? remoteSignInUid;
+  /// Supabase auth.users id of the signed-in account. Offline-first: falls
+  /// back to the account email so read-receipts / ownership still work with
+  /// a device-local sign-in.
+  String? get remoteSignInUid => _remoteUid ?? current?.email;
+  set remoteSignInUid(String? v) => _remoteUid = v;
+  String? _remoteUid;
 
   /// Current Supabase JWT for data-API calls (null when signed out/offline).
   String? get accessToken => AppStore.instance.remote?.accessToken;
@@ -412,8 +474,9 @@ class AuthStore extends ChangeNotifier {
   /// user signed in (owner directive 2026-09-01 — previously every restart
   /// forced a fresh sign-in with no session saved anywhere).
   Future<void> restoreSession() async {
+    await loadUsers();
     final api = AppStore.instance.api;
-    if (!Env.apiConfigured || api == null) return;
+    if (!Env.authApiConfigured || api == null) return;
     final raw = await localRead('session');
     if (raw == null || raw.isEmpty) return;
     Map<String, dynamic> saved;

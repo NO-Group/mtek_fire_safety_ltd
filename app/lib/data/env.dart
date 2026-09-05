@@ -8,6 +8,11 @@
 /// (The anon key is a PUBLIC client key by design; all authority is
 /// enforced server-side by the data API.)
 abstract final class Env {
+  /// "Sign to issue" passcode gate. `true` skips the passcode prompt for
+  /// everyone (was used temporarily on 2026-09-03). Keep in step with the
+  /// SIGNATURE_GATE constant in supabase/functions/data-api2/index.ts.
+  static const bool signatureGateDisabled = false;
+
   static const supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: 'https://kshuadjcflwlidupnqly.supabase.co',
@@ -21,6 +26,20 @@ abstract final class Env {
     defaultValue: 'https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api2',
   );
 
+  /// OFFLINE-ONLY switch. `true` disconnects the MongoDB data API entirely
+  /// (used 2026-09-03 while Atlas auth was broken). `false` = normal
+  /// offline-FIRST operation: the server is used when reachable, the local
+  /// files otherwise, and every record made offline is uploaded through
+  /// POST /api/sync/import the next time the API answers (see
+  /// AppStore._uploadOfflineData).
+  static const bool offlineDataMode = false;
+
   static bool get backendConfigured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
-  static bool get apiConfigured => apiBase.isNotEmpty;
+
+  /// Data-API (MongoDB sections) available? FALSE in offline mode so every
+  /// store/auth call takes its existing local/offline branch.
+  static bool get apiConfigured => !offlineDataMode && apiBase.isNotEmpty;
+
+  /// Auth routes are still served by the same function URL, even offline.
+  static bool get authApiConfigured => apiBase.isNotEmpty;
 }

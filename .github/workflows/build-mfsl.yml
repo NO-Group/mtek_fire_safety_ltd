@@ -23,7 +23,7 @@ name: Build MFSL Inventory (APK + EXE)
 on:
   workflow_dispatch:
   push:
-    branches: [main, arena/01a061f5-mtek-fire-safety-ltd]
+    branches: [main, arena/**]
     paths: ['app/**', 'ci/**', '.github/workflows/build-mfsl.yml']
 
 # Serialize runs so two builds never fight over the rolling "ci" release.
@@ -43,6 +43,12 @@ jobs:
         run: bash ci/build-android.sh
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Attach APK to this run (Artifacts box)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MFSL-Inventory-Android-APK
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
@@ -53,3 +59,11 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Attach Windows installer + portable zip to this run (Artifacts box)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MFSL-Inventory-Windows
+          path: |
+            app/build/windows/x64/runner/Release/MFSL.Inventory.Setup.msix
+            ${{ runner.temp }}/MFSL-Inventory-portable.zip
+          if-no-files-found: error

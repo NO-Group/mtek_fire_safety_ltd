@@ -64,6 +64,24 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final body = _body(context);
+    // The Documents tab already sits inside the app shell's Scaffold. But
+    // every "New receipt / New invoice / New MILS / New delivery note /
+    // New waybill" button pushes this screen as a standalone route, where
+    // there was NO Scaffold/Material ancestor at all — which is exactly what
+    // produced the yellow double-underlined text, unstyled giant fonts and
+    // crushed layouts. Give the standalone route its own Scaffold + AppBar.
+    if (Scaffold.maybeOf(context) != null) return body;
+    return Scaffold(
+      backgroundColor: Mtek.gray50,
+      appBar: AppBar(
+        title: Text('New ${_labels[_type] ?? 'document'}'),
+      ),
+      body: SafeArea(child: body),
+    );
+  }
+
+  Widget _body(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1085,7 +1103,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       total: docTotal,
       signedBy: signer.name,
       verifyHash: hash,
-      serverIssued: Env.backendConfigured,
+      serverIssued: Env.apiConfigured,
     );
 
     if (_type == DocType.mils) {
@@ -1151,7 +1169,9 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         backgroundColor: Mtek.danger,
-        content: Text('Document recorded, but the PDF could not be generated — please try again.'),
+        duration: Duration(seconds: 6),
+        content: Text('Document recorded, but the PDF could not be generated — '
+            'open it again from Documents history to retry.'),
       ));
     }
   }

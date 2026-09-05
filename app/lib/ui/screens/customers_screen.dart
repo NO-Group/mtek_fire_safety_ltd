@@ -104,15 +104,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
           FilledButton(
             onPressed: () {
               if (name.text.trim().isNotEmpty) {
-                AppStore.instance.customers.add(Customer(
-                  id: 'C${AppStore.instance.customers.length + 1}',
+                AppStore.instance.addCustomer(Customer(
+                  id: 'C${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}',
                   name: name.text.trim(),
                   isCorporate: name.text.toLowerCase().contains('ltd') || name.text.toLowerCase().contains('depot'),
                   phone: phone.text.trim(),
                   email: '',
                   address: '',
                 ));
-                AppStore.instance.notifyListeners();
               }
               Navigator.pop(context);
             },

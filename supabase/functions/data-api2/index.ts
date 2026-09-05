@@ -21,15 +21,14 @@
 //                 Authorization: Bearer <Supabase JWT>
 // ============================================================================
 
-// deno-lint-ignore no-import-assertions
-import { MongoClient, ObjectId } from 'https://deno.land/x/mongo@v0.32.0/mod.ts';
-// DRIVER SWAP (edge-runtime activation fix): the official npm:mongodb driver
-// bundles to many MB and the function uploaded but NEVER activated — the
-// platform silently kept serving the last healthy deployment (proven with a
-// minimal canary that activated instantly, and with a lazy-import variant
-// that still failed). x/mongo is a small pure-Deno driver with the same
-// CRUD surface this API uses (find/sort/limit/toArray, insertOne, updateOne,
-// updateMany, $-operators are all server-side and driver-agnostic).
+import { MongoClient, ObjectId } from 'npm:mongodb@6.3.0';
+// DRIVER: official npm:mongodb. A 3-driver probe from a GitHub runner
+// (2026-09-03, same URI/second) showed Node mongodb + Deno npm:mongodb
+// CONNECTED while deno.land/x/mongo@v0.32.0 failed with Atlas "bad auth" —
+// the pure-Deno driver's SCRAM handshake is rejected by this cluster, so the
+// weeks of "bad auth" were never a credentials problem. The earlier npm
+// activation trouble was tied to the corrupted `data-api` function name,
+// which is no longer used (this is data-api2, delete+create on each deploy).
 
 // ---- environment (Function secrets — see header comment above) --------------
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Supabase
@@ -60,7 +59,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-02j';
+const BUNDLE_VERSION = '2026-09-05a';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -85,10 +84,11 @@ const SECTION_DBS = Object.values(DB);
 let client: MongoClient | null = null;
 async function db(name: string) {
   if (!client) {
-    client = new MongoClient();
-    await client.connect(Deno.env.get('MONGODB_URI') ?? '');
+    const c = new MongoClient(Deno.env.get('MONGODB_URI') ?? '', { serverSelectionTimeoutMS: 8000 });
+    await c.connect();
+    client = c;
   }
-  return client.database(name);
+  return client.db(name);
 }
 const coll = {
   serials: () => db(DB.core).then(d => d.collection('serials')),
@@ -110,6 +110,9 @@ const coll = {
 
 // ---- helpers ----------------------------------------------------------------
 const pad9 = (n: number) => String(n).padStart(9, '0');
+// insertOne helper (npm driver resolves to { insertedId }).
+// deno-lint-ignore no-explicit-any
+const ins = async (c: Promise<any>, doc: Record<string, unknown>) => (await c).insertOne(doc);
 const fmtN = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
 const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote'];
 const now = () => new Date().toISOString();
@@ -244,10 +247,26 @@ function requireRole(user: Profile, roles: string[], what: string) {
   }
 }
 
+// Signature passcode gate (restored 2026-09-03). Set to false to skip the
+// passcode check server-side (keep in step with Env.signatureGateDisabled).
+const SIGNATURE_GATE = true;
+
 async function verifyPasscode(user: Profile, passcode: string) {
+  if (!SIGNATURE_GATE) return; // gate disabled — every signed-in user may issue
   if (!passcode) throw new HttpErr(403, 'Not signed — passcode required');
   const hash = user.sig_hash && user.sig_salt ? await hashPass(passcode, user.sig_salt) : '';
   if (hash && hash === user.sig_hash) return;
+  // first bind for staff whose profile has NO passcode yet (accounts created
+  // while the gate was switched off): the first passcode they enter becomes
+  // theirs, and they are told so by the app. Min 4 chars like sign-up.
+  if (!user.sig_hash && user.role !== 'ceo' && passcode.length >= 4) {
+    const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+    await (await coll.profiles()).updateOne(
+      { _id: user.uid }, { $set: { sig_salt: salt, sig_hash: await hashPass(passcode, salt) } });
+    profileCache.delete(user.uid);
+    await audit('core', 'bind-passcode', user.uid, user);
+    return;
+  }
   // first bind: CEO's configured signature seeds the hash on first use
   if (!user.sig_hash && CEO_SIG && passcode === CEO_SIG && user.role === 'ceo') {
     const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
@@ -257,6 +276,22 @@ async function verifyPasscode(user: Profile, passcode: string) {
     return;
   }
   throw new HttpErr(403, 'Signature passcode does not match — action NOT authorised');
+}
+
+const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normPhone = (s: string) => s.replace(/\D/g, '').replace(/^234/, '0');
+/// Same customer entered twice (two devices offline, or a typo-free re-entry):
+/// identical normalised name, and identical phone when both sides have one.
+async function findDuplicateCustomer(name: string, phone: string) {
+  const n = normName(name); if (!n) return null;
+  const ph = normPhone(phone);
+  const cands = await (await coll.customers()).find({ name: { $regex: `^${name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }).limit(20).toArray();
+  for (const c of cands) {
+    if (normName(String(c.name ?? '')) !== n) continue;
+    const cp = normPhone(String(c.phone ?? ''));
+    if (!ph || !cp || ph === cp) return c;
+  }
+  return null;
 }
 
 // ---- core provisioning (serials from 000000001, REAL owner catalogue) -------
@@ -270,8 +305,9 @@ async function ensureCore() {
 }
 async function nextSerial(type: string): Promise<number> {
   const out = await (await coll.serials()).findOneAndUpdate(
-    { _id: type }, { $inc: { last_used: 1 } }, { returnDocument: 'after', upsert: true });
-  return out!.last_used as number;
+    { _id: type } as Record<string, unknown>, { $inc: { last_used: 1 } },
+    { upsert: true, returnDocument: 'after' });
+  return Number(out?.last_used ?? 1);
 }
 async function peekSerials(): Promise<Record<string, number>> {
   const rows = await (await coll.serials()).find({}).toArray();
@@ -606,6 +642,11 @@ Deno.serve(async (req: Request) => {
       case 'GET /api/me':
         return json({ user: { uid: user.uid, email: user.email, name: user.name, role: user.role } });
 
+      // cheap "did anything change?" poll: the newest audit event id/time
+      case 'GET /api/changes': {
+        const last = await (await coll.audit()).find({}).sort({ at: -1 }).limit(1).toArray();
+        return json({ stamp: last[0] ? `${last[0].at}|${last[0]._id}` : '' });
+      }
       case 'GET /api/bootstrap': {
         await ensureCore();
         const [products, customers, settings, serials, txns, receipts, invoices, docs, sales, mils, adjustments] = await Promise.all([
@@ -631,8 +672,9 @@ Deno.serve(async (req: Request) => {
 
       case 'POST /api/auth/signature': {
         const b = await req.json();
+        const firstBind = !user.sig_hash && user.role !== 'ceo';
         await verifyPasscode(user, String(b.passcode ?? ''));
-        return json({ ok: true, user: { uid: user.uid, name: user.name, role: user.role } });
+        return json({ ok: true, bound: firstBind, user: { uid: user.uid, name: user.name, role: user.role } });
       }
 
       // ---- signed-in: change the account password (Settings → Account).
@@ -686,16 +728,46 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       }
 
+      case 'GET /api/customers': {
+        const rows = await (await coll.customers()).find({}).sort({ name: 1 }).limit(2000).toArray();
+        return json({ customers: rows });
+      }
+      case 'GET /api/products': {
+        const rows = await (await coll.products()).find({}).sort({ name: 1 }).limit(5000).toArray();
+        return json({ products: rows });
+      }
+      // ---- older history, paged (the bootstrap only carries the latest
+      // 300 of each; the app asks here for anything before a given date).
+      case 'GET /api/history': {
+        const kind = url.searchParams.get('kind') ?? '';
+        const before = url.searchParams.get('before') ?? '';
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 300));
+        const sources: Record<string, [() => Promise<any>, string]> = {
+          sales: [coll.sales, 'created_at'], receipts: [coll.receipts, 'created_at'],
+          invoices: [coll.invoices, 'created_at'], transactions: [coll.txns, 'txn_date'],
+          mils: [coll.mils, 'created_at'], adjustments: [coll.adjustments, 'created_at'],
+          docs: [coll.archive, 'issued_at'],
+        };
+        const src = sources[kind];
+        if (!src) throw new HttpErr(400, 'Unknown history kind');
+        const q = before ? { [src[1]]: { $lt: before } } : {};
+        const rows = await (await src[0]()).find(q).sort({ [src[1]]: -1 }).limit(limit).toArray();
+        return json({ rows, more: rows.length === limit });
+      }
       case 'POST /api/customers': {
         const b = await req.json();
         if (!b.name || String(b.name).trim().length < 2) throw new HttpErr(400, 'Customer name required');
+        // de-duplicate: same normalised name (+ same phone when both given)
+        // returns the existing record instead of creating a twin
+        const existing = await findDuplicateCustomer(String(b.name), String(b.phone ?? ''));
+        if (existing) return json({ customer: existing, duplicate: true }, 200);
         const doc = {
           name: String(b.name).trim().slice(0, 120),
           kind: b.corp || b.kind === 'corporate' ? 'corporate' : 'individual',
           phone: String(b.phone ?? ''), email: String(b.email ?? ''), address: String(b.address ?? ''),
           credit_balance: 0, created_by: user.uid, created_at: now(),
         };
-        const out = await (await coll.customers()).insertOne(doc);
+        const out = await ins(coll.customers(), doc);
         await audit('customers', 'create', String(out.insertedId), user);
         await notify('customer', 'New customer added', `${user.name} added ${doc.name} as a customer`, String(out.insertedId), user);
         return json({ customer: { ...doc, _id: out.insertedId } }, 201);
@@ -780,8 +852,8 @@ Deno.serve(async (req: Request) => {
 
         const t = now();
         const sale = { customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), method, discount, total, items: lines, signed_by: user.uid, signed_name: user.name, customer_signature: String(b.customer_signature ?? ''), created_at: t };
-        const saleOut = await (await coll.sales()).insertOne(sale);
-        const txnOut = await (await coll.txns()).insertOne({ txn_type: 'salePayment', method, amount: total, reference: String(saleOut.insertedId), txn_date: t, created_by: user.uid });
+        const saleOut = await ins(coll.sales(), sale);
+        const txnOut = await ins(coll.txns(), { txn_type: 'salePayment', method, amount: total, reference: String(saleOut.insertedId), txn_date: t, created_by: user.uid });
         const recNo = 'MTK-REC-' + pad9(await nextSerial('receiptIssue'));
         await (await coll.receipts()).insertOne({ no: recNo, amount: total, method, source: 'sale', customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), issued_by: user.uid, issued_name: user.name, customer_signature: String(b.customer_signature ?? ''), txn_id: String(txnOut.insertedId), sale_id: String(saleOut.insertedId), created_at: t });
         let invoiceNo: string | null = null;
@@ -811,7 +883,7 @@ Deno.serve(async (req: Request) => {
           { no: String(inv.no), $expr: { $lte: ['$amount_paid', '$total'] } },
           { $inc: { amount_paid: pay }, $set: { status: Number(inv.amount_paid ?? 0) + pay >= Number(inv.total) ? 'paid' : 'partial', updated_at: t } });
         if (!upd.modifiedCount) throw new HttpErr(409, 'Payment raced another update — retry');
-        const txnOut = await (await coll.txns()).insertOne({ txn_type: 'invoicePayment', method, amount: pay, reference: String(inv.no), txn_date: t, created_by: user.uid });
+        const txnOut = await ins(coll.txns(), { txn_type: 'invoicePayment', method, amount: pay, reference: String(inv.no), txn_date: t, created_by: user.uid });
         const recNo = 'MTK-REC-' + pad9(await nextSerial('receiptIssue'));
         await (await coll.receipts()).insertOne({ no: recNo, amount: pay, method, source: 'invoice', invoice_no: inv.no, customer_id: inv.customer_id ?? null, customer_name: inv.customer_name ?? '—', customer_contact: String(b.customer_contact ?? ''), issued_by: user.uid, issued_name: user.name, txn_id: String(txnOut.insertedId), created_at: t });
         await (await coll.payments()).insertOne({ invoice_no: inv.no, amount: pay, method, receipt_no: recNo, created_by: user.uid, created_at: t });
@@ -862,6 +934,129 @@ Deno.serve(async (req: Request) => {
         await notify('document', 'Document issued', `${user.name} issued ${type} No ${pad9(serial)} for ${record.customer}`, `${type} ${pad9(serial)}`, user);
         return json({ serial, doc: record, serials: await peekSerials() });
       }
+      // ---- OFFLINE → SERVER replay -------------------------------------
+      // The apps ran in offline-first mode (Env.offlineDataMode) for a while;
+      // every record made on a device is replayed here IDEMPOTENTLY when the
+      // API is reconnected. Each row carries `offline_key`
+      // (<device>:<table>:<localId>); rows are inserted with $setOnInsert
+      // upserts so a second upload is a no-op. Device-issued numbers
+      // (receipt/invoice/MILS/document serials) are kept EXACTLY as printed,
+      // and the serial counters are raised ($max) past anything a device
+      // already used so future server-issued numbers never collide.
+      case 'POST /api/sync/import': {
+        const b = await req.json();
+        const device = String(b.device ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+        if (!device) throw new HttpErr(400, 'device id required');
+        const canManage = user.role === 'ceo' || user.role === 'admin';
+        const accepted: string[] = [];
+        const skipped: string[] = [];
+        const rowsOf = (k: string): Record<string, unknown>[] =>
+          Array.isArray(b[k]) ? b[k].filter((r: unknown) => r && typeof r === 'object') : [];
+        // deno-lint-ignore no-explicit-any
+        const put = async (c: Promise<any>, key: string, doc: Record<string, unknown>, id?: string) => {
+          const filter = id ? { _id: id } : { offline_key: key };
+          await (await c).updateOne(filter as Record<string, unknown>,
+            { $setOnInsert: { ...doc, offline_key: key, offline_device: device, synced_by: user.uid, synced_at: now() } },
+            { upsert: true });
+          accepted.push(key);
+        };
+        // customers: _id = offline key so sales/invoices/MILS can reference
+        // them by the same string the device used.
+        const remapped: Record<string, string> = {}; // offline key → existing server _id
+        for (const r of rowsOf('customers')) {
+          const key = String(r.offline_key ?? '');
+          if (!key) continue;
+          const dup = await findDuplicateCustomer(String(r.name ?? ''), String(r.phone ?? ''));
+          if (dup && String(dup._id) !== key) { remapped[key] = String(dup._id); accepted.push(key); continue; }
+          await put(coll.customers(), key, {
+            name: String(r.name ?? '').slice(0, 120), kind: r.is_corporate ? 'corporate' : 'individual',
+            phone: String(r.phone ?? ''), email: String(r.email ?? ''), address: String(r.address ?? ''),
+            credit_balance: Number(r.credit_balance) || 0, created_by: user.uid, created_at: String(r.created_at ?? now()),
+          }, key);
+        }
+        for (const r of rowsOf('products')) {
+          const key = String(r.offline_key ?? '');
+          if (!key || !r.id || !r.name) continue;
+          if (!canManage) { skipped.push(key); continue; }
+          // device stock levels are authoritative for the offline period
+          await (await coll.products()).updateOne({ _id: String(r.id) }, { $set: {
+            name: String(r.name), category: r.category ?? 'Fire',
+            cost_price: Number(r.cost_price) || 0, selling_price: Number(r.selling_price) || 0,
+            qty_on_hand: Math.max(0, Math.trunc(Number(r.qty_on_hand) || 0)),
+            reorder_level: Math.max(0, Math.trunc(Number(r.reorder_level) || 0)),
+            unit: r.unit ?? 'unit', is_service: !!r.is_service, updated_at: now(),
+          } }, { upsert: true });
+          accepted.push(key);
+        }
+        const cref = (v: unknown) => { const k = v == null ? null : String(v); return k && remapped[k] ? remapped[k] : k; };
+        for (const r of rowsOf('sales')) {
+          const key = String(r.offline_key ?? ''); if (!key) continue;
+          await put(coll.sales(), key, {
+            customer_id: cref(r.customer_id), customer_name: String(r.customer_name ?? 'Walk-in customer'),
+            customer_contact: String(r.customer_contact ?? ''), method: String(r.method ?? 'cash'),
+            discount: Number(r.discount) || 0, total: Number(r.total) || 0,
+            items: Array.isArray(r.items) ? r.items : [], signed_by: user.uid, signed_name: String(r.signed_name ?? user.name),
+            customer_signature: String(r.customer_signature ?? ''), created_at: String(r.created_at ?? now()), offline_id: String(r.id ?? ''),
+          });
+        }
+        for (const r of rowsOf('transactions')) {
+          const key = String(r.offline_key ?? ''); if (!key) continue;
+          await put(coll.txns(), key, {
+            txn_type: String(r.txn_type ?? 'salePayment'), method: String(r.method ?? 'cash'), amount: Number(r.amount) || 0,
+            reference: String(r.reference ?? ''), txn_date: String(r.txn_date ?? now()), created_by: user.uid,
+          });
+        }
+        for (const r of rowsOf('receipts')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.no) continue;
+          await put(coll.receipts(), key, {
+            no: String(r.no), amount: Number(r.amount) || 0, method: String(r.method ?? 'cash'),
+            source: String(r.source ?? 'sale'), customer_id: r.customer_id ?? null, customer_name: String(r.customer_name ?? '—'),
+            customer_contact: String(r.customer_contact ?? ''), issued_by: user.uid, issued_name: String(r.issued_name ?? user.name),
+            customer_signature: String(r.customer_signature ?? ''), created_at: String(r.created_at ?? now()),
+          });
+        }
+        for (const r of rowsOf('invoices')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.no) continue;
+          const total = Number(r.total) || 0, paid = Number(r.amount_paid) || 0;
+          await put(coll.invoices(), key, {
+            no: String(r.no), customer_id: cref(r.customer_id), customer_name: String(r.customer_name ?? '—'),
+            status: paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'sent',
+            subtotal: total, vat: 0, total, amount_paid: paid, items: Array.isArray(r.items) ? r.items : [],
+            issued_by: user.uid, created_at: String(r.created_at ?? now()), updated_at: now(),
+          });
+        }
+        for (const r of rowsOf('mils')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.equipment) continue;
+          if (!canManage) { skipped.push(key); continue; }
+          const { offline_key: _k, ...rest } = r;
+          await put(coll.mils(), key, { ...rest, customer_id: cref(r.customer_id), recorded_by: user.uid, recorded_name: String(r.technician ?? user.name), created_at: String(r.created_at ?? r.service_date ?? now()) });
+        }
+        for (const r of rowsOf('adjustments')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.product_id) continue;
+          if (!canManage) { skipped.push(key); continue; }
+          await put(coll.adjustments(), key, {
+            product_id: String(r.product_id), delta: Math.trunc(Number(r.delta) || 0), reason: String(r.reason ?? 'correction'),
+            note: String(r.note ?? ''), by: user.uid, by_name: user.name, created_at: String(r.created_at ?? now()),
+          });
+        }
+        for (const r of rowsOf('documents')) {
+          const key = String(r.offline_key ?? ''); if (!key || !r.doc_type) continue;
+          await put(coll.archive(), key, {
+            doc_type: String(r.doc_type), serial: Number(r.serial) || 0, customer: String(r.customer ?? '—').slice(0, 120),
+            customer_contact: String(r.customer_contact ?? ''), total: Number(r.total) || 0,
+            signed_by: user.uid, signed_name: String(r.signed_name ?? user.name), verify_hash: String(r.verify_hash ?? '').slice(0, 64),
+            filename: `mtek_${r.doc_type}_${r.serial}_offline.pdf`, issued_at: String(r.issued_at ?? now()),
+          });
+        }
+        // raise serial counters past anything the device already issued
+        const serials = (b.serials && typeof b.serials === 'object') ? b.serials as Record<string, unknown> : {};
+        for (const t of BOOK_TYPES) {
+          const v = Math.trunc(Number(serials[t]) || 0);
+          if (v > 0) await (await coll.serials()).updateOne({ _id: t } as Record<string, unknown>, { $max: { last_used: v } }, { upsert: true });
+        }
+        if (accepted.length) await audit('core', 'offline-sync', `${device}: ${accepted.length} records`, user);
+        return json({ ok: true, accepted, skipped, remapped, serials: await peekSerials() });
+      }
       case 'GET /api/docs/history': {
         const docs = await (await coll.archive()).find({}).sort({ issued_at: -1 }).limit(500).toArray();
         return json({ docs });
@@ -879,7 +1074,7 @@ Deno.serve(async (req: Request) => {
         requireRole(user, ['ceo', 'admin'], 'record MILS jobs');
         const b = await req.json();
         const doc = { ...b, mils_no: b.mils_no || 'MILS-' + pad9(await nextSerial('mils')), recorded_by: user.uid, recorded_name: user.name, created_at: now() };
-        const out = await (await coll.mils()).insertOne(doc);
+        const out = await ins(coll.mils(), doc);
         await audit('mils', 'create', String(out.insertedId), user);
         await notify('mils', 'MILS job recorded', `${user.name} recorded MILS job ${doc.mils_no}`, doc.mils_no, user);
         return json({ ok: true, id: String(out.insertedId), mils_no: doc.mils_no, mils: doc }, 201);
@@ -937,7 +1132,7 @@ Deno.serve(async (req: Request) => {
           created_by: user.uid, created_by_name: user.name, created_at: now(),
           read_by: [] as Array<{ uid: string; name: string; at: string }>,
         };
-        const out = await (await coll.notifications()).insertOne(doc);
+        const out = await ins(coll.notifications(), doc);
         await audit('core', 'announcement', title, user);
         return json({ ok: true, id: String(out.insertedId) }, 201);
       }
@@ -985,6 +1180,10 @@ Deno.serve(async (req: Request) => {
     // never to the app) and return one plain, user-safe message. Raw driver
     // errors / stack text must never reach a production screen.
     console.error('data-api unhandled error:', e);
-    return err(500, 'Something went wrong on the server — please try again');
+    // TEMPORARY diagnostics (2026-09-03): the Supabase log viewer is not
+    // reachable from the owner's tooling, so surface a short, sanitised
+    // error detail to the app until the issue path is proven stable.
+    const detail = String((e as Error)?.message ?? e).replace(/mongodb(\+srv)?:\/\/\S+/gi, '[uri]').slice(0, 160);
+    return err(500, `Something went wrong on the server — ${detail}`);
   }
 });

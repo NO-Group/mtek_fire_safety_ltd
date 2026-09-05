@@ -4,12 +4,18 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
+import '../data/env.dart';
 
 /// Signature gate — shown before issuing any document (receipt, invoice
 /// payment, sale, MILS log). Verifies the user's Signature Passcode.
 /// Returns the signed-in user on success, null on cancel/failure.
 Future<StaffUser?> confirmSignature(BuildContext context) async {
   final auth = AuthStore.instance;
+  if (Env.signatureGateDisabled) {
+    // No pop-up at all: the user is treated as signed.
+    auth.lastVerifiedPasscode = auth.lastVerifiedPasscode ?? '';
+    return auth.current;
+  }
   final passcode = TextEditingController();
   String? error;
 
@@ -60,9 +66,6 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
               decoration: InputDecoration(
                 labelText: 'Signature passcode',
                 errorText: error,
-                helperText: auth.isCeo
-                    ? 'CEO default: 093618 — rotate it in Settings → Account'
-                    : null,
                 prefixIcon: const Icon(Icons.password_outlined),
               ),
               onSubmitted: (_) => setState(() {}),
@@ -82,6 +85,14 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
               final ok = await auth.verifySignatureAny(passcode.text);
               if (!context.mounted) return;
               if (ok) {
+                if (auth.lastSignatureBound) {
+                  auth.lastSignatureBound = false;
+                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+                    duration: Duration(seconds: 6),
+                    content: Text('Signature passcode saved — this is now YOUR passcode for every '
+                        'document. You can change it in Settings → Account.'),
+                  ));
+                }
                 Navigator.pop(context, true);
               } else {
                 setState(() => error = 'Signature passcode does not match');
