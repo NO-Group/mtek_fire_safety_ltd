@@ -26,52 +26,40 @@ class MtekPdfFonts {
 
 /// Shared full-bleed background for every generated PDF.
 ///
-/// The rightmost 28.57% is the brand's dark blue. All former micro-text and
-/// repeated watermark bands have been removed; a single large, centred mark
-/// is retained for document identity without cluttering the typesetting.
+/// The rightmost 28.57% is a clearly visible light-blue vertical panel.
+/// Every repeated text/RC watermark has been removed. The only watermark is
+/// one large company logo, centred on the page.
 pw.Widget documentBackground(pw.ImageProvider? logo, PdfPageFormat format) {
   return pw.Stack(children: [
-    pw.Positioned(left: 0, top: 0, right: 0, bottom: 0, child: pw.Container(color: PdfColors.white)),
-    pw.Positioned(
-      top: 0,
-      right: 0,
-      bottom: 0,
-      child: pw.Container(width: format.width * 0.2857, color: PdfColors.blue900),
-    ),
-    // A lightly translucent paper surface keeps black body copy legible when
-    // it crosses the blue panel, while the full-bleed panel remains visible
-    // around the page and subtly through the printable area.
-    pw.Positioned(
-      left: 14,
-      top: 12,
-      right: 14,
-      bottom: 12,
-      child: pw.Opacity(opacity: 0.94, child: pw.Container(color: PdfColors.white)),
-    ),
     pw.Positioned(
       left: 0,
       top: 0,
       right: 0,
       bottom: 0,
-      child: pw.Center(
-        child: pw.Opacity(
-          opacity: 0.07,
-          child: pw.Column(mainAxisSize: pw.MainAxisSize.min, children: [
-            if (logo != null) pw.Image(logo, width: 155, height: 155),
-            pw.SizedBox(height: 8),
-            pw.FittedBox(
-              fit: pw.BoxFit.scaleDown,
-              child: pw.Text(MtekBranding.watermarkBrandText,
-                  maxLines: 1,
-                  style: pw.TextStyle(
-                      fontSize: 30,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blueGrey300)),
-            ),
-          ]),
-        ),
+      child: pw.Container(color: PdfColors.white),
+    ),
+    pw.Positioned(
+      top: 0,
+      right: 0,
+      bottom: 0,
+      child: pw.Container(
+        width: format.width * 0.2857,
+        color: PdfColor.fromHex('#B9DDF2'),
       ),
     ),
+    if (logo != null)
+      pw.Positioned(
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        child: pw.Center(
+          child: pw.Opacity(
+            opacity: 0.08,
+            child: pw.Image(logo, width: 190, height: 190),
+          ),
+        ),
+      ),
   ]);
 }
 

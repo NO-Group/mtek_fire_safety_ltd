@@ -32,11 +32,6 @@ abstract final class MtekBranding {
       'E-mail: mtekfiresafetyltd@gmail.com\n'
       'Website: www.mtekLtd.com.ng';
 
-  /// Faint watermark micro-text repeated across document backgrounds
-  /// (owner request, 2026-08-29) — mirrors the security pattern on the
-  /// physical carbon-copy books.
-  static const watermarkBrandText = 'M-TEK FIRE & SAFETY LTD.';
-  static const watermarkRcText = 'RC 1082534';
 
   static const receiptDisclaimer =
       'No guarantee cover on tested goods and services. Purchased tested goods and '
