@@ -44,7 +44,7 @@ pw.Widget documentBackground(pw.ImageProvider? logo, PdfPageFormat format) {
       bottom: 0,
       child: pw.Container(
         width: format.width * 0.2857,
-        color: PdfColor.fromHex('#B9DDF2'),
+        color: PdfColor.fromHex('#29B6F6'),
       ),
     ),
     if (logo != null)
