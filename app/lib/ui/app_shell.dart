@@ -114,9 +114,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // receipts, invoices, MILS and documents recorded on ANY device show up
     // on every page of every other device without a restart.
     WidgetsBinding.instance.addObserver(this);
+    // Near-instant: a tiny change-stamp poll every 8s; the full dataset is
+    // only re-downloaded when the server reports something changed.
     unawaited(AppStore.instance.refreshRemote());
-    _dataTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      unawaited(AppStore.instance.refreshRemote());
+    _dataTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      unawaited(AppStore.instance.pollChanges());
     });
     // Jump to a screen requested by a home-widget tap / launcher shortcut.
     WidgetBridge.requestedScreen.addListener(_applyRequestedScreen);

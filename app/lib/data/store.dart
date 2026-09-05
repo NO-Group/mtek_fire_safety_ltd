@@ -203,22 +203,7 @@ class AppStore extends ChangeNotifier {
         }
       }
       for (final e in (data['invoices'] as List? ?? const [])) {
-        if (e is Map) {
-          final m = (e).cast<String, dynamic>();
-          invoices.add(Invoice(
-            number: '${m['no'] ?? ''}',
-            issued: DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
-            due: (DateTime.tryParse('${m['created_at']}') ?? DateTime.now())
-                .add(const Duration(days: 14)),
-            customer: customers.firstWhere(
-                (x) => x.id == '${m['customer_id'] ?? ''}',
-                orElse: () => Customer(
-                    id: 'inv', name: '${m['customer_name'] ?? '—'}',
-                    isCorporate: false, phone: '', email: '', address: '')),
-            items: const [],
-            amountPaid: _asInt(m['amount_paid']),
-          ));
-        }
+        if (e is Map) invoices.add(_invoiceFromServer((e).cast<String, dynamic>(), products, customers));
       }
       for (final e in (data['docs'] as List? ?? const [])) {
         if (e is Map) {
@@ -276,6 +261,98 @@ class AppStore extends ChangeNotifier {
   /// uploaded first; if the server is unreachable the current data is kept.
   bool _refreshing = false;
   DateTime? lastServerSync;
+  String _changeStamp = '';
+
+  /// Cheap poll: asks the server for its latest change stamp and only pulls
+  /// the full dataset when it differs from the last one seen. Lets the app
+  /// poll every few seconds without re-downloading anything.
+  Future<void> pollChanges() async {
+    if (!Env.apiConfigured || _api == null || AuthStore.instance.accessToken == null) return;
+    if (_refreshing || _uploading) return;
+    _api!.accessToken = AuthStore.instance.accessToken;
+    final res = await _api!.get('/api/changes');
+    if (res == null || !res.ok || res.json is! Map) return;
+    final stamp = '${(res.json as Map)['stamp'] ?? ''}';
+    if (stamp == _changeStamp && lastServerSync != null) return;
+    if (await refreshRemote()) _changeStamp = stamp;
+  }
+
+  /// Loads history older than what the bootstrap carries (latest 300).
+  /// Returns how many rows were appended; false-y when nothing older exists.
+  bool _loadingMore = false;
+  final Set<String> exhaustedHistory = {};
+  Future<int> loadOlder(String kind) async {
+    if (!Env.apiConfigured || _api == null || AuthStore.instance.accessToken == null) return 0;
+    if (_loadingMore || exhaustedHistory.contains(kind)) return 0;
+    _loadingMore = true;
+    try {
+      _api!.accessToken = AuthStore.instance.accessToken;
+      String? before;
+      switch (kind) {
+        case 'sales': if (sales.isNotEmpty) before = sales.map((s) => s.date).reduce((a, b) => a.isBefore(b) ? a : b).toIso8601String(); break;
+        case 'receipts': if (receipts.isNotEmpty) before = receipts.map((s) => s.date).reduce((a, b) => a.isBefore(b) ? a : b).toIso8601String(); break;
+        case 'invoices': if (invoices.isNotEmpty) before = invoices.map((s) => s.issued).reduce((a, b) => a.isBefore(b) ? a : b).toIso8601String(); break;
+        case 'transactions': if (transactions.isNotEmpty) before = transactions.map((s) => s.date).reduce((a, b) => a.isBefore(b) ? a : b).toIso8601String(); break;
+        case 'mils': if (milsLogs.isNotEmpty) before = milsLogs.map((s) => s.serviceDate).reduce((a, b) => a.isBefore(b) ? a : b).toIso8601String(); break;
+        case 'docs': if (docHistory.isNotEmpty) before = docHistory.map((s) => s.issuedAt).reduce((a, b) => a.isBefore(b) ? a : b).toIso8601String(); break;
+      }
+      final q = before == null ? '' : '&before=${Uri.encodeQueryComponent(before)}';
+      final res = await _api!.get('/api/history?kind=$kind$q');
+      if (res == null || !res.ok || res.json is! Map) return 0;
+      final body = res.json as Map;
+      final rows = [for (final e in (body['rows'] as List? ?? const [])) if (e is Map) e.cast<String, dynamic>()];
+      if (body['more'] != true) exhaustedHistory.add(kind);
+      var added = 0;
+      for (final m in rows) {
+        switch (kind) {
+          case 'sales':
+            final id = '${m['_id'] ?? ''}';
+            if (sales.any((x) => x.id == id)) continue;
+            sales.add(_saleFromServer(m, products, customers)); added++;
+          case 'receipts':
+            final no = '${m['no'] ?? ''}';
+            if (receipts.any((x) => x.number == no)) continue;
+            receipts.add(Receipt(
+              number: no, date: DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
+              customer: _lookupCustomer(customers, m['customer_id'] as String?, '${m['customer_name'] ?? '—'}'),
+              amount: _asInt(m['amount']),
+              method: PaymentMethod.values.firstWhere((t) => t.name == m['method'], orElse: () => PaymentMethod.cash),
+              forDoc: '${m['source'] ?? ''}', signedBy: '${m['issued_name'] ?? 'Admin'}',
+              issuedBy: '${m['issued_name'] ?? 'Admin'}', customerSignature: '${m['customer_signature'] ?? ''}',
+            )); added++;
+          case 'invoices':
+            final no = '${m['no'] ?? ''}';
+            if (invoices.any((x) => x.number == no)) continue;
+            invoices.add(_invoiceFromServer(m, products, customers)); added++;
+          case 'transactions':
+            final id = '${m['_id'] ?? ''}';
+            if (transactions.any((x) => x.id == id)) continue;
+            transactions.add(Transaction(
+              id: id, date: DateTime.tryParse('${m['txn_date']}') ?? DateTime.now(),
+              type: TxnType.values.firstWhere((t) => t.name == m['txn_type'], orElse: () => TxnType.salePayment),
+              amount: _asInt(m['amount']),
+              method: PaymentMethod.values.firstWhere((t) => t.name == m['method'], orElse: () => PaymentMethod.cash),
+              reference: '${m['reference'] ?? ''}',
+            )); added++;
+          case 'mils':
+            final log = _milsLogFromServer(m, customers);
+            if (log == null || milsLogs.any((x) => x.id == log.id)) continue;
+            milsLogs.add(log); added++;
+          case 'docs':
+            final d = IssuedDocument.fromJson(m);
+            if (docHistory.any((x) => x.type == d.type && x.serial == d.serial)) continue;
+            docHistory.add(d); added++;
+        }
+      }
+      if (added > 0) notifyListeners();
+      return added;
+    } catch (_) {
+      return 0;
+    } finally {
+      _loadingMore = false;
+    }
+  }
+
   Future<bool> refreshRemote() async {
     if (!Env.apiConfigured || _api == null || AuthStore.instance.accessToken == null) return false;
     if (_refreshing || _uploading) return false;
@@ -283,6 +360,7 @@ class AppStore extends ChangeNotifier {
     try {
       _api!.accessToken = AuthStore.instance.accessToken;
       if (!await _uploadOfflineData()) return false;
+      exhaustedHistory.clear();
       // load into the live lists but keep a snapshot to roll back on failure
       final snap = (
         List.of(products), List.of(customers), List.of(sales), List.of(transactions),
@@ -1656,6 +1734,41 @@ Customer _lookupCustomer(List<Customer> customers, String? id, String fallbackNa
     if (found.isNotEmpty) return found.first;
   }
   return Customer(id: id ?? 'walk-in', name: fallbackName, isCorporate: false, phone: '', email: '', address: '');
+}
+
+/// Server invoice → model WITH its line items (the server stores
+/// {product_id,name,qty,unit_price} per line; a detached product is built
+/// for lines whose product no longer exists so totals stay exact).
+Invoice _invoiceFromServer(Map<String, dynamic> m, List<Product> products, List<Customer> customers) {
+  final items = <SaleItem>[];
+  for (final it in (m['items'] as List? ?? const [])) {
+    if (it is! Map) continue;
+    final pid = '${it['product_id'] ?? it['product'] ?? ''}';
+    final found = products.where((p) => p.id == pid).toList();
+    final product = found.isNotEmpty
+        ? found.first
+        : Product(id: pid, name: '${it['name'] ?? 'Item'}', category: ProductCategory.safety, unit: 'unit',
+            costPrice: 0, sellingPrice: _asInt(it['unit_price']), qtyOnHand: 0, reorderLevel: 0, isService: true);
+    items.add(SaleItem(product: product, qty: _asInt(it['qty']), unitPrice: _asInt(it['unit_price'])));
+  }
+  if (items.isEmpty) {
+    final total = _asInt(m['total']);
+    if (total > 0) {
+      items.add(SaleItem(
+          product: Product(id: 'legacy', name: 'Invoice total', category: ProductCategory.safety, unit: 'unit',
+              costPrice: 0, sellingPrice: total, qtyOnHand: 0, reorderLevel: 0, isService: true),
+          qty: 1, unitPrice: total));
+    }
+  }
+  final issued = DateTime.tryParse('${m['created_at']}') ?? DateTime.now();
+  return Invoice(
+    number: '${m['no'] ?? ''}',
+    issued: issued,
+    due: DateTime.tryParse('${m['due'] ?? ''}') ?? issued.add(const Duration(days: 14)),
+    customer: _lookupCustomer(customers, m['customer_id'] as String?, '${m['customer_name'] ?? '—'}'),
+    items: items,
+    amountPaid: _asInt(m['amount_paid']),
+  );
 }
 
 Sale _saleFromServer(Map<String, dynamic> m, List<Product> products, List<Customer> customers) {

@@ -328,6 +328,9 @@ class AuthStore extends ChangeNotifier {
   /// The passcode last verified OK (kept in RAM only) — passed to the data
   /// API which re-verifies it against the stored hash in MongoDB.
   String? lastVerifiedPasscode;
+  /// True when the last verification BOUND a new passcode (staff account
+  /// created while the gate was off) — the dialog tells the user to keep it.
+  bool lastSignatureBound = false;
 
   /// Real backend path: verify against the stored hash (scrypt) in
   /// MongoDB via the data API. Falls back to the local check only when the
@@ -343,6 +346,7 @@ class AuthStore extends ChangeNotifier {
       final res = await api.post('/api/auth/signature', {'passcode': passcode});
       if (res != null && res.ok) {
         lastVerifiedPasscode = passcode;
+        lastSignatureBound = res.json is Map && (res.json as Map)['bound'] == true;
         return true;
       }
       if (res != null) return false; // server actively rejected

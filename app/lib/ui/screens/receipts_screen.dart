@@ -65,9 +65,10 @@ class ReceiptsScreen extends StatelessWidget {
               child: receipts.isEmpty
                   ? const EmptyHint('No receipts yet — complete a sale first')
                   : ListView.separated(
-                      itemCount: receipts.length,
+                      itemCount: receipts.length + 1,
                       separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
                       itemBuilder: (context, i) {
+                        if (i == receipts.length) return const LoadOlderTile('receipts');
                         final r = receipts[i];
                         return ListTile(
                           leading: const CircleAvatar(

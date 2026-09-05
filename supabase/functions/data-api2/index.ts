@@ -59,7 +59,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-03h';
+const BUNDLE_VERSION = '2026-09-05a';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -256,6 +256,17 @@ async function verifyPasscode(user: Profile, passcode: string) {
   if (!passcode) throw new HttpErr(403, 'Not signed — passcode required');
   const hash = user.sig_hash && user.sig_salt ? await hashPass(passcode, user.sig_salt) : '';
   if (hash && hash === user.sig_hash) return;
+  // first bind for staff whose profile has NO passcode yet (accounts created
+  // while the gate was switched off): the first passcode they enter becomes
+  // theirs, and they are told so by the app. Min 4 chars like sign-up.
+  if (!user.sig_hash && user.role !== 'ceo' && passcode.length >= 4) {
+    const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+    await (await coll.profiles()).updateOne(
+      { _id: user.uid }, { $set: { sig_salt: salt, sig_hash: await hashPass(passcode, salt) } });
+    profileCache.delete(user.uid);
+    await audit('core', 'bind-passcode', user.uid, user);
+    return;
+  }
   // first bind: CEO's configured signature seeds the hash on first use
   if (!user.sig_hash && CEO_SIG && passcode === CEO_SIG && user.role === 'ceo') {
     const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
@@ -265,6 +276,22 @@ async function verifyPasscode(user: Profile, passcode: string) {
     return;
   }
   throw new HttpErr(403, 'Signature passcode does not match — action NOT authorised');
+}
+
+const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const normPhone = (s: string) => s.replace(/\D/g, '').replace(/^234/, '0');
+/// Same customer entered twice (two devices offline, or a typo-free re-entry):
+/// identical normalised name, and identical phone when both sides have one.
+async function findDuplicateCustomer(name: string, phone: string) {
+  const n = normName(name); if (!n) return null;
+  const ph = normPhone(phone);
+  const cands = await (await coll.customers()).find({ name: { $regex: `^${name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }).limit(20).toArray();
+  for (const c of cands) {
+    if (normName(String(c.name ?? '')) !== n) continue;
+    const cp = normPhone(String(c.phone ?? ''));
+    if (!ph || !cp || ph === cp) return c;
+  }
+  return null;
 }
 
 // ---- core provisioning (serials from 000000001, REAL owner catalogue) -------
@@ -307,23 +334,6 @@ Deno.serve(async (req: Request) => {
     // Boot/activation probe — responds to ANY method (GET/HEAD/POST alike)
     // so HEAD-only fetchers can read the live bundle version. Deliberately NO
     // DB work; deep (DB-touching) check: GET /?deep=1
-    // TEMPORARY diagnostics: describe the MONGODB_URI secret WITHOUT leaking
-    // it (user, host, password length + whether it holds URL-special chars).
-    if (path === '/health/mongo') {
-      const raw = Deno.env.get('MONGODB_URI') ?? '';
-      let info: Record<string, unknown> = { set: raw.length > 0, length: raw.length };
-      const m = raw.match(/^(mongodb(?:\+srv)?):\/\/([^:@\/]*)(?::([^@]*))?@([^\/?]+)([^?]*)?(\?.*)?$/);
-      if (m) {
-        info = { ...info, scheme: m[1], user: m[2], passwordLength: (m[3] ?? '').length,
-          passwordHasSpecial: /[^A-Za-z0-9]/.test(m[3] ?? ''), passwordHasPercent: (m[3] ?? '').includes('%'),
-          host: m[4], path: m[5] ?? '', query: m[6] ?? '' };
-      } else {
-        info = { ...info, parse: 'FAILED — not user:pass@host form', startsWith: raw.slice(0, 14), hasSpaces: /\s/.test(raw), hasQuotes: /["'<>]/.test(raw) };
-      }
-      let connect = 'not tried';
-      try { await db(DB.core); connect = 'ok'; } catch (e) { connect = String((e as Error)?.message ?? e).slice(0, 200); }
-      return json({ ...info, connect });
-    }
     if (path === '/' || path === '/health') {
       if (url.searchParams.get('deep') === '1') {
         await ensureCore();
@@ -632,6 +642,11 @@ Deno.serve(async (req: Request) => {
       case 'GET /api/me':
         return json({ user: { uid: user.uid, email: user.email, name: user.name, role: user.role } });
 
+      // cheap "did anything change?" poll: the newest audit event id/time
+      case 'GET /api/changes': {
+        const last = await (await coll.audit()).find({}).sort({ at: -1 }).limit(1).toArray();
+        return json({ stamp: last[0] ? `${last[0].at}|${last[0]._id}` : '' });
+      }
       case 'GET /api/bootstrap': {
         await ensureCore();
         const [products, customers, settings, serials, txns, receipts, invoices, docs, sales, mils, adjustments] = await Promise.all([
@@ -657,8 +672,9 @@ Deno.serve(async (req: Request) => {
 
       case 'POST /api/auth/signature': {
         const b = await req.json();
+        const firstBind = !user.sig_hash && user.role !== 'ceo';
         await verifyPasscode(user, String(b.passcode ?? ''));
-        return json({ ok: true, user: { uid: user.uid, name: user.name, role: user.role } });
+        return json({ ok: true, bound: firstBind, user: { uid: user.uid, name: user.name, role: user.role } });
       }
 
       // ---- signed-in: change the account password (Settings → Account).
@@ -712,9 +728,39 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       }
 
+      case 'GET /api/customers': {
+        const rows = await (await coll.customers()).find({}).sort({ name: 1 }).limit(2000).toArray();
+        return json({ customers: rows });
+      }
+      case 'GET /api/products': {
+        const rows = await (await coll.products()).find({}).sort({ name: 1 }).limit(5000).toArray();
+        return json({ products: rows });
+      }
+      // ---- older history, paged (the bootstrap only carries the latest
+      // 300 of each; the app asks here for anything before a given date).
+      case 'GET /api/history': {
+        const kind = url.searchParams.get('kind') ?? '';
+        const before = url.searchParams.get('before') ?? '';
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 300));
+        const sources: Record<string, [() => Promise<any>, string]> = {
+          sales: [coll.sales, 'created_at'], receipts: [coll.receipts, 'created_at'],
+          invoices: [coll.invoices, 'created_at'], transactions: [coll.txns, 'txn_date'],
+          mils: [coll.mils, 'created_at'], adjustments: [coll.adjustments, 'created_at'],
+          docs: [coll.archive, 'issued_at'],
+        };
+        const src = sources[kind];
+        if (!src) throw new HttpErr(400, 'Unknown history kind');
+        const q = before ? { [src[1]]: { $lt: before } } : {};
+        const rows = await (await src[0]()).find(q).sort({ [src[1]]: -1 }).limit(limit).toArray();
+        return json({ rows, more: rows.length === limit });
+      }
       case 'POST /api/customers': {
         const b = await req.json();
         if (!b.name || String(b.name).trim().length < 2) throw new HttpErr(400, 'Customer name required');
+        // de-duplicate: same normalised name (+ same phone when both given)
+        // returns the existing record instead of creating a twin
+        const existing = await findDuplicateCustomer(String(b.name), String(b.phone ?? ''));
+        if (existing) return json({ customer: existing, duplicate: true }, 200);
         const doc = {
           name: String(b.name).trim().slice(0, 120),
           kind: b.corp || b.kind === 'corporate' ? 'corporate' : 'individual',
@@ -916,9 +962,12 @@ Deno.serve(async (req: Request) => {
         };
         // customers: _id = offline key so sales/invoices/MILS can reference
         // them by the same string the device used.
+        const remapped: Record<string, string> = {}; // offline key → existing server _id
         for (const r of rowsOf('customers')) {
           const key = String(r.offline_key ?? '');
           if (!key) continue;
+          const dup = await findDuplicateCustomer(String(r.name ?? ''), String(r.phone ?? ''));
+          if (dup && String(dup._id) !== key) { remapped[key] = String(dup._id); accepted.push(key); continue; }
           await put(coll.customers(), key, {
             name: String(r.name ?? '').slice(0, 120), kind: r.is_corporate ? 'corporate' : 'individual',
             phone: String(r.phone ?? ''), email: String(r.email ?? ''), address: String(r.address ?? ''),
@@ -939,10 +988,11 @@ Deno.serve(async (req: Request) => {
           } }, { upsert: true });
           accepted.push(key);
         }
+        const cref = (v: unknown) => { const k = v == null ? null : String(v); return k && remapped[k] ? remapped[k] : k; };
         for (const r of rowsOf('sales')) {
           const key = String(r.offline_key ?? ''); if (!key) continue;
           await put(coll.sales(), key, {
-            customer_id: r.customer_id ?? null, customer_name: String(r.customer_name ?? 'Walk-in customer'),
+            customer_id: cref(r.customer_id), customer_name: String(r.customer_name ?? 'Walk-in customer'),
             customer_contact: String(r.customer_contact ?? ''), method: String(r.method ?? 'cash'),
             discount: Number(r.discount) || 0, total: Number(r.total) || 0,
             items: Array.isArray(r.items) ? r.items : [], signed_by: user.uid, signed_name: String(r.signed_name ?? user.name),
@@ -969,7 +1019,7 @@ Deno.serve(async (req: Request) => {
           const key = String(r.offline_key ?? ''); if (!key || !r.no) continue;
           const total = Number(r.total) || 0, paid = Number(r.amount_paid) || 0;
           await put(coll.invoices(), key, {
-            no: String(r.no), customer_id: r.customer_id ?? null, customer_name: String(r.customer_name ?? '—'),
+            no: String(r.no), customer_id: cref(r.customer_id), customer_name: String(r.customer_name ?? '—'),
             status: paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'sent',
             subtotal: total, vat: 0, total, amount_paid: paid, items: Array.isArray(r.items) ? r.items : [],
             issued_by: user.uid, created_at: String(r.created_at ?? now()), updated_at: now(),
@@ -979,7 +1029,7 @@ Deno.serve(async (req: Request) => {
           const key = String(r.offline_key ?? ''); if (!key || !r.equipment) continue;
           if (!canManage) { skipped.push(key); continue; }
           const { offline_key: _k, ...rest } = r;
-          await put(coll.mils(), key, { ...rest, recorded_by: user.uid, recorded_name: String(r.technician ?? user.name), created_at: String(r.created_at ?? r.service_date ?? now()) });
+          await put(coll.mils(), key, { ...rest, customer_id: cref(r.customer_id), recorded_by: user.uid, recorded_name: String(r.technician ?? user.name), created_at: String(r.created_at ?? r.service_date ?? now()) });
         }
         for (const r of rowsOf('adjustments')) {
           const key = String(r.offline_key ?? ''); if (!key || !r.product_id) continue;
@@ -1005,7 +1055,7 @@ Deno.serve(async (req: Request) => {
           if (v > 0) await (await coll.serials()).updateOne({ _id: t } as Record<string, unknown>, { $max: { last_used: v } }, { upsert: true });
         }
         if (accepted.length) await audit('core', 'offline-sync', `${device}: ${accepted.length} records`, user);
-        return json({ ok: true, accepted, skipped, serials: await peekSerials() });
+        return json({ ok: true, accepted, skipped, remapped, serials: await peekSerials() });
       }
       case 'GET /api/docs/history': {
         const docs = await (await coll.archive()).find({}).sort({ issued_at: -1 }).limit(500).toArray();

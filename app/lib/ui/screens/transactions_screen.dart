@@ -60,9 +60,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               child: txns.isEmpty
                   ? const EmptyHint('No transactions match this filter')
                   : ListView.separated(
-                      itemCount: txns.length,
+                      itemCount: txns.length + 1,
                       separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
                       itemBuilder: (context, i) {
+                        if (i == txns.length) return const LoadOlderTile('transactions');
                         final t = txns[i];
                         return ListTile(
                           leading: CircleAvatar(

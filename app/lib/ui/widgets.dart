@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../data/env.dart';
+import '../data/store.dart';
+
 import '../core/format.dart' as fmt;
 import '../core/theme.dart';
 
@@ -463,6 +466,48 @@ class MilsPhotoImage extends StatelessWidget {
       child: bytes == null
           ? const Icon(Icons.broken_image_outlined, size: 18, color: Mtek.gray400)
           : Image.memory(bytes, width: size, height: size, fit: BoxFit.cover),
+    );
+  }
+}
+
+
+/// "Load older …" footer for history lists: asks the store for records
+/// older than the latest 300 the server bootstrap carries.
+class LoadOlderTile extends StatefulWidget {
+  final String kind; // sales | receipts | invoices | transactions | mils | docs
+  const LoadOlderTile(this.kind, {super.key});
+  @override
+  State<LoadOlderTile> createState() => _LoadOlderTileState();
+}
+
+class _LoadOlderTileState extends State<LoadOlderTile> {
+  bool _busy = false;
+  @override
+  Widget build(BuildContext context) {
+    final store = AppStore.instance;
+    if (!Env.apiConfigured || store.exhaustedHistory.contains(widget.kind)) return const SizedBox.shrink();
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: TextButton.icon(
+          onPressed: _busy
+              ? null
+              : () async {
+                  setState(() => _busy = true);
+                  final n = await store.loadOlder(widget.kind);
+                  if (!mounted) return;
+                  setState(() => _busy = false);
+                  if (n == 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('No older records on the server')));
+                  }
+                },
+          icon: _busy
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.history),
+          label: const Text('Load older records'),
+        ),
+      ),
     );
   }
 }

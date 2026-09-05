@@ -85,6 +85,14 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
               final ok = await auth.verifySignatureAny(passcode.text);
               if (!context.mounted) return;
               if (ok) {
+                if (auth.lastSignatureBound) {
+                  auth.lastSignatureBound = false;
+                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+                    duration: Duration(seconds: 6),
+                    content: Text('Signature passcode saved — this is now YOUR passcode for every '
+                        'document. You can change it in Settings → Account.'),
+                  ));
+                }
                 Navigator.pop(context, true);
               } else {
                 setState(() => error = 'Signature passcode does not match');
