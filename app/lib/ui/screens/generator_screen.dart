@@ -1112,6 +1112,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       type: typeKey,
       serial: serial,
       customer: customer,
+      customerContact: contact,
       total: docTotal,
       signedBy: signer.name,
       verifyHash: hash,

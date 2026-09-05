@@ -22,13 +22,25 @@ class SalesScreen extends StatefulWidget {
 
 class _SalesScreenState extends State<SalesScreen> {
   final Map<String, SaleItem> _cart = {};
+  final TextEditingController _search = TextEditingController();
   Customer? _customer;
   PaymentMethod _method = PaymentMethod.cash;
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final store = AppStore.instance;
-    final sellable = store.products.where((p) => !p.isOutOfStock || p.isService);
+    final sellable = store.products
+        .where((p) => !p.isOutOfStock || p.isService)
+        .where((p) => _fuzzyScore(p, _query) >= 0)
+        .toList()
+      ..sort((a, b) => _fuzzyScore(b, _query).compareTo(_fuzzyScore(a, _query)));
     final subtotal = _cart.values.fold(0, (s, i) => s + i.total);
 
     return LayoutBuilder(builder: (context, box) {
@@ -66,10 +78,34 @@ class _SalesScreenState extends State<SalesScreen> {
             subtitle: 'Pick items — stock & receipts update automatically',
             icon: Icons.point_of_sale),
         const SizedBox(height: 14),
+        TextField(
+          controller: _search,
+          autofocus: false,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            labelText: 'Search stock',
+            hintText: 'Product name, ID, category or unit',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _search.clear();
+                      setState(() => _query = '');
+                    },
+                  ),
+          ),
+          onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+        ),
+        const SizedBox(height: 10),
         Expanded(
           child: Card(
             clipBehavior: Clip.antiAlias,
-            child: ListView.separated(
+            child: sellable.isEmpty
+                ? const EmptyHint('No in-stock products match this search')
+                : ListView.separated(
               itemCount: sellable.length,
               separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
               itemBuilder: (context, i) {
@@ -79,7 +115,8 @@ class _SalesScreenState extends State<SalesScreen> {
                   enabled: !p.isOutOfStock,
                   leading: CircleAvatar(
                     backgroundColor: Mtek.brandTint,
-                    child: Text(p.name.substring(0, 1), style: const TextStyle(color: Mtek.brand600, fontWeight: FontWeight.w700)),
+                    child: Text(p.name.trim().isEmpty ? '?' : p.name.trim()[0].toUpperCase(),
+                        style: const TextStyle(color: Mtek.brand600, fontWeight: FontWeight.w700)),
                   ),
                   title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   subtitle: Text('${p.id} · ${p.isService ? "service" : "${p.qtyOnHand} ${p.unit} in stock"} · ${fmt.naira(p.sellingPrice)}'),
@@ -107,6 +144,29 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   Widget _cartPanel(AppStore store, int subtotal) {
+    // Documents can be issued ad-hoc before a customer record exists. Make
+    // those session/backend-history identities immediately selectable at POS
+    // and avoid duplicate choices by normalised name + contact.
+    final customers = <Customer>[...store.customers];
+    final seen = <String>{
+      for (final c in customers) '${c.name.trim().toLowerCase()}|${c.phone.trim().toLowerCase()}',
+    };
+    for (final doc in store.docHistory) {
+      final key = '${doc.customer.trim().toLowerCase()}|${doc.customerContact.trim().toLowerCase()}';
+      if (doc.customer.trim().isEmpty || !seen.add(key)) continue;
+      customers.add(Customer(
+        id: 'doc-${doc.type}-${doc.serial}',
+        name: doc.customer.trim(),
+        isCorporate: false,
+        phone: doc.customerContact.contains('@') ? '' : doc.customerContact,
+        email: doc.customerContact.contains('@') ? doc.customerContact : '',
+        address: '',
+      ));
+    }
+    if (_customer != null && !customers.contains(_customer)) {
+      customers.removeWhere((c) => c.id == _customer!.id);
+      customers.insert(0, _customer!);
+    }
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -138,8 +198,14 @@ class _SalesScreenState extends State<SalesScreen> {
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Customer'),
               items: [
-                for (final c in store.customers)
-                  DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis)),
+                for (final c in customers)
+                  DropdownMenuItem(
+                    value: c,
+                    child: Text(
+                      c.phone.isEmpty ? c.name : '${c.name} · ${c.phone}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
               ],
               onChanged: (c) => setState(() => _customer = c),
             ),
@@ -213,14 +279,40 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
+  /// Lightweight fuzzy ranking: exact/prefix/substring matches rank first;
+  /// otherwise all query characters must occur in order. This handles quick
+  /// counter searches such as "dcp6" → "DCP 6kg Fire Extinguisher" without
+  /// adding a heavyweight search dependency.
+  int _fuzzyScore(Product product, String query) {
+    if (query.isEmpty) return 0;
+    final haystack = '${product.name} ${product.id} ${product.category.name} ${product.unit}'
+        .toLowerCase();
+    if (haystack == query) return 1000;
+    if (haystack.startsWith(query)) return 800 - haystack.length;
+    final substring = haystack.indexOf(query);
+    if (substring >= 0) return 600 - substring;
+    var cursor = 0;
+    var gap = 0;
+    for (final code in query.codeUnits) {
+      final next = haystack.indexOf(String.fromCharCode(code), cursor);
+      if (next < 0) return -1;
+      gap += next - cursor;
+      cursor = next + 1;
+    }
+    return 300 - gap;
+  }
+
   void _add(Product p) {
     setState(() {
       final existing = _cart[p.id];
-      if (existing != null) {
-        _cart[p.id] = SaleItem(product: p, qty: existing.qty + 1);
-      } else {
-        _cart[p.id] = SaleItem(product: p, qty: 1);
+      final nextQuantity = (existing?.qty ?? 0) + 1;
+      if (!p.isService && nextQuantity > p.qtyOnHand) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Only ${p.qtyOnHand} ${p.unit} available.')),
+        );
+        return;
       }
+      _cart[p.id] = SaleItem(product: p, qty: nextQuantity);
     });
   }
 

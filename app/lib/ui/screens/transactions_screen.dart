@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/format.dart' as fmt;
 import '../../core/theme.dart';
@@ -17,17 +21,27 @@ class TransactionsScreen extends StatefulWidget {
 
 class _TransactionsScreenState extends State<TransactionsScreen> {
   String _filter = 'all';
+  PaymentMethod? _method;
+  DateTimeRange? _range;
+  bool _refreshing = false;
 
   @override
   Widget build(BuildContext context) {
     final store = AppStore.instance;
     final txns = store.transactions.reversed.where((t) {
-      return switch (_filter) {
+      final typeMatches = switch (_filter) {
         'sales' => t.type == TxnType.salePayment,
         'invoices' => t.type == TxnType.invoicePayment,
         'refunds' => t.isRefund,
         _ => true,
       };
+      if (!typeMatches || (_method != null && t.method != _method)) return false;
+      if (_range != null) {
+        final from = DateTime(_range!.start.year, _range!.start.month, _range!.start.day);
+        final to = DateTime(_range!.end.year, _range!.end.month, _range!.end.day, 23, 59, 59, 999);
+        if (t.date.isBefore(from) || t.date.isAfter(to)) return false;
+      }
+      return true;
     }).toList();
 
     return Padding(
@@ -35,10 +49,24 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(
+          PageHeader(
             title: 'Transactions',
             subtitle: 'Every naira in and out — one ledger',
             icon: Icons.swap_horiz,
+            actions: [
+              IconButton(
+                tooltip: 'Export filtered ledger',
+                onPressed: txns.isEmpty ? null : () => _exportCsv(txns),
+                icon: const Icon(Icons.ios_share_outlined),
+              ),
+              IconButton(
+                tooltip: 'Refresh ledger',
+                onPressed: _refreshing ? null : _refresh,
+                icon: _refreshing
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           Wrap(
@@ -53,6 +81,32 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
             ],
           ),
+          const SizedBox(height: 8),
+          LayoutBuilder(builder: (context, constraints) {
+            final compact = constraints.maxWidth < 560;
+            final method = DropdownButtonFormField<PaymentMethod?>(
+              value: _method,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Payment method', isDense: true),
+              items: [
+                const DropdownMenuItem<PaymentMethod?>(value: null, child: Text('All methods')),
+                for (final value in PaymentMethod.values)
+                  DropdownMenuItem<PaymentMethod?>(value: value, child: Text(MethodIcon.label(value))),
+              ],
+              onChanged: (value) => setState(() => _method = value),
+            );
+            final dates = OutlinedButton.icon(
+              onPressed: _pickRange,
+              icon: const Icon(Icons.date_range_outlined, size: 18),
+              label: Text(_range == null
+                  ? 'Any date'
+                  : '${fmt.fmtDate(_range!.start)} – ${fmt.fmtDate(_range!.end)}'),
+            );
+            if (compact) {
+              return Column(children: [method, const SizedBox(height: 8), SizedBox(width: double.infinity, child: dates)]);
+            }
+            return Row(children: [Expanded(child: method), const SizedBox(width: 10), dates]);
+          }),
           const SizedBox(height: 8),
           Expanded(
             child: Card(
@@ -96,6 +150,50 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final selected = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 10),
+      lastDate: DateTime(now.year + 1),
+      initialDateRange: _range,
+    );
+    if (selected != null && mounted) setState(() => _range = selected);
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _refreshing = true);
+    await AppStore.instance.refreshRemote();
+    if (mounted) setState(() => _refreshing = false);
+  }
+
+  Future<void> _exportCsv(List<Transaction> transactions) async {
+    String cell(Object? value) {
+      final escaped = value.toString().replaceAll('"', '""');
+      return '"$escaped"';
+    }
+    final rows = <String>[
+      'ID,Date,Type,Method,Reference,Amount (NGN)',
+      for (final t in transactions)
+        [
+          t.id,
+          t.date.toIso8601String(),
+          t.isRefund ? 'refund' : t.type.name,
+          t.method.name,
+          t.reference,
+          t.isRefund ? -t.amount : t.amount,
+        ].map(cell).join(','),
+    ];
+    final directory = await getTemporaryDirectory();
+    final file = File('${directory.path}/MFSL-transactions-${DateTime.now().millisecondsSinceEpoch}.csv');
+    await file.writeAsString(rows.join('\n'), flush: true);
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(file.path, mimeType: 'text/csv')],
+      subject: 'MFSL transaction ledger',
+      text: 'Filtered MFSL transaction ledger (${transactions.length} entries).',
+    ));
   }
 
   void _showDetail(BuildContext context, Transaction t) {
