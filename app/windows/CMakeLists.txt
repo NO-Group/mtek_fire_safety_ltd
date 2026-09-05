@@ -29,8 +29,14 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")
 set(CMAKE_C_FLAGS_PROFILE "${CMAKE_C_FLAGS_RELEASE}")
 set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 
-# Use Unicode for all projects.
-add_definitions(-DUNICODE -D_UNICODE)
+# Use Unicode for all projects. permission_handler_windows currently includes
+# Microsoft's legacy experimental coroutine compatibility header; VS 2026
+# promotes that deprecation to an error under /WX unless explicitly silenced.
+add_definitions(
+  -DUNICODE
+  -D_UNICODE
+  -D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+)
 
 # Compilation settings that should be applied to most targets.
 #
