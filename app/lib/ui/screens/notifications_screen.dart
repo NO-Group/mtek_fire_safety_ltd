@@ -91,7 +91,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         child: Text('No notifications yet', style: TextStyle(color: Mtek.gray500)),
                       ),
                     )
-                  : ListView.separated(
+                  : RefreshIndicator(
+                      onRefresh: _refresh,
+                      child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: list.length,
                       separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
                       itemBuilder: (context, i) {
@@ -117,6 +120,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         );
                       },
                     ),
+                  ),
             ),
           ),
         ],

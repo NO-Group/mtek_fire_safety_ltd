@@ -206,29 +206,37 @@ class _StockScreenState extends State<StockScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: SearchField(hint: 'Search by name or ID…', onChanged: (v) => setState(() => _query = v)),
-              ),
-              const SizedBox(width: 12),
-              DropdownButton<String>(
-                value: _category,
-                hint: const Text('All categories'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('All categories')),
-                  for (final c in ProductCategory.values)
-                    DropdownMenuItem(value: c.name, child: Text(c.name.toUpperCase())),
-                ],
-                onChanged: (v) => setState(() => _category = v),
-              ),
-            ],
-          ),
+          LayoutBuilder(builder: (context, constraints) {
+            final search = SearchField(
+              hint: 'Search by name or ID…',
+              onChanged: (v) => setState(() => _query = v),
+            );
+            final category = DropdownButtonFormField<String?>(
+              value: _category,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Category', isDense: true),
+              items: [
+                const DropdownMenuItem<String?>(value: null, child: Text('All categories')),
+                for (final c in ProductCategory.values)
+                  DropdownMenuItem<String?>(value: c.name, child: Text(c.name.toUpperCase())),
+              ],
+              onChanged: (v) => setState(() => _category = v),
+            );
+            if (constraints.maxWidth < 560) {
+              return Column(children: [search, const SizedBox(height: 8), category]);
+            }
+            return Row(children: [Expanded(child: search), const SizedBox(width: 12), SizedBox(width: 220, child: category)]);
+          }),
           const SizedBox(height: 12),
           Expanded(
             child: Card(
               clipBehavior: Clip.antiAlias,
-              child: ListView.separated(
+              child: list.isEmpty
+                  ? const EmptyHint('No stock items match these filters')
+                  : RefreshIndicator(
+                      onRefresh: () async { await AppStore.instance.refreshRemote(); },
+                      child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: list.length,
                 separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
                 itemBuilder: (context, i) {
@@ -252,7 +260,9 @@ class _StockScreenState extends State<StockScreen> {
                     title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                     subtitle: Text(
                         '${p.id} · ${p.category.name.toUpperCase()} · cost ${fmt.naira(p.costPrice)} · reorder @ ${p.reorderLevel}'),
-                    trailing: Row(
+                    trailing: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         AmountText(p.sellingPrice),
@@ -266,9 +276,11 @@ class _StockScreenState extends State<StockScreen> {
                           ),
                       ],
                     ),
+                    ),
                   );
                 },
               ),
+                  ),
             ),
           ),
         ],

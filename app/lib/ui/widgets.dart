@@ -30,7 +30,8 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final colors = Theme.of(context).colorScheme;
+    final identity = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
@@ -50,29 +51,52 @@ class PageHeader extends StatelessWidget {
             children: [
               Text(
                 title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: Mtek.ink,
+                      color: colors.onSurface,
                       letterSpacing: -0.4,
                     ),
               ),
               const SizedBox(height: 3),
-              Text(subtitle,
-                  style: const TextStyle(color: Mtek.gray500, fontSize: 13)),
+              Text(
+                subtitle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
+              ),
             ],
           ),
         ),
-        if (actions.isNotEmpty) ...[
-          const SizedBox(width: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: actions,
-          ),
-        ],
       ],
     );
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < 640 && actions.isNotEmpty) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            identity,
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: actions),
+          ],
+        );
+      }
+      return Row(children: [
+        Expanded(child: identity),
+        if (actions.isNotEmpty) ...[
+          const SizedBox(width: 12),
+          Flexible(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: actions,
+            ),
+          ),
+        ],
+      ]);
+    });
   }
 }
 

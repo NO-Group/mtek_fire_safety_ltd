@@ -135,7 +135,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
       _ => (DateTime(now.year, now.month), 'This month'),
     };
 
-    return ListView(
+    return RefreshIndicator(
+      onRefresh: () async { await AppStore.instance.refreshRemote(); },
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       children: [
         PageHeader(
@@ -278,6 +281,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
           );
         }),
       ],
+    ),
     );
   }
 }
