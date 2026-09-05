@@ -269,6 +269,47 @@ class AppStore extends ChangeNotifier {
     pushHomeWidgetStats();
   }
 
+  /// LIVE REFRESH (every page, every device): re-pulls the server dataset
+  /// and swaps it in atomically. Called by the app shell on a timer, on app
+  /// resume and after pull-to-refresh, so a sale made on one device shows
+  /// on every other device within seconds. Pending offline records are
+  /// uploaded first; if the server is unreachable the current data is kept.
+  bool _refreshing = false;
+  DateTime? lastServerSync;
+  Future<bool> refreshRemote() async {
+    if (!Env.apiConfigured || _api == null || AuthStore.instance.accessToken == null) return false;
+    if (_refreshing || _uploading) return false;
+    _refreshing = true;
+    try {
+      _api!.accessToken = AuthStore.instance.accessToken;
+      if (!await _uploadOfflineData()) return false;
+      // load into the live lists but keep a snapshot to roll back on failure
+      final snap = (
+        List.of(products), List.of(customers), List.of(sales), List.of(transactions),
+        List.of(receipts), List.of(invoices), List.of(milsLogs), List.of(adjustments), List.of(docHistory),
+      );
+      _clearAll();
+      final ok = await _loadRemote();
+      if (!ok) {
+        _clearAll();
+        products.addAll(snap.$1); customers.addAll(snap.$2); sales.addAll(snap.$3);
+        transactions.addAll(snap.$4); receipts.addAll(snap.$5); invoices.addAll(snap.$6);
+        milsLogs.addAll(snap.$7); adjustments.addAll(snap.$8); docHistory.addAll(snap.$9);
+        return false;
+      }
+      lastServerSync = DateTime.now();
+      await _persistAll();
+      await _markAllKnown();
+      notifyListeners();
+      pushHomeWidgetStats();
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      _refreshing = false;
+    }
+  }
+
   void _clearAll() {
     products.clear();
     customers.clear();
@@ -1430,11 +1471,30 @@ class AppStore extends ChangeNotifier {
 
   void addCustomer(Customer c) {
     customers.add(c);
+    notifyListeners();
     unawaited(() async {
+      // server-first: create it online so every other device sees it on
+      // its next refresh; otherwise it stays local and uploads later
+      if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
+        _api!.accessToken = AuthStore.instance.accessToken;
+        final res = await _api!.post('/api/customers', {
+          'name': c.name, 'kind': c.isCorporate ? 'corporate' : 'individual',
+          'phone': c.phone, 'email': c.email, 'address': c.address,
+        });
+        if (res != null && res.ok && res.json is Map) {
+          final srv = ((res.json as Map)['customer'] as Map?) ?? const {};
+          final sid = '${srv['_id'] ?? ''}';
+          final idx = customers.indexOf(c);
+          if (sid.isNotEmpty && idx != -1) {
+            customers[idx] = Customer(id: sid, name: c.name, isCorporate: c.isCorporate,
+                phone: c.phone, email: c.email, address: c.address, creditBalance: c.creditBalance);
+            notifyListeners();
+          }
+        }
+      }
       await writeStore('customers', customers.map(customerToJson).toList());
       unawaited(flushSyncQueue());
     }());
-    notifyListeners();
   }
 
   void _postPayment({
