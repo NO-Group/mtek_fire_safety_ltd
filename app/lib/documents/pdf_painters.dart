@@ -12,7 +12,7 @@ import 'pdf_shared.dart';
 /// that swap grids, fields and banners per document type, mapping 1:1 to
 /// the physical corporate forms (docs/forms/FORM_LAYOUTS.md).
 ///
-/// Every document gets: corporate dual-office header, faint watermark,
+/// Every document gets: single-office corporate header, centred watermark and right-side brand panel,
 /// signature stamp of the signer, QR verification hash, exact disclaimers.
 
 enum GeneratedDoc { receipt, invoice, mils, waybill, deliveryNote }
@@ -70,7 +70,7 @@ pw.PageTheme _theme(pw.ImageProvider logo, PdfPageFormat format) {
     pageFormat: format,
     margin: const pw.EdgeInsets.fromLTRB(22, 18, 22, 16),
     theme: pw.ThemeData.withFont(base: MtekPdfFonts.base, bold: MtekPdfFonts.bold),
-    buildBackground: (context) => documentWatermark(logo),
+    buildBackground: (context) => documentBackground(logo, format),
   );
 }
 

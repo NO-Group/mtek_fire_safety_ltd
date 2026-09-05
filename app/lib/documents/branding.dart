@@ -5,7 +5,7 @@ abstract final class MtekBranding {
   static const rcNumber = 'RC: 1082534';
 
   static const servicesLine =
-      '*Sales *Supplies *Installations *Refilling *Maintenance *Training *Consultancy on';
+      '*Sales *Supplies *Installations *Refilling *Maintenance *Training *Consultancy';
 
   static const fireEquipment =
       'FIRE EQUIPMENT: FM 200, Fire Extinguishers, Fire Alarm Systems, Fire Hose Reels, '
@@ -22,21 +22,15 @@ abstract final class MtekBranding {
   static const headOffice =
       'HEAD OFFICE: YY12, Kazaure Road, By Lagos Street Round About, Kaduna.';
   static const headOfficeTel = 'Tel: 08033489452';
-  static const branchOffice =
-      'BRANCH OFFICE: Plot 45, Sir Patrick Ibrahim Yakowa Way By Milton School, Kamazou Kaduna.';
-  static const branchOfficeTel = '08170577595';
   static const email = 'mtekfiresafetyltd@gmail.com';
   static const website = 'www.mtekLtd.com.ng';
 
-  /// OWNER DECISION (2026-08-29): every document carries the FULL
-  /// dual-office header — the receipt's old compact "Kaduna I Office"
-  /// block is superseded.
-  static const dualOfficeBlock =
+  /// Single-office contact block used on every generated document.
+  static const officeBlock =
       'HEAD OFFICE: YY12, Kazaure Road, By Lagos Street Round About, Kaduna. '
       'Tel: 08033489452\n'
-      'BRANCH OFFICE: Plot 45, Sir Patrick Ibrahim Yakowa Way By Milton School, '
-      'Kamazou Kaduna. 08170577595\n'
-      'E-mail: mtekfiresafetyltd@gmail.com · Website: www.mtekLtd.com.ng';
+      'E-mail: mtekfiresafetyltd@gmail.com\n'
+      'Website: www.mtekLtd.com.ng';
 
   /// Faint watermark micro-text repeated across document backgrounds
   /// (owner request, 2026-08-29) — mirrors the security pattern on the
