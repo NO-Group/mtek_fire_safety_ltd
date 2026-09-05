@@ -46,7 +46,6 @@ class _SalesScreenState extends State<SalesScreen> {
     return LayoutBuilder(builder: (context, box) {
       final wide = box.maxWidth >= 900;
       final catalogue = _catalogueList(sellable);
-      final cartPanel = _cartPanel(store, subtotal);
 
       return Padding(
         padding: const EdgeInsets.all(20),
@@ -56,13 +55,27 @@ class _SalesScreenState extends State<SalesScreen> {
                 children: [
                   Expanded(flex: 5, child: catalogue),
                   const SizedBox(width: 16),
-                  SizedBox(width: 380, child: cartPanel),
+                  SizedBox(width: 380, child: _cartPanel(store, subtotal)),
                 ],
               )
             : Column(
                 children: [
                   Expanded(child: catalogue),
-                  cartPanel,
+                  const SizedBox(height: 10),
+                  SafeArea(
+                    top: false,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _openCurrentSale(store),
+                        icon: const Icon(Icons.shopping_cart_checkout),
+                        label: Text(
+                          'Current Sale (${_cart.values.fold<int>(0, (sum, item) => sum + item.qty)})'
+                          '  ·  ${fmt.naira(subtotal)}',
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
       );
@@ -143,7 +156,11 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
-  Widget _cartPanel(AppStore store, int subtotal) {
+  Widget _cartPanel(AppStore store, int subtotal, {StateSetter? routeSetState}) {
+    void update(VoidCallback change) {
+      setState(change);
+      routeSetState?.call(() {});
+    }
     // Documents can be issued ad-hoc before a customer record exists. Make
     // those session/backend-history identities immediately selectable at POS
     // and avoid duplicate choices by normalised name + contact.
@@ -189,7 +206,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                 const Spacer(),
                 if (_cart.isNotEmpty)
-                  TextButton(onPressed: () => setState(() => _cart.clear()), child: const Text('Clear')),
+                  TextButton(onPressed: () => update(_cart.clear), child: const Text('Clear')),
               ],
             ),
             const SizedBox(height: 10),
@@ -207,7 +224,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     ),
                   ),
               ],
-              onChanged: (c) => setState(() => _customer = c),
+              onChanged: (c) => update(() => _customer = c),
             ),
             const SizedBox(height: 12),
             ..._cart.values.map((i) => Padding(
@@ -258,7 +275,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     label: Text(MethodIcon.label(m)),
                     selected: _method == m,
                     selectedColor: Mtek.brandTint,
-                    onSelected: (_) => setState(() => _method = m),
+                    onSelected: (_) => update(() => _method = m),
                   ),
               ],
             ),
@@ -266,7 +283,12 @@ class _SalesScreenState extends State<SalesScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: (_cart.isEmpty || _customer == null) ? null : _complete,
+                onPressed: (_cart.isEmpty || _customer == null)
+                    ? null
+                    : () async {
+                        await _complete();
+                        routeSetState?.call(() {});
+                      },
                 icon: const Icon(Icons.check_circle_outline),
                 label: Text(_method == PaymentMethod.credit
                     ? 'Complete — bill on invoice'
@@ -277,6 +299,34 @@ class _SalesScreenState extends State<SalesScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openCurrentSale(AppStore store) async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (routeContext) => StatefulBuilder(
+        builder: (context, routeSetState) {
+          final subtotal = _cart.values.fold<int>(0, (sum, item) => sum + item.total);
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('Current Sale'),
+              leading: IconButton(
+                tooltip: 'Back to products',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(routeContext).pop(),
+              ),
+            ),
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: _cartPanel(store, subtotal, routeSetState: routeSetState),
+              ),
+            ),
+          );
+        },
+      ),
+    ));
+    if (mounted) setState(() {});
   }
 
   /// Lightweight fuzzy ranking: exact/prefix/substring matches rank first;

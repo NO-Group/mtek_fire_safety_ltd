@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
-
 import '../../core/app_info.dart';
 import '../../core/theme.dart';
 import '../../core/theme_controller.dart';
@@ -239,18 +237,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Wrap(spacing: 10, children: [
-                    FilledButton.icon(
-                      icon: const Icon(Icons.upload_file, size: 18),
-                      label: const Text('Import pasted TXT'),
-                      onPressed: _importTsv,
-                    ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.inventory_outlined, size: 18),
-                      label: const Text('Load bundled seed file'),
-                      onPressed: _loadBundled,
-                    ),
-                  ]),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.upload_file, size: 18),
+                    label: const Text('Import pasted TXT'),
+                    onPressed: _importTsv,
+                  ),
                   if (_importMsg.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(_importMsg, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Mtek.success)),
@@ -264,7 +255,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: Icon(Icons.verified_user_outlined),
               title: Text('M-TEK FIRE & SAFETY LTD.'),
-              subtitle: Text('RC: 1082534 · YY12 Kazaure Road, Kaduna (HQ) · Plot 45, Sir P.I. Yakowa Way (Branch)\nmtekfiresafetyltd@gmail.com · 08033489452 / 08170577595'),
+              subtitle: Text('RC: 1082534 · YY12 Kazaure Road, by Lagos Street Round About, Kaduna\nmtekfiresafetyltd@gmail.com · 08033489452'),
               isThreeLine: true,
             ),
           ),
@@ -441,13 +432,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final added = await AppStore.instance.importSeedCsv(_tsv.text);
     _setMsg('Import complete — $added new products, ${AppStore.instance.products.length} total in stock.');
-  }
-
-  Future<void> _loadBundled() async {
-    final csv = await rootBundle.loadString('assets/seed/products_seed.txt');
-    _tsv.text = csv.length > 20000 ? '${csv.substring(0, 20000)}\n… (truncated preview — full file is imported)' : csv;
-    final added = await AppStore.instance.importSeedCsv(csv);
-    _setMsg('Bundled seed imported — $added products loaded into Stock.');
   }
 
   void _setMsg(String m) => setState(() => _importMsg = m);
