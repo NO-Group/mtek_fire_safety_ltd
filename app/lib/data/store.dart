@@ -599,12 +599,20 @@ class AppStore extends ChangeNotifier {
       if (res == null || !res.ok || res.json is! Map) return;
       final list = (res.json as Map)['staff'];
       if (list is! List) return;
+      // A historical bootstrap bug could leave duplicate profile documents.
+      // Canonicalise by uid first and normalised email second so the locked
+      // CEO (and every other staff identity) can render only once.
+      final unique = <String, StaffMember>{};
+      for (final e in list) {
+        if (e is! Map) continue;
+        final member = StaffMember.fromJson(e.cast<String, dynamic>());
+        final emailKey = member.email.trim().toLowerCase();
+        final key = emailKey.isNotEmpty ? 'email:$emailKey' : 'uid:${member.uid}';
+        unique[key] = member;
+      }
       staff
         ..clear()
-        ..addAll([
-          for (final e in list)
-            if (e is Map) StaffMember.fromJson(e.cast<String, dynamic>()),
-        ]);
+        ..addAll(unique.values);
       notifyListeners();
     } catch (_) {
       // offline — keep whatever was last loaded

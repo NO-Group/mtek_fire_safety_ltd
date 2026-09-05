@@ -38,10 +38,12 @@ class StaffUser {
         'signaturePng': signaturePng,
       };
   static StaffUser fromJson(Map<String, dynamic> j) => StaffUser(
-        name: j['name'], email: j['email'], role: j['role'],
-        passwordHash: j['passwordHash'],
-        signaturePasscodeHash: j['signaturePasscodeHash'],
-        signaturePng: j['signaturePng'],
+        name: '${j['name'] ?? ''}'.trim(),
+        email: '${j['email'] ?? ''}'.trim().toLowerCase(),
+        role: '${j['role'] ?? 'sales'}',
+        passwordHash: '${j['passwordHash'] ?? ''}',
+        signaturePasscodeHash: '${j['signaturePasscodeHash'] ?? ''}',
+        signaturePng: j['signaturePng'] as String?,
       );
 }
 
@@ -85,6 +87,49 @@ class AuthStore extends ChangeNotifier {
   // Every account that has ever signed in / signed up on this device is kept
   // here (password hash only), so sign-in keeps working with no server.
   bool _usersLoaded = false;
+
+  String _emailKey(String email) => email.trim().toLowerCase();
+
+  /// Rebuilds the local directory using canonical email keys. Later records
+  /// win because they carry the freshest server role/name, while non-empty
+  /// local credential/signature fields are retained. The CEO email is always
+  /// represented by exactly one locked CEO row.
+  void _dedupeUsers() {
+    final byEmail = <String, StaffUser>{};
+    for (final candidate in users) {
+      final email = _emailKey(candidate.email);
+      if (email.isEmpty || !email.contains('@')) continue;
+      final previous = byEmail[email];
+      final role = email == ceoEmail ? 'ceo' : candidate.role;
+      byEmail[email] = StaffUser(
+        name: candidate.name.isNotEmpty
+            ? candidate.name
+            : (previous?.name.isNotEmpty == true ? previous!.name : email.split('@').first),
+        email: email,
+        role: role,
+        passwordHash: candidate.passwordHash.isNotEmpty
+            ? candidate.passwordHash
+            : previous?.passwordHash ?? '',
+        signaturePasscodeHash: candidate.signaturePasscodeHash.isNotEmpty
+            ? candidate.signaturePasscodeHash
+            : previous?.signaturePasscodeHash ?? '',
+        signaturePng: candidate.signaturePng ?? previous?.signaturePng,
+      );
+    }
+    users
+      ..clear()
+      ..addAll(byEmail.values);
+    if (current != null) current = byEmail[_emailKey(current!.email)];
+  }
+
+  StaffUser _upsertUser(StaffUser user) {
+    final key = _emailKey(user.email);
+    users.removeWhere((existing) => _emailKey(existing.email) == key);
+    users.add(user);
+    _dedupeUsers();
+    return users.singleWhere((existing) => _emailKey(existing.email) == key);
+  }
+
   Future<void> loadUsers() async {
     if (_usersLoaded) return;
     _usersLoaded = true;
@@ -94,19 +139,24 @@ class AuthStore extends ChangeNotifier {
       final list = jsonDecode(raw);
       if (list is List) {
         for (final e in list) {
-          if (e is Map) {
-            final u = StaffUser.fromJson(e.cast<String, dynamic>());
-            users.removeWhere((x) => x.email == u.email);
-            users.add(u);
-          }
+          if (e is Map) users.add(StaffUser.fromJson(e.cast<String, dynamic>()));
         }
+        final before = users.length;
+        _dedupeUsers();
+        // Repair already-corrupted caches immediately; this turns hundreds
+        // of historical CEO copies into one canonical record on first boot.
+        if (users.length != before) await _persistUsers();
       }
-    } catch (_) {/* corrupt cache — start clean */}
+    } catch (_) {
+      users.clear(); // corrupt cache — start clean
+    }
   }
 
   Future<void> persistUsers() => _persistUsers();
-  Future<void> _persistUsers() =>
-      localWrite('users', jsonEncode(users.map((u) => u.toJson()).toList()));
+  Future<void> _persistUsers() async {
+    _dedupeUsers();
+    await localWrite('users', jsonEncode(users.map((u) => u.toJson()).toList()));
+  }
 
   String? signIn(String email, String password) {
     if (users.isEmpty) {
@@ -432,9 +482,8 @@ class AuthStore extends ChangeNotifier {
     // to the Sales UI for good. Owner directive 2026-09-02.
     if (mail == ceoEmail && role != 'ceo') role = 'ceo';
     remoteSignInUid = uid;
-    final prev = users.where((x) => x.email == mail).firstOrNull;
-    users.removeWhere((x) => x.email == mail);
-    users.add(StaffUser(
+    final prev = users.where((x) => _emailKey(x.email) == mail).firstOrNull;
+    current = _upsertUser(StaffUser(
       name: name,
       email: mail,
       role: role,
@@ -444,7 +493,6 @@ class AuthStore extends ChangeNotifier {
       signaturePasscodeHash: prev?.signaturePasscodeHash ?? '',
       signaturePng: prev?.signaturePng,
     ));
-    current = users.last;
     notifyListeners();
     unawaited(_persistUsers());
     if (refreshTok.isNotEmpty) {
@@ -535,15 +583,15 @@ class AuthStore extends ChangeNotifier {
     // 'sales' role saved earlier must never show the boss the Sales UI.
     var cachedRole = '${saved['role'] ?? 'sales'}';
     if (mail == ceoEmail && cachedRole != 'ceo') cachedRole = 'ceo';
-    users.removeWhere((x) => x.email == mail);
-    users.add(StaffUser(
+    final previous = users.where((x) => _emailKey(x.email) == _emailKey(mail)).firstOrNull;
+    current = _upsertUser(StaffUser(
       name: '${saved['name'] ?? mail.split('@').first}',
-      email: mail,
+      email: _emailKey(mail),
       role: cachedRole,
-      passwordHash: '',
-      signaturePasscodeHash: '',
+      passwordHash: previous?.passwordHash ?? '',
+      signaturePasscodeHash: previous?.signaturePasscodeHash ?? '',
+      signaturePng: previous?.signaturePng,
     ));
-    current = users.last;
     notifyListeners();
   }
 

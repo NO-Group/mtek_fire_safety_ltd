@@ -949,11 +949,29 @@ Deno.serve(async (req: Request) => {
       case 'GET /api/staff': {
         requireRole(user, ['ceo', 'admin'], 'view the staff directory');
         const rows = await (await coll.profiles()).find({}).sort({ full_name: 1 }).toArray();
+        // Profiles are identities, not an append-only event stream. Protect
+        // every client from legacy duplicate rows by canonicalising email
+        // case/whitespace here. The newest row wins, except the locked CEO is
+        // always forced to the one authoritative CEO role.
+        const unique = new Map<string, Record<string, unknown>>();
+        for (const row of rows as Array<Record<string, unknown>>) {
+          const email = String(row.email ?? '').trim().toLowerCase();
+          const key = email || `uid:${String(row._id)}`;
+          const previous = unique.get(key);
+          const previousAt = String(previous?.updated_at ?? previous?.created_at ?? '');
+          const rowAt = String(row.updated_at ?? row.created_at ?? '');
+          if (!previous || rowAt >= previousAt) unique.set(key, row);
+        }
         return json({
-          staff: rows.map((r: Record<string, unknown>) => ({
-            uid: String(r._id), name: String(r.full_name ?? ''), email: String(r.email ?? ''),
-            phone: String(r.phone ?? ''), role: String(r.role ?? 'sales'), created_at: r.created_at ?? null,
-          })),
+          staff: Array.from(unique.values()).map((r: Record<string, unknown>) => {
+            const email = String(r.email ?? '').trim().toLowerCase();
+            return {
+              uid: String(r._id), name: String(r.full_name ?? ''), email,
+              phone: String(r.phone ?? ''),
+              role: email === CEO_EMAIL ? 'ceo' : String(r.role ?? 'sales'),
+              created_at: r.created_at ?? null,
+            };
+          }),
         });
       }
       case 'POST /api/staff/role': {
