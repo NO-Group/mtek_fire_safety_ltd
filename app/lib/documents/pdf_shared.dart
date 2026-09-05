@@ -265,18 +265,15 @@ pw.Widget ruledField(String label, {String value = '', double fontSize = 8.5, bo
           margin: const pw.EdgeInsets.only(left: 3),
           padding: const pw.EdgeInsets.only(bottom: 1, left: 2),
           decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey600, width: .7))),
-          child: pw.SizedBox(
-            height: fontSize + 3,
-            child: pw.FittedBox(
-              fit: pw.BoxFit.scaleDown,
-              alignment: pw.Alignment.bottomLeft,
-              child: pw.Text(
-                value,
-                maxLines: 1,
-                softWrap: false,
-                style: pw.TextStyle(fontSize: fontSize + 1),
-              ),
-            ),
+          // Keep ruled values on one baseline. FittedBox cannot be used in
+          // this Expanded/MultiPage context because the PDF engine measures
+          // it with an unbounded axis and emits a NaN transform.
+          child: pw.Text(
+            value,
+            maxLines: 1,
+            softWrap: false,
+            overflow: pw.TextOverflow.clip,
+            style: pw.TextStyle(fontSize: fontSize + 1),
           ),
         ),
       ),
