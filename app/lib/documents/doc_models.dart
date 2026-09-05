@@ -128,6 +128,7 @@ class MilsDocState {
   final Map<String, double> componentQty = {};
   final Map<String, double> componentRate = {};
 
+  bool vatEnabled = true;
   double vatRate = MtekForms.invoiceVatRate;
   double advancePayment = 0;
 
@@ -142,7 +143,7 @@ class MilsDocState {
     return s;
   }
 
-  double get vat => subtotal * vatRate;
+  double get vat => vatEnabled ? subtotal * vatRate : 0;
   double get grandTotal => subtotal + vat;
   double get balance => grandTotal - advancePayment;
   bool get hasWork =>

@@ -17,6 +17,7 @@ dependencies:
   share_plus: ^12.0.2      # WhatsApp/email share sheet
   file_picker: ^8.1.2      # real device picks: TXT stock import + MILS photos
   url_launcher: ^6.2.5     # wa.me / mailto deep links (customer directory)
+  permission_handler: ^12.0.1 # mandatory Android camera/notification guards
 
   # Planned for M2/M3 (offline DB, state, backend):
   # drift: ^2.20.0         # local SQLite cache + sync queue

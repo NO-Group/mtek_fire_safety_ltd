@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import 'core/permission_gate.dart';
 import 'core/theme.dart';
+import 'core/theme_controller.dart';
 import 'core/widget_bridge.dart';
 import 'data/auth_store.dart';
 import 'data/store.dart';
@@ -19,6 +21,7 @@ Future<void> main() async {
     debugPrint('Flutter build error: ${details.exception}');
     return const _FriendlyError();
   };
+  await ThemeController.instance.load();
   // Subscribe to home-widget / launcher-shortcut taps (Android only).
   unawaited(WidgetBridge.init());
   runApp(const MtekApp());
@@ -102,11 +105,15 @@ class MtekApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return AnimatedBuilder(
+      animation: ThemeController.instance,
+      builder: (context, _) => MaterialApp(
       title: 'MFSL Inventory',
       debugShowCheckedModeBanner: false,
       scrollBehavior: MtekScrollBehavior(),
       theme: MtekTheme.light(),
+      darkTheme: MtekTheme.dark(),
+      themeMode: ThemeController.instance.mode,
       // Clamp the device text-scale (owner's phone uses a very large system
       // font). At scale ≥1.5 every fixed-width row in the app overflowed,
       // painting the yellow/black "overflow" stripes over each screen and
@@ -130,6 +137,7 @@ class MtekApp extends StatelessWidget {
           return AuthStore.instance.isSignedIn ? const AppShell() : const LoginScreen();
         },
       ),
+    ),
     );
   }
 }
@@ -153,6 +161,7 @@ class _BootScreenState extends State<_BootScreen> {
     // 2026-09-01; previously every restart forced a fresh sign-in).
     AppStore.instance.init().then((_) async {
       await AuthStore.instance.restoreSession();
+      if (mounted) await PermissionGate.enforce(context);
       AuthStore.instance.ping();
     });
   }

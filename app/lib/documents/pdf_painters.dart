@@ -567,8 +567,10 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
         pw.SizedBox(
           width: 200,
           child: pw.Column(children: [
-            _summaryBox('VAT', m.vat),
-            pw.SizedBox(height: 5),
+            if (m.vatEnabled) ...[
+              _summaryBox('7.5% VAT', m.vat),
+              pw.SizedBox(height: 5),
+            ],
             _summaryBox('Grand Total', m.grandTotal, bold: true),
             pw.SizedBox(height: 5),
             _summaryBox('Advance Payment', m.advancePayment),

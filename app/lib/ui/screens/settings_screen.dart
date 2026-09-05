@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import '../../core/app_info.dart';
 import '../../core/theme.dart';
+import '../../core/theme_controller.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
 import '../../data/store.dart';
@@ -106,6 +107,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Card(
           child: Column(children: [
             ListTile(
+              leading: const Icon(Icons.brightness_6_outlined),
+              title: const Text('Appearance'),
+              subtitle: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(value: ThemeMode.system, label: Text('System')),
+                  ButtonSegment(value: ThemeMode.light, label: Text('Light')),
+                  ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+                ],
+                selected: {ThemeController.instance.mode},
+                showSelectedIcon: false,
+                onSelectionChanged: (modes) async {
+                  await ThemeController.instance.setMode(modes.first);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
               leading: const Icon(Icons.done_all, color: Mtek.navy700),
               title: const Text('Mark all notifications as read'),
               onTap: () async {
@@ -177,19 +196,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // ---------------- CEO-only management ----------------
         if (auth.isCeo) ...[
           _sectionLabel('MANAGEMENT (CEO)'),
-          Card(
-            child: SwitchListTile(
-              title: const Text('Apply VAT on invoices & MILS sheets'),
-              subtitle: Text('${(store.settings.vatRate * 100).toStringAsFixed(1)}% · adjustable per document'),
-              value: store.settings.vatEnabled,
-              activeColor: Mtek.brand600,
-              onChanged: (v) async {
-                await store.updateSettings(vatEnabled: v);
-                if (mounted) setState(() {});
-              },
-            ),
-          ),
-          const SizedBox(height: 14),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),

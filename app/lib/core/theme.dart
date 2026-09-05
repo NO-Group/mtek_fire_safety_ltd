@@ -90,6 +90,55 @@ abstract final class Mtek {
 /// Convenience accessor used by main.dart.
 abstract final class MtekTheme {
   static ThemeData light() => mtekLightTheme();
+
+  static ThemeData dark() {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: Mtek.brand400,
+      brightness: Brightness.dark,
+      primary: Mtek.brand300,
+      secondary: Mtek.gold400,
+      surface: Mtek.navy850,
+      error: const Color(0xFFFF6B6B),
+    );
+    return mtekLightTheme().copyWith(
+      brightness: Brightness.dark,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: Mtek.navy950,
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: Mtek.navy850,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Mtek.radius),
+          side: const BorderSide(color: Mtek.navy600),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: Mtek.navy850,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusLg)),
+      ),
+      inputDecorationTheme: mtekLightTheme().inputDecorationTheme.copyWith(
+        fillColor: Mtek.navy800,
+        labelStyle: const TextStyle(color: Mtek.gray300),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(Mtek.radiusSm),
+          borderSide: const BorderSide(color: Mtek.navy600),
+        ),
+      ),
+      dividerTheme: const DividerThemeData(color: Mtek.navy600, thickness: 1, space: 1),
+      navigationBarTheme: mtekLightTheme().navigationBarTheme.copyWith(
+        backgroundColor: Mtek.navy900,
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Mtek.navy850,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Mtek.radiusLg)),
+        ),
+      ),
+    );
+  }
 }
 
 /// Material 3 light theme branded for M-Tek.
