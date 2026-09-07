@@ -243,7 +243,23 @@ pw.Widget checkboxCell(String label, bool checked) {
   ]);
 }
 
-pw.Widget ruledField(String label, {String value = '', double fontSize = 8.5, bool boldLabel = true}) {
+pw.Widget ruledField(
+  String label, {
+  String value = '',
+  double fontSize = 8.5,
+  bool boldLabel = true,
+  int maxLines = 1,
+}) {
+  // Long customer details must remain visible. Scale one-line values before
+  // clipping, while addresses can explicitly use two lines. Avoid FittedBox:
+  // it receives an unbounded axis in MultiPage and can generate NaN transforms.
+  final valueSize = maxLines > 1
+      ? fontSize
+      : value.length > 32
+          ? fontSize - 2
+          : value.length > 20
+              ? fontSize - 1
+              : fontSize + 1;
   return pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 3),
     child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
@@ -253,15 +269,12 @@ pw.Widget ruledField(String label, {String value = '', double fontSize = 8.5, bo
           margin: const pw.EdgeInsets.only(left: 3),
           padding: const pw.EdgeInsets.only(bottom: 1, left: 2),
           decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey600, width: .7))),
-          // Keep ruled values on one baseline. FittedBox cannot be used in
-          // this Expanded/MultiPage context because the PDF engine measures
-          // it with an unbounded axis and emits a NaN transform.
           child: pw.Text(
             value,
-            maxLines: 1,
-            softWrap: false,
+            maxLines: maxLines,
+            softWrap: maxLines > 1,
             overflow: pw.TextOverflow.clip,
-            style: pw.TextStyle(fontSize: fontSize + 1),
+            style: pw.TextStyle(fontSize: valueSize < 5.5 ? 5.5 : valueSize),
           ),
         ),
       ),

@@ -103,8 +103,7 @@ pw.MultiPage _receiptPage(
             decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
               ruledField('Name:', value: r.name),
-              ruledField('Address:', value: r.address),
-              ruledField('', value: ''),
+              ruledField('Address:', value: r.address, maxLines: 2),
               ruledField('Phone No.', value: r.phone),
             ]),
           ),
@@ -338,18 +337,20 @@ pw.MultiPage _invoicePage(
 
       // Cross-reference fields + No/Date
       pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-        pw.Expanded(child: ruledField('MILS No:', value: v.milsNo)),
-        pw.Expanded(child: ruledField('RECEIPT No:', value: v.receiptNo)),
-        pw.Expanded(child: ruledField('L.P.O. No:', value: v.lpoNo)),
-        pw.SizedBox(width: 14),
+        // Compact reference fields leave a guaranteed nine-digit document
+        // number area instead of allowing optional references to consume it.
+        pw.SizedBox(width: 104, child: ruledField('MILS:', value: v.milsNo, fontSize: 7.5)),
+        pw.SizedBox(width: 104, child: ruledField('RCPT:', value: v.receiptNo, fontSize: 7.5)),
+        pw.SizedBox(width: 104, child: ruledField('LPO:', value: v.lpoNo, fontSize: 7.5)),
+        pw.Spacer(),
         pw.Text('No: ${v.serial}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
       ]),
       pw.Row(children: [
         pw.Expanded(flex: 3, child: ruledField('Name:', value: v.name)),
-        pw.Expanded(flex: 3, child: ruledField('Address:', value: v.address)),
-        pw.Expanded(flex: 2, child: ruledField('Phone No:', value: v.phone)),
+        pw.Expanded(flex: 4, child: ruledField('Address:', value: v.address, maxLines: 2)),
+        pw.Expanded(flex: 3, child: ruledField('Phone:', value: v.phone)),
         pw.SizedBox(width: 6),
-        pw.SizedBox(width: 92, child: ruledField('Date:', value: _d(v.date))),
+        pw.SizedBox(width: 82, child: ruledField('Date:', value: _d(v.date), fontSize: 7.5)),
       ]),
       pw.SizedBox(height: 4),
 
@@ -502,11 +503,11 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
         pw.Expanded(child: ruledField('Next Service Date:', value: _d(m.nextServiceDate), fontSize: 7.5)),
       ]),
       pw.Row(children: [
-        pw.Expanded(child: ruledField('Invoice No:', value: m.invoiceNo, fontSize: 7.5)),
-        pw.SizedBox(width: 10),
-        pw.Expanded(child: ruledField('Receipt No:', value: m.receiptNo, fontSize: 7.5)),
-        pw.SizedBox(width: 10),
-        pw.Expanded(child: ruledField('LPO NO.:', value: m.lpoNo, fontSize: 7.5)),
+        pw.Expanded(child: ruledField('INV:', value: m.invoiceNo, fontSize: 7.5)),
+        pw.SizedBox(width: 6),
+        pw.Expanded(child: ruledField('RCPT:', value: m.receiptNo, fontSize: 7.5)),
+        pw.SizedBox(width: 6),
+        pw.Expanded(child: ruledField('LPO:', value: m.lpoNo, fontSize: 7.5)),
       ]),
       pw.SizedBox(height: 4),
 
@@ -558,8 +559,8 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
           flex: 3,
           child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
             ruledField("Customer's Name:", value: m.name, fontSize: 8.5),
-            ruledField('Address:', value: m.address, fontSize: 8.5),
-            ruledField('Phone Number:', value: m.phone, fontSize: 8.5),
+            ruledField('Address:', value: m.address, fontSize: 8.5, maxLines: 2),
+            ruledField('Phone:', value: m.phone, fontSize: 8.5),
             ruledField('Bill in words:', value: m.amountInWords, fontSize: 8.5),
           ]),
         ),
@@ -667,8 +668,8 @@ pw.MultiPage _waybillPage(
             decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
               ruledField("Buyer's name:", value: w.name),
-              ruledField('Phone no:', value: w.phone),
-              ruledField('Address:', value: w.address),
+              ruledField('Phone:', value: w.phone),
+              ruledField('Address:', value: w.address, maxLines: 2),
             ]),
           ),
         ),
@@ -753,13 +754,20 @@ pw.MultiPage _waybillPage(
 }
 
 pw.Widget _refBox(String label, String value) {
+  final valueSize = value.length > 9 ? 6.5 : 7.5;
   return pw.Expanded(
     child: pw.Container(
-      margin: const pw.EdgeInsets.only(right: 6),
-      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      margin: const pw.EdgeInsets.only(right: 4),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black)),
-      child: pw.Text('$label ${value.isEmpty ? '' : value}',
-          style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+      child: pw.Row(children: [
+        pw.Text(label, style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(width: 2),
+        pw.Expanded(
+          child: pw.Text(value, maxLines: 1, softWrap: false,
+              style: pw.TextStyle(fontSize: valueSize, fontWeight: pw.FontWeight.bold)),
+        ),
+      ]),
     ),
   );
 }
