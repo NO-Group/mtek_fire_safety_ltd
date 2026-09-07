@@ -30,8 +30,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final store = AppStore.instance;
     final txns = store.transactions.reversed.where((t) {
       final typeMatches = switch (_filter) {
-        'sales' => t.type == TxnType.salePayment,
+        'sales' => t.type == TxnType.salePayment || t.type == TxnType.creditSale,
         'invoices' => t.type == TxnType.invoicePayment,
+        'mils' => t.type == TxnType.milsPayment,
         'refunds' => t.isRefund,
         _ => true,
       };
@@ -72,7 +73,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           Wrap(
             spacing: 8,
             children: [
-              for (final f in const [('all', 'All'), ('sales', 'Sale payments'), ('invoices', 'Invoice payments'), ('refunds', 'Refunds')])
+              for (final f in const [('all', 'All'), ('sales', 'Sales & credit'), ('invoices', 'Invoice payments'), ('mils', 'MILS payments'), ('refunds', 'Refunds')])
                 ChoiceChip(
                   label: Text(f.$2),
                   selected: _filter == f.$1,
@@ -129,11 +130,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             ),
                           ),
                           title: Text(
-                            t.isRefund
-                                ? 'Refund'
-                                : t.type == TxnType.salePayment
-                                    ? 'Sale payment — ${t.reference}'
-                                    : 'Invoice payment — ${t.reference}',
+                            '${_typeLabel(t.type)} — ${t.reference}',
                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                           ),
                           subtitle: Text('${fmt.fmtDateTime(t.date)} · ${MethodIcon.label(t.method)} · ${t.id}'),
@@ -208,7 +205,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           children: [
             Text(t.id, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
             const SizedBox(height: 16),
-            _row('Type', t.isRefund ? 'Refund' : (t.type == TxnType.salePayment ? 'Sale payment' : 'Invoice payment')),
+            _row('Type', _typeLabel(t.type)),
             _row('Amount', fmt.naira(t.isRefund ? -t.amount : t.amount)),
             _row('Method', MethodIcon.label(t.method)),
             _row('Date', fmt.fmtDateTime(t.date)),
@@ -219,6 +216,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       ),
     );
   }
+
+  String _typeLabel(TxnType type) => switch (type) {
+        TxnType.salePayment => 'Sale payment',
+        TxnType.creditSale => 'Credit sale (receivable)',
+        TxnType.invoicePayment => 'Invoice payment',
+        TxnType.milsPayment => 'MILS payment',
+        TxnType.refund => 'Refund',
+      };
 
   Widget _row(String k, String v) => Padding(
         padding: const EdgeInsets.only(bottom: 10),

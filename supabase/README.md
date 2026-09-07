@@ -1,7 +1,7 @@
 # M-TEK server — Supabase + MongoDB ONLY (free tier is enough)
 
 The apps (Android APK + Windows EXE) both talk to ONE backend:
-**Supabase Auth** (sign-in) + the **`data-api` Edge Function** (all data,
+**Supabase Auth** (sign-in) + the **`data-api2` Edge Function** (all data,
 stored in MongoDB across 7 databases). Nothing else exists — no website
 hosting, no GitHub dependency.
 
@@ -24,8 +24,8 @@ anywhere" (0.0.0.0/0) → Confirm.**
 | `MTEK_CEO_SIG` | the CEO signature passcode |
 
 **3. Deploy the function — ONE file:** Edge Functions → Create a new
-function → name `data-api` → in the editor open `index.ts` → select all →
-paste the whole contents of **`supabase/functions/data-api/index.ts`** →
+function → name `data-api2` → in the editor open `index.ts` → select all →
+paste the whole contents of **`supabase/functions/data-api2/index.ts`** →
 **Deploy**. (It has no side files; nothing else to add.)
 
 **4. Supabase → Authentication → Users → "Add user"** → email
@@ -51,9 +51,9 @@ MILS job, and CEO/Admin can post announcements from there too (with a
 read-count and the list of who has read it).
 
 ## Check it's alive
-Open `https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api/health`
+Open `https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api2/health`
 → you should see `"ok": true` and the serial books (all zero).
 
 ## Updating later
-Edit `supabase/functions/data-api/index.ts`, then re-paste it in the
+Edit `supabase/functions/data-api2/index.ts`, then re-paste it in the
 dashboard editor and hit Deploy. That's the whole update process.

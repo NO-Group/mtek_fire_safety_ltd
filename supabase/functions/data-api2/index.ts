@@ -59,7 +59,7 @@ const CEO_SIG = '093618';
 const SIG_RESET_ID = '2026-09-02a';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-05a';
+const BUNDLE_VERSION = '2026-09-07-sync1';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -853,18 +853,32 @@ Deno.serve(async (req: Request) => {
         const t = now();
         const sale = { customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), method, discount, total, items: lines, signed_by: user.uid, signed_name: user.name, customer_signature: String(b.customer_signature ?? ''), created_at: t };
         const saleOut = await ins(coll.sales(), sale);
-        const txnOut = await ins(coll.txns(), { txn_type: 'salePayment', method, amount: total, reference: String(saleOut.insertedId), txn_date: t, created_by: user.uid });
-        const recNo = 'MTK-REC-' + pad9(await nextSerial('receiptIssue'));
-        await (await coll.receipts()).insertOne({ no: recNo, amount: total, method, source: 'sale', customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), issued_by: user.uid, issued_name: user.name, customer_signature: String(b.customer_signature ?? ''), txn_id: String(txnOut.insertedId), sale_id: String(saleOut.insertedId), created_at: t });
+        // Credit is an accounts-receivable event, not cash received. Keep it
+        // in the unified ledger but do not issue a payment receipt or count it
+        // as revenue until an invoice payment arrives.
+        const txnType = method === 'credit' ? 'creditSale' : 'salePayment';
+        const txnOut = await ins(coll.txns(), { txn_type: txnType, method, amount: total, reference: String(saleOut.insertedId), txn_date: t, created_by: user.uid });
+        let recNo: string | null = null;
+        if (method !== 'credit') {
+          recNo = 'MTK-REC-' + pad9(await nextSerial('receiptIssue'));
+          await (await coll.receipts()).insertOne({ no: recNo, amount: total, method, source: 'sale', customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), issued_by: user.uid, issued_name: user.name, customer_signature: String(b.customer_signature ?? ''), txn_id: String(txnOut.insertedId), sale_id: String(saleOut.insertedId), created_at: t });
+        }
         let invoiceNo: string | null = null;
         if (method === 'credit' && customerId) {
           await customers.updateOne({ _id: customerId }, { $inc: { credit_balance: total } });
           invoiceNo = 'MTK-INV-' + pad9(await nextSerial('invoice'));
           await (await coll.invoices()).insertOne({ no: invoiceNo, customer_id: customerId, customer_name: customerName, status: 'sent', subtotal, vat: 0, total, amount_paid: 0, items: lines, issued_by: user.uid, created_at: t, updated_at: t });
         }
-        await audit('billing', 'sale', recNo, user);
-        await notify('transaction', 'New sale recorded', `${user.name} recorded a ${fmtN(total)} sale for ${customerName} (${recNo})`, recNo, user);
-        return json({ ok: true, sale_id: String(saleOut.insertedId), total, receipt_no: recNo, invoice_no: invoiceNo }, 201);
+        const reference = invoiceNo ?? recNo ?? String(saleOut.insertedId);
+        await audit('billing', method === 'credit' ? 'credit-sale' : 'sale', reference, user);
+        await notify(
+          'transaction',
+          method === 'credit' ? 'New credit sale recorded' : 'New sale recorded',
+          `${user.name} recorded a ${fmtN(total)} ${method === 'credit' ? 'credit ' : ''}sale for ${customerName} (${reference})`,
+          reference,
+          user,
+        );
+        return json({ ok: true, server_applied: true, sale_id: String(saleOut.insertedId), total, receipt_no: recNo, invoice_no: invoiceNo }, 201);
       }
 
       case 'POST /api/invoices/pay': {
@@ -1144,11 +1158,25 @@ Deno.serve(async (req: Request) => {
       case 'GET /api/staff': {
         requireRole(user, ['ceo', 'admin'], 'view the staff directory');
         const rows = await (await coll.profiles()).find({}).sort({ full_name: 1 }).toArray();
+        const unique = new Map<string, Record<string, unknown>>();
+        for (const row of rows as Array<Record<string, unknown>>) {
+          const email = String(row.email ?? '').trim().toLowerCase();
+          const key = email || `uid:${String(row._id)}`;
+          const previous = unique.get(key);
+          const previousAt = String(previous?.updated_at ?? previous?.created_at ?? '');
+          const rowAt = String(row.updated_at ?? row.created_at ?? '');
+          if (!previous || rowAt >= previousAt) unique.set(key, row);
+        }
         return json({
-          staff: rows.map((r: Record<string, unknown>) => ({
-            uid: String(r._id), name: String(r.full_name ?? ''), email: String(r.email ?? ''),
-            phone: String(r.phone ?? ''), role: String(r.role ?? 'sales'), created_at: r.created_at ?? null,
-          })),
+          staff: Array.from(unique.values()).map((r: Record<string, unknown>) => {
+            const email = String(r.email ?? '').trim().toLowerCase();
+            return {
+              uid: String(r._id), name: String(r.full_name ?? ''), email,
+              phone: String(r.phone ?? ''),
+              role: email === CEO_EMAIL ? 'ceo' : String(r.role ?? 'sales'),
+              created_at: r.created_at ?? null,
+            };
+          }),
         });
       }
       case 'POST /api/staff/role': {

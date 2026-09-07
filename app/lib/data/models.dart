@@ -6,7 +6,7 @@ enum ProductCategory { fire, safety, security, solar, automation }
 
 enum PaymentMethod { cash, transfer, pos, credit }
 
-enum TxnType { salePayment, invoicePayment, refund }
+enum TxnType { salePayment, creditSale, invoicePayment, milsPayment, refund }
 
 enum InvoiceStatus { unpaid, partial, paid, overdue }
 
@@ -119,6 +119,11 @@ class Transaction {
     required this.reference,
   });
   bool get isRefund => type == TxnType.refund;
+  bool get isReceivable => type == TxnType.creditSale;
+  bool get isPayment =>
+      type == TxnType.salePayment ||
+      type == TxnType.invoicePayment ||
+      type == TxnType.milsPayment;
 }
 
 class Receipt {

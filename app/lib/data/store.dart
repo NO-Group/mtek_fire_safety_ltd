@@ -1239,6 +1239,7 @@ class AppStore extends ChangeNotifier {
     for (final t in transactions) {
       if (from != null && t.date.isBefore(from)) continue;
       if (to != null && t.date.isAfter(to)) continue;
+      if (t.isReceivable) continue; // recorded in ledger, recognised on payment
       sum += t.isRefund ? -t.amount : t.amount;
     }
     return sum;
@@ -1271,7 +1272,7 @@ class AppStore extends ChangeNotifier {
 
   /// Avg. transaction value = net revenue / paying transactions.
   int avgTransactionValue() {
-    final paying = transactions.where((t) => !t.isRefund).length;
+    final paying = transactions.where((t) => t.isPayment).length;
     return paying == 0 ? 0 : revenue() ~/ paying;
   }
 
@@ -1293,7 +1294,7 @@ class AppStore extends ChangeNotifier {
   Map<PaymentMethod, int> revenueByMethod() {
     final byMethod = <PaymentMethod, int>{};
     for (final t in transactions) {
-      if (t.isRefund) continue;
+      if (!t.isPayment) continue;
       byMethod[t.method] = (byMethod[t.method] ?? 0) + t.amount;
     }
     return byMethod;
@@ -1356,26 +1357,37 @@ class AppStore extends ChangeNotifier {
     // passcode is re-verified against the bcrypt hash server-side. If the backend
     // is unreachable we fall back to the offline path and sync later.
     String? serverReceiptNo;
+    String? serverInvoiceNo;
+    var serverApplied = false;
     if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
-      try {
-        final res = await _api!.post('/api/sales', {
-          'customerId': customer.id.length > 20 ? customer.id : null,
-          'customer': customer.id.length > 20 ? null : {'name': customer.name, 'phone': customer.phone},
-          'method': method.name,
-          'items': [for (final i in items) {'product_id': i.product.id, 'qty': i.qty}],
-          'discount': discount,
-          'customer_signature': customerSignature,
-          'passcode': passcode ?? '',
-        });
-        if (res != null && res.ok && res.json is Map) {
-          serverReceiptNo = '${(res.json as Map)['receipt_no'] ?? ''}';
-        } else if (res != null) {
-          throw Exception((res.json is Map ? (res.json as Map)['error'] : null) ?? 'sale rejected');
+      final res = await _api!.post('/api/sales', {
+        'customerId': customer.id.length > 20 ? customer.id : null,
+        'customer': customer.id.length > 20 ? null : {
+          'name': customer.name, 'phone': customer.phone,
+          'email': customer.email, 'address': customer.address,
+        },
+        'customer_contact': customer.phone.isNotEmpty ? customer.phone : customer.email,
+        'method': method.name,
+        'items': [for (final i in items) {'product_id': i.product.id, 'qty': i.qty}],
+        'discount': discount,
+        'customer_signature': customerSignature,
+        'passcode': passcode ?? '',
+      });
+      if (res != null) {
+        if (!res.ok || res.json is! Map) {
+          // A reachable authoritative server refusal (stock race, bad
+          // passcode, invalid customer) must NEVER become an offline sale.
+          throw Exception((res.json is Map ? (res.json as Map)['error'] : null) ?? 'Sale rejected by server');
         }
-      } catch (e) {
-        debugPrint('completeSale: server refused — offline fallback (${e.toString().split('\n').first})');
-        serverReceiptNo = null;
+        serverApplied = true;
+        final body = res.json as Map;
+        final rawReceipt = body['receipt_no'];
+        final rawInvoice = body['invoice_no'];
+        serverReceiptNo = rawReceipt == null ? null : '$rawReceipt';
+        serverInvoiceNo = rawInvoice == null ? null : '$rawInvoice';
       }
+      // null means transport unreachable: continue through the idempotent
+      // offline path and upload with /api/sync/import when connectivity returns.
     }
     final sale = Sale(
       id: 'S${sales.length + 1}',
@@ -1393,7 +1405,16 @@ class AppStore extends ChangeNotifier {
       }
     }
     if (method == PaymentMethod.credit) {
-      final number = 'MTK-INV-${(invoices.length + 1).toString().padLeft(4, '0')}';
+      final number = serverInvoiceNo ??
+          'MTK-INV-${(invoices.length + 1).toString().padLeft(9, '0')}';
+      transactions.add(Transaction(
+        id: 'TXN-${(transactions.length + 1).toString().padLeft(4, '0')}',
+        date: now,
+        type: TxnType.creditSale,
+        amount: sale.total,
+        method: PaymentMethod.credit,
+        reference: number,
+      ));
       invoices.add(Invoice(
         number: number,
         issued: now,
@@ -1406,7 +1427,6 @@ class AppStore extends ChangeNotifier {
           customer: customer, signedBy: signedBy,
           receiptNo: serverReceiptNo, customerSignature: customerSignature);
     }
-    final serverApplied = serverReceiptNo != null && serverReceiptNo.isNotEmpty;
     await _persistSaleSide(sale, enqueue: !serverApplied);
     unawaited(addLocalNotification('transaction', 'Sale recorded',
         '$signedBy recorded a ${fmt.naira(sale.total)} sale for ${customer.name}', sale.id));
@@ -1439,7 +1459,9 @@ class AppStore extends ChangeNotifier {
       // the server already holds this sale + its receipt/transaction/invoice
       await _markKnown('sales', [saleToJson(sale)]);
       if (transactions.isNotEmpty) await _markKnown('transactions', [txnToJson(transactions.last)]);
-      if (receipts.isNotEmpty) await _markKnown('receipts', [receiptToJson(receipts.last)]);
+      if (sale.method != PaymentMethod.credit && receipts.isNotEmpty) {
+        await _markKnown('receipts', [receiptToJson(receipts.last)]);
+      }
       if (sale.method == PaymentMethod.credit && invoices.isNotEmpty) {
         await _markKnown('invoices', [invoiceToJson(invoices.last)]);
       }

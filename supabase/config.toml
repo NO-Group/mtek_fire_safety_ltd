@@ -14,5 +14,5 @@
 # gateway gate does not weaken any authenticated endpoint.
 project_id = "kshuadjcflwlidupnqly"
 
-[functions.data-api]
+[functions.data-api2]
 verify_jwt = false
