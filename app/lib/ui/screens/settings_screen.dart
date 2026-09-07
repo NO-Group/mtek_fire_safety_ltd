@@ -23,8 +23,8 @@ import '../widgets.dart';
 ///   • Preferences  — mark all notifications read, refresh from the server.
 ///   • About        — app version + live server status.
 ///
-/// The management controls (VAT, document serial reseed, stock TXT import,
-/// company profile) stay CEO-only.
+/// Management controls such as document serial reseed and stock import stay
+/// CEO-only. VAT is deliberately selected per priced document during creation.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 

@@ -56,7 +56,7 @@ const _settings = Destination('settings', 'Settings', Icons.settings_outlined, I
 List<Destination> destinationsFor(String? role) {
   // Authority: CEO > Admin > Sales. Settings is visible to EVERY role
   // (owner directive 2026-09-01) — Account/Recovery/Preferences/About are
-  // universal, while the management controls inside it (VAT, serial reseed,
+  // universal, while the management controls inside it (serial reseed,
   // stock seed import) stay CEO-only. Stock editing is CEO/Admin.
   if (role == 'ceo' || role == 'admin') return _allDestinations;
   return const [

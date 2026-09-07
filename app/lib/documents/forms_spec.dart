@@ -46,6 +46,6 @@ class MtekForms {
     'deliverynote': 0,
   };
 
-  /// VAT shown on the Sales Invoice (7.5% — configurable in Settings, §7).
+  /// VAT rate offered per priced document during document creation.
   static const double invoiceVatRate = 0.075;
 }
