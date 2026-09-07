@@ -1183,14 +1183,30 @@ class AppStore extends ChangeNotifier {
     // CEO-only — enforced again server-side (owner directive 2026-08-30)
     if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
       if (vatEnabled != null || vatRate != null) {
-        await _api!.post('/api/settings', {
+        final response = await _api!.post('/api/settings', {
           'vatEnabled': vatEnabled, 'vatRate': vatRate, 'watermark': null,
         });
+        if (response == null || !response.ok) {
+          final message = response?.json is Map
+              ? '${(response!.json as Map)['error'] ?? 'Server rejected the setting'}'
+              : 'Server rejected the setting';
+          throw Exception(response == null
+              ? 'Server unavailable — setting was not changed'
+              : message);
+        }
       }
       if (serialReseed != null) {
         for (final e in serialReseed.entries) {
-          await _api!.post('/api/settings',
+          final response = await _api!.post('/api/settings',
               {'reseed': {'type': e.key, 'value': e.value}});
+          if (response == null || !response.ok) {
+            final message = response?.json is Map
+                ? '${(response!.json as Map)['error'] ?? 'Server rejected the serial'}'
+                : 'Server rejected the serial';
+            throw Exception(response == null
+                ? 'Server unavailable — serial was not changed'
+                : message);
+          }
         }
       }
     }

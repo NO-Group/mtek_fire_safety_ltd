@@ -448,27 +448,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _syncNow() async {
+    if (_syncing) return;
     setState(() => _syncing = true);
-    await AppStore.instance.flushSyncQueue();
-    final refreshed = await AppStore.instance.refreshRemote();
-    await AppStore.instance.refreshNotifications();
-    if (!mounted) return;
-    setState(() => _syncing = false);
+    var refreshed = false;
+    try {
+      await AppStore.instance.flushSyncQueue();
+      refreshed = await AppStore.instance.refreshRemote();
+      await AppStore.instance.refreshNotifications();
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
     _snack(refreshed
         ? 'Synchronisation complete — this device has the latest server records.'
         : 'Server unavailable — local records remain protected and will retry automatically.');
   }
 
   Future<void> _testNotification() async {
-    await NotificationService.instance.show(
+    final delivered = await NotificationService.instance.show(
       key: 'settings-test-${DateTime.now().millisecondsSinceEpoch}',
       title: 'MFSL Inventory alerts are working',
       body: 'This device will receive the business alerts selected in Settings.',
       kind: 'general',
     );
-    _snack(PreferencesController.instance.nativeNotifications
+    _snack(delivered
         ? 'Test notification sent.'
-        : 'Native notifications are disabled. Enable them above first.');
+        : PreferencesController.instance.nativeNotifications
+            ? 'The operating system did not accept the notification. Check this app\'s notification permission.'
+            : 'Native notifications are disabled. Enable them above first.');
   }
 
   Future<void> _openUri(String value) async {
@@ -632,11 +638,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onPressed: () async {
             final v = int.tryParse(controller.text);
             if (v == null || v < 1) return;
-            await AppStore.instance.updateSettings(serialReseed: {type: v});
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Next $label will be numbered ${v + 1} — continues the book.')));
-              setState(() {});
+            try {
+              await AppStore.instance.updateSettings(serialReseed: {type: v});
+              if (mounted) {
+                _snack('Next $label will be numbered ${v + 1} — continues the book.');
+                setState(() {});
+              }
+            } catch (error) {
+              _snack(error.toString().replaceFirst('Exception: ', ''));
             }
           },
           child: const Text('Set'),

@@ -38,7 +38,7 @@ class NotificationService {
     }
   }
 
-  Future<void> show({
+  Future<bool> show({
     required String key,
     required String title,
     required String body,
@@ -46,7 +46,9 @@ class NotificationService {
     String kind = 'general',
     bool critical = false,
   }) async {
-    if (!_ready || !PreferencesController.instance.permits(kind) || !_shownKeys.add(key)) return;
+    if (!_ready || !PreferencesController.instance.permits(kind) || !_shownKeys.add(key)) {
+      return false;
+    }
     try {
       final details = NotificationDetails(
         android: AndroidNotificationDetails(
@@ -68,8 +70,11 @@ class NotificationService {
         notificationDetails: details,
         payload: payload,
       );
+      return true;
     } catch (error) {
+      _shownKeys.remove(key); // allow a retry after a transient OS failure
       debugPrint('Native notification failed: $error');
+      return false;
     }
   }
 

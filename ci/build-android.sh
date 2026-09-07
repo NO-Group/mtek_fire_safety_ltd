@@ -39,7 +39,7 @@ flutter pub get
 # Render every document type headlessly first: a PDF layout/asset bug must
 # fail the build here with the real exception (see app/test/pdf_build_test.dart).
 set +e
-flutter test test/pdf_build_test.dart > "${RUNNER_TEMP:-/tmp}/pdf-test.log" 2>&1
+flutter test > "${RUNNER_TEMP:-/tmp}/pdf-test.log" 2>&1
 TEST_RC=$?
 set -e
 tail -80 "${RUNNER_TEMP:-/tmp}/pdf-test.log"
