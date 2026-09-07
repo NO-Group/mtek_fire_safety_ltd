@@ -456,6 +456,7 @@ class AppStore extends ChangeNotifier {
             title: item.title,
             body: item.message,
             payload: item.ref,
+            kind: item.kind,
             critical: item.kind == 'stock' || item.kind == 'approval' || item.kind == 'staff',
           ));
         }
@@ -597,6 +598,7 @@ class AppStore extends ChangeNotifier {
       title: created.title,
       body: created.message,
       payload: created.ref,
+      kind: kind,
       critical: kind == 'stock' || kind == 'approval' || kind == 'staff',
     ));
   }

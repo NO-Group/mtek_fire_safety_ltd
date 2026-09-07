@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'core/notification_service.dart';
 import 'core/permission_gate.dart';
+import 'core/preferences_controller.dart';
 import 'core/theme.dart';
 import 'core/theme_controller.dart';
 import 'core/widget_bridge.dart';
@@ -23,6 +24,7 @@ Future<void> main() async {
     return const _FriendlyError();
   };
   await ThemeController.instance.load();
+  await PreferencesController.instance.load();
   await NotificationService.instance.initialize();
   // Subscribe to home-widget / launcher-shortcut taps (Android only).
   unawaited(WidgetBridge.init());
@@ -102,19 +104,53 @@ class MtekScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
+class _NoTransitionsBuilder extends PageTransitionsBuilder {
+  const _NoTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
+}
+
 class MtekApp extends StatelessWidget {
   const MtekApp({super.key});
+
+  ThemeData _withPreferences(ThemeData theme) {
+    final preferences = PreferencesController.instance;
+    return theme.copyWith(
+      visualDensity: preferences.compactLists
+          ? const VisualDensity(horizontal: -2, vertical: -2)
+          : VisualDensity.standard,
+      pageTransitionsTheme: preferences.reduceMotion
+          ? const PageTransitionsTheme(builders: {
+              TargetPlatform.android: _NoTransitionsBuilder(),
+              TargetPlatform.windows: _NoTransitionsBuilder(),
+              TargetPlatform.linux: _NoTransitionsBuilder(),
+              TargetPlatform.macOS: _NoTransitionsBuilder(),
+              TargetPlatform.iOS: _NoTransitionsBuilder(),
+            })
+          : theme.pageTransitionsTheme,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: ThemeController.instance,
+      animation: Listenable.merge([
+        ThemeController.instance,
+        PreferencesController.instance,
+      ]),
       builder: (context, _) => MaterialApp(
       title: 'MFSL Inventory',
       debugShowCheckedModeBanner: false,
       scrollBehavior: MtekScrollBehavior(),
-      theme: MtekTheme.light(),
-      darkTheme: MtekTheme.dark(),
+      theme: _withPreferences(MtekTheme.light()),
+      darkTheme: _withPreferences(MtekTheme.dark()),
       themeMode: ThemeController.instance.mode,
       // Clamp the device text-scale (owner's phone uses a very large system
       // font). At scale ≥1.5 every fixed-width row in the app overflowed,

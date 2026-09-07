@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../core/app_info.dart';
+import '../../core/notification_service.dart';
+import '../../core/preferences_controller.dart';
 import '../../core/theme.dart';
 import '../../core/theme_controller.dart';
 import '../../data/auth_store.dart';
@@ -31,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _tsv = TextEditingController();
   String _importMsg = '';
   bool? _online; // null = still checking
+  bool _syncing = false;
 
   @override
   void initState() {
@@ -138,21 +144,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: const Icon(Icons.refresh, color: Mtek.navy700),
               title: const Text('Refresh data from server'),
               subtitle: const Text('Re-download your latest records and notifications'),
-              onTap: () async {
-                await store.reloadRemote();
-                await store.refreshNotifications();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Data refreshed.')));
-                }
-              },
+              trailing: _syncing
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : null,
+              onTap: _syncing ? null : _syncNow,
+            ),
+          ]),
+        ),
+        const SizedBox(height: 14),
+
+        _sectionLabel('NOTIFICATIONS & ALERTS'),
+        Card(
+          child: Column(children: [
+            _preferenceSwitch(
+              icon: Icons.notifications_active_outlined,
+              title: 'Native device notifications',
+              subtitle: 'Master control for Android and Windows alerts',
+              value: PreferencesController.instance.nativeNotifications,
+              onChanged: (v) => _updatePreference(nativeNotifications: v),
+            ),
+            const Divider(height: 1),
+            _preferenceSwitch(
+              icon: Icons.payments_outlined,
+              title: 'Sales and payment alerts',
+              subtitle: 'Sales, invoice settlements and refunds',
+              value: PreferencesController.instance.transactionAlerts,
+              enabled: PreferencesController.instance.nativeNotifications,
+              onChanged: (v) => _updatePreference(transactionAlerts: v),
+            ),
+            _preferenceSwitch(
+              icon: Icons.description_outlined,
+              title: 'Document alerts',
+              subtitle: 'Receipts, invoices, MILS, waybills and delivery notes',
+              value: PreferencesController.instance.documentAlerts,
+              enabled: PreferencesController.instance.nativeNotifications,
+              onChanged: (v) => _updatePreference(documentAlerts: v),
+            ),
+            _preferenceSwitch(
+              icon: Icons.inventory_2_outlined,
+              title: 'Stock and approval alerts',
+              subtitle: 'Low inventory and actions needing attention',
+              value: PreferencesController.instance.stockAlerts,
+              enabled: PreferencesController.instance.nativeNotifications,
+              onChanged: (v) => _updatePreference(stockAlerts: v),
+            ),
+            _preferenceSwitch(
+              icon: Icons.groups_outlined,
+              title: 'Staff and announcement alerts',
+              subtitle: 'Role changes and management broadcasts',
+              value: PreferencesController.instance.staffAlerts,
+              enabled: PreferencesController.instance.nativeNotifications,
+              onChanged: (v) => _updatePreference(staffAlerts: v),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.notification_add_outlined),
+              title: const Text('Send test notification'),
+              subtitle: const Text('Verify native notifications on this device'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _testNotification,
+            ),
+          ]),
+        ),
+        const SizedBox(height: 14),
+
+        _sectionLabel('ACCESSIBILITY & DISPLAY'),
+        Card(
+          child: Column(children: [
+            _preferenceSwitch(
+              icon: Icons.motion_photos_off_outlined,
+              title: 'Reduce motion',
+              subtitle: 'Minimise decorative transitions and movement',
+              value: PreferencesController.instance.reduceMotion,
+              onChanged: (v) => _updatePreference(reduceMotion: v),
+            ),
+            _preferenceSwitch(
+              icon: Icons.view_agenda_outlined,
+              title: 'Compact lists',
+              subtitle: 'Use denser rows to show more business records',
+              value: PreferencesController.instance.compactLists,
+              onChanged: (v) => _updatePreference(compactLists: v),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 14),
+
+        _sectionLabel('DATA & SYNCHRONISATION'),
+        Card(
+          child: Column(children: [
+            ListTile(
+              leading: Icon(
+                store.lastServerSync == null ? Icons.cloud_off_outlined : Icons.cloud_done_outlined,
+                color: store.lastServerSync == null ? Mtek.warn : Mtek.success,
+              ),
+              title: Text(store.lastServerSync == null
+                  ? 'No live sync completed this session'
+                  : 'Last synced ${_relativeTime(store.lastServerSync!)}'),
+              subtitle: Text('${store.products.length} products · ${store.customers.length} customers · '
+                  '${store.sales.length} sales · ${store.transactions.length} transactions'),
+              trailing: IconButton(
+                tooltip: 'Synchronise now',
+                onPressed: _syncing ? null : _syncNow,
+                icon: const Icon(Icons.sync),
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Business records on this device'),
+              subtitle: Text('${store.invoices.length} invoices · ${store.receipts.length} receipts · '
+                  '${store.milsLogs.length} MILS jobs · ${store.docHistory.length} issued documents'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.security_outlined),
+              title: const Text('Offline protection'),
+              subtitle: const Text('Pending records use idempotent keys and upload before remote data replaces the cache'),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 14),
+
+        _sectionLabel('DEVICE & PERMISSIONS'),
+        Card(
+          child: Column(children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Camera and notification permissions'),
+              subtitle: const Text('Manage site-photo and alert access in system settings'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: openAppSettings,
+            ),
+            ListTile(
+              leading: const Icon(Icons.print_outlined),
+              title: const Text('Printing and sharing'),
+              subtitle: const Text('Uses the native Android or Windows print and share services'),
             ),
           ]),
         ),
         const SizedBox(height: 14),
 
         // ---------------- About (every role) ----------------
-        _sectionLabel('ABOUT'),
+        _sectionLabel('ABOUT & SUPPORT'),
         Card(
           child: Column(children: [
             ListTile(
@@ -186,6 +318,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: const Icon(Icons.refresh, size: 20, color: Mtek.gray500),
                 onPressed: _ping,
               ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.email_outlined),
+              title: const Text('Contact M-TEK support'),
+              subtitle: const Text('mtekfiresafetyltd@gmail.com'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _openUri('mailto:mtekfiresafetyltd@gmail.com?subject=MFSL%20Inventory%20Support'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.language_outlined),
+              title: const Text('Company website'),
+              subtitle: const Text('www.mtekLtd.com.ng'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () => _openUri('https://www.mtekLtd.com.ng'),
             ),
           ]),
         ),
@@ -262,6 +409,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ],
     );
+  }
+
+  Widget _preferenceSwitch({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    bool enabled = true,
+  }) => SwitchListTile.adaptive(
+        secondary: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        value: value,
+        onChanged: enabled ? onChanged : null,
+      );
+
+  Future<void> _updatePreference({
+    bool? nativeNotifications,
+    bool? transactionAlerts,
+    bool? documentAlerts,
+    bool? stockAlerts,
+    bool? staffAlerts,
+    bool? reduceMotion,
+    bool? compactLists,
+  }) async {
+    await PreferencesController.instance.update(
+      nativeNotifications: nativeNotifications,
+      transactionAlerts: transactionAlerts,
+      documentAlerts: documentAlerts,
+      stockAlerts: stockAlerts,
+      staffAlerts: staffAlerts,
+      reduceMotion: reduceMotion,
+      compactLists: compactLists,
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncNow() async {
+    setState(() => _syncing = true);
+    await AppStore.instance.flushSyncQueue();
+    final refreshed = await AppStore.instance.refreshRemote();
+    await AppStore.instance.refreshNotifications();
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    _snack(refreshed
+        ? 'Synchronisation complete — this device has the latest server records.'
+        : 'Server unavailable — local records remain protected and will retry automatically.');
+  }
+
+  Future<void> _testNotification() async {
+    await NotificationService.instance.show(
+      key: 'settings-test-${DateTime.now().millisecondsSinceEpoch}',
+      title: 'MFSL Inventory alerts are working',
+      body: 'This device will receive the business alerts selected in Settings.',
+      kind: 'general',
+    );
+    _snack(PreferencesController.instance.nativeNotifications
+        ? 'Test notification sent.'
+        : 'Native notifications are disabled. Enable them above first.');
+  }
+
+  Future<void> _openUri(String value) async {
+    final opened = await launchUrl(Uri.parse(value), mode: LaunchMode.externalApplication);
+    if (!opened) _snack('No compatible application is available on this device.');
+  }
+
+  String _relativeTime(DateTime time) {
+    final difference = DateTime.now().difference(time);
+    if (difference.inSeconds < 30) return 'just now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes} min ago';
+    if (difference.inHours < 24) return '${difference.inHours} hr ago';
+    return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
   }
 
   String _initials(String? name) {

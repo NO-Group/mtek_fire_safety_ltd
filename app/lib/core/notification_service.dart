@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'preferences_controller.dart';
+
 /// Native Android/Windows notification bridge. In-app records remain the
 /// durable source of truth; this service adds an OS-visible alert and never
 /// lets a platform notification failure block a sale or stock operation.
@@ -41,9 +43,10 @@ class NotificationService {
     required String title,
     required String body,
     String? payload,
+    String kind = 'general',
     bool critical = false,
   }) async {
-    if (!_ready || !_shownKeys.add(key)) return;
+    if (!_ready || !PreferencesController.instance.permits(kind) || !_shownKeys.add(key)) return;
     try {
       final details = NotificationDetails(
         android: AndroidNotificationDetails(
