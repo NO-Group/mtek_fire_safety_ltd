@@ -1218,13 +1218,15 @@ class AppStore extends ChangeNotifier {
   Future<void> updateSettings({
     bool? vatEnabled,
     double? vatRate,
+    bool? signatureGateEnabled,
     Map<String, int>? serialReseed,
   }) async {
     // CEO-only — enforced again server-side (owner directive 2026-08-30)
     if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
-      if (vatEnabled != null || vatRate != null) {
+      if (vatEnabled != null || vatRate != null || signatureGateEnabled != null) {
         final response = await _api!.post('/api/settings', {
-          'vatEnabled': vatEnabled, 'vatRate': vatRate, 'watermark': null,
+          'vatEnabled': vatEnabled, 'vatRate': vatRate,
+          'signatureGateEnabled': signatureGateEnabled, 'watermark': null,
         });
         if (response == null || !response.ok) {
           final message = response?.json is Map
@@ -1252,6 +1254,10 @@ class AppStore extends ChangeNotifier {
     }
     if (vatEnabled != null) settings = settings.copyWith(vatEnabled: vatEnabled);
     if (vatRate != null) settings = settings.copyWith(vatRate: vatRate);
+    if (signatureGateEnabled != null) {
+      settings = settings.copyWith(signatureGateEnabled: signatureGateEnabled);
+      if (!signatureGateEnabled) AuthStore.instance.lastVerifiedPasscode = null;
+    }
     if (serialReseed != null) {
       for (final e in serialReseed.entries) {
         SerialService.instance.reseed(e.key, e.value);
@@ -2012,17 +2018,32 @@ Map<String, dynamic> milsLogToJson(MaintenanceLog l) => {
 class StoreSettings {
   final bool vatEnabled;
   final double vatRate;
-  StoreSettings({this.vatEnabled = false, this.vatRate = 0.075});
+  final bool signatureGateEnabled;
+  StoreSettings({
+    this.vatEnabled = false,
+    this.vatRate = 0.075,
+    this.signatureGateEnabled = true,
+  });
 
-  StoreSettings copyWith({bool? vatEnabled, double? vatRate}) => StoreSettings(
+  StoreSettings copyWith({
+    bool? vatEnabled,
+    double? vatRate,
+    bool? signatureGateEnabled,
+  }) => StoreSettings(
         vatEnabled: vatEnabled ?? this.vatEnabled,
         vatRate: vatRate ?? this.vatRate,
+        signatureGateEnabled: signatureGateEnabled ?? this.signatureGateEnabled,
       );
 
-  Map<String, dynamic> toJson() => {'vat_enabled': vatEnabled, 'vat_rate': vatRate};
+  Map<String, dynamic> toJson() => {
+        'vat_enabled': vatEnabled,
+        'vat_rate': vatRate,
+        'signature_gate_enabled': signatureGateEnabled,
+      };
   static StoreSettings fromJson(Map<String, dynamic> j) => StoreSettings(
         vatEnabled: j['vat_enabled'] == true,
         vatRate: (j['vat_rate'] as num?)?.toDouble() ?? 0.075,
+        signatureGateEnabled: j['signature_gate_enabled'] != false,
       );
 }
 

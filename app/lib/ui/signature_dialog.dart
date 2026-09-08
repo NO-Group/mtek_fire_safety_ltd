@@ -4,16 +4,17 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../data/auth_store.dart';
-import '../data/env.dart';
+import '../data/store.dart';
 
 /// Signature gate — shown before issuing any document (receipt, invoice
 /// payment, sale, MILS log). Verifies the user's Signature Passcode.
 /// Returns the signed-in user on success, null on cancel/failure.
 Future<StaffUser?> confirmSignature(BuildContext context) async {
   final auth = AuthStore.instance;
-  if (Env.signatureGateDisabled) {
-    // No pop-up at all: the user is treated as signed.
-    auth.lastVerifiedPasscode = auth.lastVerifiedPasscode ?? '';
+  if (!AppStore.instance.settings.signatureGateEnabled) {
+    // The CEO disabled authorisation globally. Do not show the dialog and do
+    // not retain an old passcode in memory.
+    auth.lastVerifiedPasscode = null;
     return auth.current;
   }
   final passcode = TextEditingController();

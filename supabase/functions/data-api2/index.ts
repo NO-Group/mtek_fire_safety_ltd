@@ -247,12 +247,16 @@ function requireRole(user: Profile, roles: string[], what: string) {
   }
 }
 
-// Signature passcode gate (restored 2026-09-03). Set to false to skip the
-// passcode check server-side (keep in step with Env.signatureGateDisabled).
-const SIGNATURE_GATE = true;
+// The CEO controls this live from Settings. The backend reads the
+// authoritative value for every protected mutation, so disabling the app
+// prompt can never leave the server unexpectedly demanding a passcode.
+async function signatureGateEnabled() {
+  const settings = await (await coll.settings()).findOne({ _id: 'settings' });
+  return settings?.signature_gate_enabled !== false;
+}
 
 async function verifyPasscode(user: Profile, passcode: string) {
-  if (!SIGNATURE_GATE) return; // gate disabled — every signed-in user may issue
+  if (!await signatureGateEnabled()) return;
   if (!passcode) throw new HttpErr(403, 'Not signed — passcode required');
   const hash = user.sig_hash && user.sig_salt ? await hashPass(passcode, user.sig_salt) : '';
   if (hash && hash === user.sig_hash) return;
@@ -301,7 +305,10 @@ async function ensureCore() {
     await s.updateOne({ _id: t }, { $setOnInsert: { last_used: 0 } }, { upsert: true });
   }
   await coll.settings().then(c =>
-    c.updateOne({ _id: 'settings' }, { $setOnInsert: { vat_enabled: false, vat_rate: 0.075, watermark: true } }, { upsert: true }));
+    c.updateOne({ _id: 'settings' }, { $setOnInsert: {
+      vat_enabled: false, vat_rate: 0.075, watermark: true,
+      signature_gate_enabled: true,
+    } }, { upsert: true }));
 }
 async function nextSerial(type: string): Promise<number> {
   const out = await (await coll.serials()).findOneAndUpdate(
@@ -665,7 +672,12 @@ Deno.serve(async (req: Request) => {
         return json({
           user: { uid: user.uid, email: user.email, name: user.name, role: user.role },
           products, customers, transactions: txns, receipts, invoices, docs, sales, mils, adjustments,
-          settings: { vat_enabled: settings?.vat_enabled ?? false, vat_rate: settings?.vat_rate ?? 0.075, watermark: settings?.watermark ?? true },
+          settings: {
+            vat_enabled: settings?.vat_enabled ?? false,
+            vat_rate: settings?.vat_rate ?? 0.075,
+            watermark: settings?.watermark ?? true,
+            signature_gate_enabled: settings?.signature_gate_enabled !== false,
+          },
           serials,
         });
       }
@@ -913,6 +925,9 @@ Deno.serve(async (req: Request) => {
         if (typeof b.vatEnabled === 'boolean') set.vat_enabled = b.vatEnabled;
         if (typeof b.vatRate === 'number' && b.vatRate >= 0 && b.vatRate <= 0.5) set.vat_rate = b.vatRate;
         if (typeof b.watermark === 'boolean') set.watermark = b.watermark;
+        if (typeof b.signatureGateEnabled === 'boolean') {
+          set.signature_gate_enabled = b.signatureGateEnabled;
+        }
         const st = await coll.settings();
         if (Object.keys(set).length) await st.updateOne({ _id: 'settings' }, { $set: set });
         if (b.reseed && BOOK_TYPES.includes(b.reseed.type)) {

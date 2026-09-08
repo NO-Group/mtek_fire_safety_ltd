@@ -347,6 +347,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    secondary: const Icon(Icons.draw_outlined, color: Mtek.navy700),
+                    title: const Text('Require signature passcode'),
+                    subtitle: const Text(
+                      'When disabled, staff can issue documents and complete protected transactions without the signature-code prompt.'),
+                    value: store.settings.signatureGateEnabled,
+                    onChanged: (enabled) async {
+                      try {
+                        await store.updateSettings(signatureGateEnabled: enabled);
+                        _snack(enabled
+                            ? 'Signature passcode protection enabled.'
+                            : 'Signature passcode protection disabled.');
+                      } catch (error) {
+                        _snack(error.toString().replaceFirst('Exception: ', ''));
+                      }
+                    },
+                  ),
+                  const Divider(height: 24),
                   const Text('DOCUMENT SERIALS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.gray500)),
                   const SizedBox(height: 4),
                   const Text('Set each counter to the number of the last used page in the physical book — digital documents continue the sequence.',

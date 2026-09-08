@@ -386,9 +386,8 @@ class AuthStore extends ChangeNotifier {
   /// MongoDB via the data API. Falls back to the local check only when the
   /// API is not configured or unreachable.
   Future<bool> verifySignatureAny(String passcode) async {
-    // TEMPORARY: signature gate disabled app-wide (see signature_dialog.dart).
-    if (Env.signatureGateDisabled) {
-      lastVerifiedPasscode = passcode;
+    if (!AppStore.instance.settings.signatureGateEnabled) {
+      lastVerifiedPasscode = null;
       return true;
     }
     final api = AppStore.instance.api;
