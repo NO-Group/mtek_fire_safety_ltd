@@ -105,20 +105,38 @@ class ReceiptsScreen extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 420),
-          padding: const EdgeInsets.all(28),
-          child: Column(
+          width: 460,
+          constraints: BoxConstraints(
+            maxWidth: 460,
+            maxHeight: MediaQuery.sizeOf(context).height - 48,
+          ),
+          padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 420 ? 18 : 28),
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(color: Mtek.brand600, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.local_fire_department, color: Colors.white),
+                    width: 52,
+                    height: 52,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Mtek.gray100),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Image.asset(
+                      'assets/branding/logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.business_outlined,
+                        color: Mtek.brand600,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -139,7 +157,12 @@ class ReceiptsScreen extends StatelessWidget {
               const Divider(height: 28),
               const Text('OFFICIAL RECEIPT', style: TextStyle(letterSpacing: 2, fontSize: 12, fontWeight: FontWeight.w700, color: Mtek.brand600)),
               const SizedBox(height: 4),
-              Text(r.number, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(_displayReceiptNumber(r.number),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+              ),
               const SizedBox(height: 16),
               _row('Received from', r.customer.name),
               _row('Date', fmt.fmtDate(r.date)),
@@ -179,7 +202,7 @@ class ReceiptsScreen extends StatelessWidget {
               const SizedBox(height: 18),
               LayoutBuilder(builder: (context, box) {
                 final narrow = box.maxWidth < 390;
-                final width = narrow ? box.maxWidth : (box.maxWidth - 20) / 3;
+                final width = narrow ? box.maxWidth : (box.maxWidth - 10) / 2;
                 return Wrap(
                   spacing: 10,
                   runSpacing: 10,
@@ -188,11 +211,6 @@ class ReceiptsScreen extends StatelessWidget {
                       onPressed: () => _sendReceipt(context, r),
                       icon: const Icon(Icons.share_outlined, size: 18),
                       label: const Text('Share PDF'),
-                    )),
-                    SizedBox(width: width, child: OutlinedButton.icon(
-                      onPressed: () => _sendReceipt(context, r),
-                      icon: const Icon(Icons.mail_outline, size: 18),
-                      label: const Text('Email'),
                     )),
                     SizedBox(width: width, child: FilledButton.icon(
                       onPressed: () => _printReceipt(context, r),
@@ -203,6 +221,7 @@ class ReceiptsScreen extends StatelessWidget {
                 );
               }),
             ],
+            ),
           ),
         ),
       ),
@@ -271,6 +290,13 @@ class ReceiptsScreen extends StatelessWidget {
       signaturePngBytes: _signatureImage(r.signedBy),
       customerSignaturePngBytes: dataUrlToBytes(r.customerSignature),
     );
+  }
+
+  String _displayReceiptNumber(String number) {
+    final digits = number.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return number;
+    final serial = int.tryParse(digits) ?? 0;
+    return 'MTK-REC-${serial.toString().padLeft(9, '0')}';
   }
 
   Widget _row(String k, String v) => Padding(
