@@ -11,6 +11,7 @@ import 'screens/delivery_notes_screen.dart';
 import 'screens/generator_screen.dart';
 import 'screens/insights_screen.dart';
 import 'screens/invoices_screen.dart';
+import 'screens/letterhead_screen.dart';
 import 'screens/mils_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/receipts_screen.dart';
@@ -46,6 +47,7 @@ const _summary = Destination('summary', 'Summary', Icons.summarize_outlined, Ico
 const _docs = Destination('docs', 'Documents', Icons.draw_outlined, Icons.draw, GeneratorScreen());
 const _notifications = Destination('notifications', 'Notifications', Icons.notifications_outlined, Icons.notifications, NotificationsScreen());
 const _staff = Destination('staff', 'Staff', Icons.badge_outlined, Icons.badge, StaffScreen());
+const _letterhead = Destination('letterhead', 'Letterhead', Icons.article_outlined, Icons.article, LetterheadScreen());
 
 const _settings = Destination('settings', 'Settings', Icons.settings_outlined, Icons.settings, SettingsScreen());
 
@@ -58,13 +60,21 @@ List<Destination> destinationsFor(String? role) {
   // (owner directive 2026-09-01) — Account/Recovery/Preferences/About are
   // universal, while the management controls inside it (serial reseed,
   // stock seed import) stay CEO-only. Stock editing is CEO/Admin.
-  if (role == 'ceo' || role == 'admin') return _allDestinations;
+  if (role == 'ceo') return _ceoDestinations;
+  if (role == 'admin') return _allDestinations;
   return const [
     _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications, _settings,
   ];
 }
 
-/// The complete management destination set (CEO view).
+/// CEO receives the private official-letter composer in addition to all
+/// operational destinations. Admin cannot navigate to or render it.
+const _ceoDestinations = <Destination>[
+  _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
+  _mils, _sales, _stock, _summary, _docs, _letterhead, _notifications, _staff, _settings,
+];
+
+/// The complete operational destination set (admin view).
 const _allDestinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
   _mils, _sales, _stock, _summary, _docs, _notifications, _staff, _settings,
