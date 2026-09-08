@@ -21,14 +21,15 @@ abstract final class MtekBranding {
 
   static const headOffice =
       'HEAD OFFICE: YY12, Kazaure Road, By Lagos Street Round About, Kaduna.';
-  static const headOfficeTel = 'Tel: 08033489452';
+  static const ceoPhone = '+2348033498452';
+  static const headOfficeTel = 'Tel: +2348033498452';
   static const email = 'mtekfiresafetyltd@gmail.com';
   static const website = 'www.mtekLtd.com.ng';
 
   /// Single-office contact block used on every generated document.
   static const officeBlock =
       'HEAD OFFICE: YY12, Kazaure Road, By Lagos Street Round About, Kaduna. '
-      'Tel: 08033489452\n'
+      'Tel: +2348033498452\n'
       'E-mail: mtekfiresafetyltd@gmail.com\n'
       'Website: www.mtekLtd.com.ng';
 

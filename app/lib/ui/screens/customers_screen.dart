@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/format.dart' as fmt;
+import '../../core/phone.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
@@ -96,19 +97,24 @@ class _CustomersScreenState extends State<CustomersScreen> {
           children: [
             TextField(controller: name, decoration: const InputDecoration(labelText: 'Name / Company')),
             const SizedBox(height: 12),
-            TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone (WhatsApp)')),
+            TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone with country code', hintText: '+2348033498452')),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
+              final phoneError = internationalPhoneError(phone.text, required: true);
+              if (phoneError != null) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(phoneError)));
+                return;
+              }
               if (name.text.trim().isNotEmpty) {
                 AppStore.instance.addCustomer(Customer(
                   id: 'C${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}',
                   name: name.text.trim(),
                   isCorporate: name.text.toLowerCase().contains('ltd') || name.text.toLowerCase().contains('depot'),
-                  phone: phone.text.trim(),
+                  phone: normalizeInternationalPhone(phone.text),
                   email: '',
                   address: '',
                 ));

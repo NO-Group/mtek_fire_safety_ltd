@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart' hide ShareResult;
@@ -39,31 +40,40 @@ Future<ShareOutcome> dispatchPdfImpl({
   }
 }
 
-/// Explicit "Download" (save) action: write the PDF to a persistent,
-/// user-accessible folder and report success WITHOUT opening the share
-/// sheet. Downloads directory on desktop; the app documents directory as a
-/// safe fallback on Android. Never surfaces a raw filesystem path.
+/// Explicit Download uses the platform Save As / Android document picker.
+/// The previous Android fallback wrote into the private app sandbox and then
+/// falsely reported a download that users could not find.
 Future<ShareOutcome> savePdfImpl({
   required Uint8List bytes,
   required String filename,
 }) async {
   try {
-    Directory dir;
-    try {
-      dir = await getDownloadsDirectory() ??
-          await getApplicationDocumentsDirectory();
-    } catch (_) {
-      // getDownloadsDirectory is unsupported on some platforms (Android) —
-      // fall back to the app's own persistent documents directory.
-      dir = await getApplicationDocumentsDirectory();
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save MFSL PDF',
+      fileName: filename,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      bytes: bytes,
+    );
+    if (path == null) {
+      return const ShareOutcome(ShareResult.failed, 'Download cancelled.');
     }
-    final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(bytes, flush: true);
-    return const ShareOutcome(ShareResult.savedOnly,
-        'PDF downloaded — saved on this device.');
+    // Desktop returns a writable filesystem path. Android's Storage Access
+    // Framework writes [bytes] itself and may return a content URI instead.
+    if (!path.startsWith('content://')) {
+      final file = File(path);
+      if (!await file.exists() || await file.length() != bytes.length) {
+        await file.writeAsBytes(bytes, flush: true);
+      }
+      if (!await file.exists() || await file.length() == 0) {
+        throw const FileSystemException('Saved PDF could not be verified');
+      }
+    }
+    return ShareOutcome(ShareResult.savedOnly,
+        'PDF saved successfully as $filename.');
   } catch (e) {
     debugPrint('savePdf (io) failed: $e');
     return const ShareOutcome(ShareResult.failed,
-        'Could not download the PDF — please try again.');
+        'Could not save the PDF. Choose a folder and try again.');
   }
 }

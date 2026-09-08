@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../../core/format.dart' as fmt;
+import '../../core/phone.dart';
 import '../../core/theme.dart';
 import '../widgets.dart';
 import '../../data/auth_store.dart';
@@ -350,7 +351,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       _field(_rIrn, 'IRN (Invoice Reference Number)', onChanged: (v) => _receipt.irn = v),
       _field(_rName, 'Customer name *', onChanged: (v) => _receipt.name = v),
       _field(_rAddr, 'Address', onChanged: (v) => _receipt.address = v),
-      _field(_rPhone, 'Phone No. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _receipt.phone = v),
+      _field(_rPhone, 'Phone with country code (or use Email below)', keyboard: TextInputType.phone, onChanged: (v) => _receipt.phone = v),
       _field(_rEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _receipt.customerEmail = v),
       _field(_rFor, 'Being Payment for', hint: 'e.g. Refill of 24 × 6kg extinguishers', onChanged: (v) => _receipt.beingPaymentFor = v),
       _field(_rAmount, 'The Sum of (₦) *', keyboard: const TextInputType.numberWithOptions(decimal: true),
@@ -421,7 +422,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       _field(_iLpo, 'L.P.O. No', onChanged: (v) => _invoice.lpoNo = v),
       _field(_iName, 'Customer name *', onChanged: (v) => _invoice.name = v),
       _field(_iAddr, 'Address', onChanged: (v) => _invoice.address = v),
-      _field(_iPhone, 'Phone No. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _invoice.phone = v),
+      _field(_iPhone, 'Phone with country code (or use Email below)', keyboard: TextInputType.phone, onChanged: (v) => _invoice.phone = v),
       _field(_iEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _invoice.customerEmail = v),
       const SizedBox(height: 6),
       const SectionTitle('Itemised ledger'),
@@ -589,7 +590,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       const SizedBox(height: 10),
       _field(_mName, "Customer's Name *", onChanged: (v) => _mils.name = v),
       _field(_mAddr, 'Address', onChanged: (v) => _mils.address = v),
-      _field(_mPhone, 'Phone Number or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _mils.phone = v),
+      _field(_mPhone, 'Phone with country code (or use Email below)', keyboard: TextInputType.phone, onChanged: (v) => _mils.phone = v),
       _field(_mEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _mils.customerEmail = v),
       const SizedBox(height: 6),
       SwitchListTile.adaptive(
@@ -781,7 +782,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       ]),
       _field(_wbName, "Buyer's name *", onChanged: (v) => _waybill.name = v),
       _field(_wbAddr, 'Address', onChanged: (v) => _waybill.address = v),
-      _field(_wbPhone, 'Phone no. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _waybill.phone = v),
+      _field(_wbPhone, 'Phone with country code (or use Email below)', keyboard: TextInputType.phone, onChanged: (v) => _waybill.phone = v),
       _field(_wbEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _waybill.customerEmail = v),
       const SizedBox(height: 6),
       const SectionTitle('Items — products / tech. spec / brand / qty'),
@@ -839,7 +840,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       Row(children: [
         Expanded(child: _field(_wbDriver, "Driver's name", onChanged: (v) => _waybill.driverName = v)),
         const SizedBox(width: 8),
-        Expanded(child: _field(_wbDriverPhone, 'Driver phone', keyboard: TextInputType.phone, onChanged: (v) => _waybill.driverPhone = v)),
+        Expanded(child: _field(_wbDriverPhone, 'Driver phone with country code', keyboard: TextInputType.phone, onChanged: (v) => _waybill.driverPhone = v)),
       ]),
       Row(children: [
         Expanded(child: _field(_wbVehicle, "Vehicle's brand", onChanged: (v) => _waybill.vehicleBrand = v)),
@@ -851,7 +852,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       Row(children: [
         Expanded(child: _field(_wbReceiver, "Receiver's name", onChanged: (v) => _waybill.receiverName = v)),
         const SizedBox(width: 8),
-        Expanded(child: _field(_wbReceiverPhone, 'Receiver phone', keyboard: TextInputType.phone, onChanged: (v) => _waybill.receiverPhone = v)),
+        Expanded(child: _field(_wbReceiverPhone, 'Receiver phone with country code', keyboard: TextInputType.phone, onChanged: (v) => _waybill.receiverPhone = v)),
       ]),
       _sigTile("Receiver's signature (signs at hand-over)"),
     ];
@@ -871,7 +872,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       _field(_dnName, "Customer's name *", onChanged: (v) => _deliveryNote.customerName = v),
       _field(_dnInst, 'Institution', onChanged: (v) => _deliveryNote.institution = v),
       _field(_dnAddr, 'Address', onChanged: (v) => _deliveryNote.address = v),
-      _field(_dnPhone, 'Phone no. or Email (to send the PDF) *', keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.phone = v),
+      _field(_dnPhone, 'Phone with country code (or use Email below)', keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.phone = v),
       _field(_dnEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _deliveryNote.customerEmail = v),
       const SizedBox(height: 6),
       const SectionTitle('Shipping address'),
@@ -880,7 +881,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       Row(children: [
         Expanded(child: _field(_dnReceiver, 'Receiver', onChanged: (v) => _deliveryNote.receiver = v)),
         const SizedBox(width: 8),
-        Expanded(child: _field(_dnReceiverNo, "Receiver's no.", keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.receiverNo = v)),
+        Expanded(child: _field(_dnReceiverNo, "Receiver phone with country code", keyboard: TextInputType.phone, onChanged: (v) => _deliveryNote.receiverNo = v)),
       ]),
       const SizedBox(height: 6),
       const SectionTitle('Delivery details'),
@@ -1074,10 +1075,12 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
     // Autofill/IME may have filled fields without firing onChanged — make
     // the models reflect what's on screen before any validation runs.
     _syncControllersToModel();
-    String? contactError(String phone, String email) =>
-        (phone.trim().isEmpty && email.trim().isEmpty)
-            ? 'Add the customer\u2019s phone or email \u2014 the PDF is sent to them.'
-            : null;
+    String? contactError(String phone, String email) {
+      if (phone.trim().isEmpty && email.trim().isEmpty) {
+        return 'Add the customer\u2019s phone with country code or an email.';
+      }
+      return phone.trim().isEmpty ? null : internationalPhoneError(phone);
+    }
     final err = switch (_type) {
       DocType.receipt => _receipt.valid
           ? contactError(_receipt.phone, _receipt.customerEmail)

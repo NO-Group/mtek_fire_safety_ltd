@@ -421,7 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: Icon(Icons.verified_user_outlined),
               title: Text('M-TEK FIRE & SAFETY LTD.'),
-              subtitle: Text('RC: 1082534 · YY12 Kazaure Road, by Lagos Street Round About, Kaduna\nmtekfiresafetyltd@gmail.com · 08033489452'),
+              subtitle: Text('RC: 1082534 · YY12 Kazaure Road, by Lagos Street Round About, Kaduna\nmtekfiresafetyltd@gmail.com · +2348033498452'),
               isThreeLine: true,
             ),
           ),

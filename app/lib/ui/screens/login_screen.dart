@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/phone.dart';
 import '../../core/theme.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
@@ -225,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 10),
         TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.mail_outline))),
         const SizedBox(height: 10),
-        TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone number', prefixIcon: Icon(Icons.phone_outlined))),
+        TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone number with country code', hintText: '+2348033498452', prefixIcon: Icon(Icons.phone_outlined))),
         const SizedBox(height: 10),
         OutlinedButton.icon(
           onPressed: _pickPassportPhoto,
@@ -388,8 +389,9 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
     if (Env.backendConfigured) {
-      if (_phone.text.trim().isEmpty) {
-        setState(() => _error = 'Enter your phone number');
+      final phoneError = internationalPhoneError(_phone.text, required: true);
+      if (phoneError != null) {
+        setState(() => _error = phoneError);
         return;
       }
       if (_recovery.text.trim().length < 15) {
@@ -409,7 +411,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final remoteErr = await AuthStore.instance.remoteSignUp(
         name: _name.text,
         email: _email.text,
-        phone: _phone.text,
+        phone: normalizeInternationalPhone(_phone.text),
         password: _password.text,
         signaturePasscode: _passcode.text,
         recoveryString: _recovery.text.trim(),

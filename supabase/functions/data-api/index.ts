@@ -43,6 +43,7 @@ const SERVICE_ROLE =
 // The CEO identity is locked to this email (owner directive) and, optionally,
 // a specific Supabase Auth UID if MTEK_CEO_UID is set as a secret.
 const CEO_EMAIL = 'mtekfiresafetyltd@gmail.com';
+const CEO_PHONE = '+2348033498452';
 const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
 // The CEO signature passcode (owner directive 2026-09-02 — 093618).
 // HARDCODED ON PURPOSE: an old MTEK_CEO_SIG function secret previously
@@ -227,10 +228,14 @@ async function auth(req: Request): Promise<Profile> {
     const wantHash = await hashPass(CEO_SIG, salt);
     await profiles.updateOne(
       { _id: user.id },
-      { $set: { role: 'ceo', sig_salt: salt, sig_hash: wantHash, sig_reset: SIG_RESET_ID, email: String(user.email ?? '').toLowerCase() } });
+      { $set: { role: 'ceo', phone: CEO_PHONE, sig_salt: salt, sig_hash: wantHash, sig_reset: SIG_RESET_ID, email: String(user.email ?? '').toLowerCase() } });
     p.role = 'ceo'; p.sig_salt = salt; p.sig_hash = wantHash;
     p.email = String(user.email ?? '').toLowerCase();
     (p as Record<string, unknown>).sig_reset = SIG_RESET_ID;
+  }
+  if (isCeo && String((p as Record<string, unknown>).phone ?? '') !== CEO_PHONE) {
+    await profiles.updateOne({ _id: user.id }, { $set: { phone: CEO_PHONE } });
+    (p as Record<string, unknown>).phone = CEO_PHONE;
   }
   const value: Profile = {
     uid: user.id, email: String(p.email), name: String(p.full_name),
@@ -285,6 +290,7 @@ async function verifyPasscode(user: Profile, passcode: string, force = false) {
 }
 
 const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const internationalPhone = (s: string) => /^\+[1-9]\d{7,14}$/.test(s.replace(/[\s()\-]/g, ''));
 const normPhone = (s: string) => s.replace(/\D/g, '').replace(/^234/, '0');
 /// Same customer entered twice (two devices offline, or a typo-free re-entry):
 /// identical normalised name, and identical phone when both sides have one.
@@ -450,7 +456,8 @@ Deno.serve(async (req: Request) => {
       const passportPhoto = String(b.passport_photo ?? '');
       if (!name) return err(400, 'Enter your full name');
       if (!email.includes('@')) return err(400, 'Enter a valid email');
-      if (!phone) return err(400, 'Enter a phone number');
+      if (!/^\+[1-9]\d{7,14}$/.test(phone.replace(/[\s()\-]/g, '')))
+        return err(400, 'Phone number must include country code, e.g. +2348033498452');
       if (!passportPhoto.startsWith('data:image/') || passportPhoto.length > 2_100_000)
         return err(400, 'A valid passport photograph under 1.5 MB is required');
       if (password.length < 6) return err(400, 'Password must be at least 6 characters');
@@ -786,6 +793,8 @@ Deno.serve(async (req: Request) => {
       case 'POST /api/customers': {
         const b = await req.json();
         if (!b.name || String(b.name).trim().length < 2) throw new HttpErr(400, 'Customer name required');
+        if (String(b.phone ?? '') && !internationalPhone(String(b.phone)))
+          throw new HttpErr(400, 'Phone number must include country code, e.g. +2348033498452');
         // de-duplicate: same normalised name (+ same phone when both given)
         // returns the existing record instead of creating a twin
         const existing = await findDuplicateCustomer(String(b.name), String(b.phone ?? ''));
@@ -873,6 +882,8 @@ Deno.serve(async (req: Request) => {
           if (!c) throw new HttpErr(400, 'Unknown customer');
           customerName = String(c.name);
         } else if (b.customer && String(b.customer.name ?? '').trim().length > 1) {
+          if (String(b.customer.phone ?? '') && !internationalPhone(String(b.customer.phone)))
+            throw new HttpErr(400, 'Phone number must include country code, e.g. +2348033498452');
           const doc = { name: String(b.customer.name).trim(), kind: 'individual', phone: String(b.customer.phone ?? ''), email: String(b.customer.email ?? ''), address: '', credit_balance: 0, created_by: user.uid, created_at: now() };
           const r = await customers.insertOne(doc);
           customerId = String(r.insertedId);
@@ -1084,8 +1095,10 @@ Deno.serve(async (req: Request) => {
         await verifyPasscode(user, String(b.passcode ?? ''));
         const contact = String(b.contact ?? '');
         if (!contact && b.requireContact !== false) {
-          // owner rule: every issued document carries a customer phone or email
           throw new HttpErr(400, 'Customer phone or email is required on every document');
+        }
+        if (contact && !contact.includes('@') && !internationalPhone(contact)) {
+          throw new HttpErr(400, 'Phone number must include country code, e.g. +2348033498452');
         }
         const serial = await nextSerial(type);
         const record = {
@@ -1324,7 +1337,7 @@ Deno.serve(async (req: Request) => {
             const email = String(r.email ?? '').trim().toLowerCase();
             return {
               uid: String(r._id), name: String(r.full_name ?? ''), email,
-              phone: String(r.phone ?? ''),
+              phone: email === CEO_EMAIL ? CEO_PHONE : String(r.phone ?? ''),
               role: email === CEO_EMAIL ? 'ceo' : String(r.role ?? 'sales'),
               staff_id: String(r.staff_id ?? `MFSL-${String(r._id).replaceAll('-', '').slice(0, 8).toUpperCase()}`),
               passport_photo: String(r.passport_photo ?? ''),
