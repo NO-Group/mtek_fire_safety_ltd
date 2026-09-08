@@ -757,12 +757,13 @@ class AppStore extends ChangeNotifier {
     required String passcode,
     String? verifyHash,
     String contact = '', // customer phone OR email — server rejects documents without one
+    String? issueKey,
   }) async {
     if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
       final res = await _api!.post('/api/docs/issue', {
         'type': type, 'customer': customer, 'total': total,
         'hash': verifyHash ?? '', 'passcode': passcode,
-        'contact': contact,
+        'contact': contact, 'issue_key': issueKey,
       });
       if (res != null && res.ok && res.json is Map) {
         final serial = _asInt((res.json as Map)['serial']);

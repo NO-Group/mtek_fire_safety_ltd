@@ -39,6 +39,10 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
   DocType _type = DocType.receipt;
   Timer? _draftTimer;
   bool _receiptIssued = false;
+  bool _generating = false;
+  final Map<DocType, ({Uint8List bytes, String filename, String label, int serial, String signer})>
+      _signedPdfs = {};
+  final Map<DocType, String> _issueKeys = {};
 
   @override
   void initState() {
@@ -49,6 +53,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       controller.addListener(_scheduleReceiptDraft);
     }
     unawaited(_restoreReceiptDraft());
+    unawaited(_restoreSignedPdfs());
   }
 
   @override
@@ -96,6 +101,36 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
     } catch (_) {
       await localWrite(_receiptDraftKey, '');
     }
+  }
+
+  Future<void> _restoreSignedPdfs() async {
+    for (final type in DocType.values) {
+      final raw = await localRead('signed_pdf_${type.name}');
+      if (raw == null || raw.isEmpty) continue;
+      try {
+        final value = (jsonDecode(raw) as Map).cast<String, dynamic>();
+        _signedPdfs[type] = (
+          bytes: base64Decode('${value['bytes']}'), filename: '${value['filename']}',
+          label: '${value['label']}', serial: value['serial'] as int,
+          signer: '${value['signer']}',
+        );
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveSignedPdf(DocType type,
+      ({Uint8List bytes, String filename, String label, int serial, String signer}) pdf) =>
+    localWrite('signed_pdf_${type.name}', jsonEncode({
+      'bytes': base64Encode(pdf.bytes), 'filename': pdf.filename,
+      'label': pdf.label, 'serial': pdf.serial, 'signer': pdf.signer,
+    }));
+
+  Future<void> _startNewDocument() async {
+    _signedPdfs.remove(_type);
+    _issueKeys.remove(_type);
+    await localWrite('signed_pdf_${_type.name}', '');
+    if (mounted) setState(() {});
   }
 
   @override
@@ -217,10 +252,24 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
                       style: const TextStyle(color: Mtek.danger, fontWeight: FontWeight.w600)),
                 ),
               FilledButton.icon(
-                icon: const Icon(Icons.draw_outlined),
-                label: const Text('Sign & generate PDF'),
-                onPressed: _generate,
+                icon: Icon(_signedPdfs.containsKey(_type)
+                    ? Icons.verified_outlined : Icons.draw_outlined),
+                label: Text(_signedPdfs.containsKey(_type)
+                    ? 'Signed — share PDF' : (_generating ? 'Generating…' : 'Sign & generate PDF')),
+                onPressed: _generating ? null : () {
+                  final signed = _signedPdfs[_type];
+                  if (signed != null) {
+                    _showPdfReady(bytes: signed.bytes, filename: signed.filename,
+                      docLabel: signed.label, serial: signed.serial, signerName: signed.signer);
+                  } else {
+                    _generate();
+                  }
+                },
               ),
+              if (_signedPdfs.containsKey(_type))
+                TextButton.icon(onPressed: _startNewDocument,
+                  icon: const Icon(Icons.note_add_outlined),
+                  label: const Text('Start a new document')),
               const SizedBox(height: 8),
               const Text(
                 'Generation requires your Signature Passcode · PDF carries the corporate header, '
@@ -1099,11 +1148,13 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
           : "Customer's name and at least one item description are required.",
     };
     setState(() => _errors[_type] = err);
-    if (err != null) return;
+    if (err != null || _generating || _signedPdfs.containsKey(_type)) return;
+    setState(() => _generating = true);
 
     final signer = await confirmSignature(context);
     if (signer == null || !mounted) {
       if (mounted) {
+        setState(() => _generating = false);
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Not signed — document NOT issued.')));
       }
@@ -1149,6 +1200,8 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
         total: docTotal,
         passcode: AuthStore.instance.lastVerifiedPasscode ?? '',
         contact: contact,
+        issueKey: _issueKeys.putIfAbsent(_type, () =>
+          '${AuthStore.instance.remoteSignInUid}:${_type.name}:${DateTime.now().microsecondsSinceEpoch}'),
       );
     } catch (e) {
       // Full detail goes to the console only — never onto a production
@@ -1156,6 +1209,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       // anything unexpected collapses to a single friendly line.
       debugPrint('Document generation failed: $e');
       if (!mounted) return;
+      setState(() => _generating = false);
       final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: Mtek.danger,
@@ -1267,6 +1321,11 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       );
 
       if (!mounted) return;
+      final signedPdf = (bytes: bytes, filename: filename, label: docLabel,
+        serial: serial, signer: signer.name);
+      _signedPdfs[_type] = signedPdf;
+      await _saveSignedPdf(_type, signedPdf);
+      setState(() => _generating = false);
       // The PDF is built — offer BOTH an explicit Share button (share sheet:
       // WhatsApp / Gmail / Drive…) and a Download button (saves the file),
       // instead of auto-opening the share sheet.
@@ -1280,6 +1339,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
     } catch (e) {
       debugPrint('Document PDF build/export failed: $e');
       if (!mounted) return;
+      setState(() => _generating = false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         backgroundColor: Mtek.danger,
         duration: Duration(seconds: 6),

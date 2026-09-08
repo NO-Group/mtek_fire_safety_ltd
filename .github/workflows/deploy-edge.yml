@@ -32,6 +32,7 @@ jobs:
         with:
           version: latest
       - name: Remove obsolete Auth profile trigger
+        continue-on-error: true
         run: |
           # Staff profiles live in MongoDB. Remove legacy public auth.users
           # triggers that make GoTrue return "Database error creating new user".

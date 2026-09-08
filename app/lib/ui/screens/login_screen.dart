@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/biometric_service.dart';
 import '../../core/phone.dart';
+import '../../core/preferences_controller.dart';
 import '../../core/theme.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
@@ -129,6 +131,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Text('Sign in'),
         ),
+        if (PreferencesController.instance.biometricsEnabled) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(onPressed: _busy ? null : _biometricSignIn,
+            icon: const Icon(Icons.fingerprint), label: const Text('Sign in with biometrics')),
+        ],
         const SizedBox(height: 10),
         TextButton(
           onPressed: () => setState(() { _signup = true; _error = null; }),
@@ -350,12 +357,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _busy = false;
 
+  Future<void> _biometricSignIn() async {
+    setState(() { _busy = true; _error = null; });
+    final credentials = await BiometricService.instance.login();
+    if (credentials == null) {
+      if (mounted) setState(() { _busy = false; _error = 'Biometric sign-in failed or no login has been saved yet.'; });
+      return;
+    }
+    final error = await AuthStore.instance.remoteSignIn(credentials.$1, credentials.$2);
+    if (mounted) setState(() { _busy = false; _error = error; });
+  }
+
   Future<void> _signIn() async {
     // REAL backend first (Supabase Auth + profiles role); offline dev
     // (backend not configured) falls back to the local directory.
     if (Env.backendConfigured) {
       setState(() { _busy = true; _error = null; });
       final remoteErr = await AuthStore.instance.remoteSignIn(_email.text, _password.text);
+      if (remoteErr == null && PreferencesController.instance.biometricsEnabled) {
+        await BiometricService.instance.saveLogin(_email.text.trim(), _password.text);
+      }
       if (!mounted) return;
       setState(() { _busy = false; _error = remoteErr; });
       return;

@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_info.dart';
+import '../../core/biometric_service.dart';
 import '../../core/notification_service.dart';
 import '../../core/preferences_controller.dart';
 import '../../core/theme.dart';
@@ -211,6 +212,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _sectionLabel('ACCESSIBILITY & DISPLAY'),
         Card(
           child: Column(children: [
+            _preferenceSwitch(
+              icon: Icons.fingerprint,
+              title: 'Biometric authentication',
+              subtitle: 'Use fingerprint, face authentication or Windows Hello for login and signatures',
+              value: PreferencesController.instance.biometricsEnabled,
+              onChanged: (enabled) async {
+                if (enabled && (!await BiometricService.instance.available() ||
+                    !await BiometricService.instance.authenticate('Enable biometric authentication'))) {
+                  _snack('Biometrics are unavailable or were not confirmed.');
+                  return;
+                }
+                await PreferencesController.instance.update(biometricsEnabled: enabled);
+                if (!enabled) await BiometricService.instance.clear();
+                if (mounted) setState(() {});
+              },
+            ),
+            const Divider(height: 1),
             _preferenceSwitch(
               icon: Icons.motion_photos_off_outlined,
               title: 'Reduce motion',

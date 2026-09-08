@@ -18,6 +18,7 @@ class PreferencesController extends ChangeNotifier {
   bool staffAlerts = true;
   bool reduceMotion = false;
   bool compactLists = false;
+  bool biometricsEnabled = false;
 
   Future<void> load() async {
     final raw = await localRead('app_preferences');
@@ -31,6 +32,7 @@ class PreferencesController extends ChangeNotifier {
       staffAlerts = value['staff_alerts'] != false;
       reduceMotion = value['reduce_motion'] == true;
       compactLists = value['compact_lists'] == true;
+      biometricsEnabled = value['biometrics_enabled'] == true;
     } catch (_) {
       // Corrupt preferences never prevent startup; defaults are safe.
     }
@@ -55,6 +57,7 @@ class PreferencesController extends ChangeNotifier {
     bool? staffAlerts,
     bool? reduceMotion,
     bool? compactLists,
+    bool? biometricsEnabled,
   }) async {
     this.nativeNotifications = nativeNotifications ?? this.nativeNotifications;
     this.transactionAlerts = transactionAlerts ?? this.transactionAlerts;
@@ -63,6 +66,7 @@ class PreferencesController extends ChangeNotifier {
     this.staffAlerts = staffAlerts ?? this.staffAlerts;
     this.reduceMotion = reduceMotion ?? this.reduceMotion;
     this.compactLists = compactLists ?? this.compactLists;
+    this.biometricsEnabled = biometricsEnabled ?? this.biometricsEnabled;
     await localWrite('app_preferences', jsonEncode({
       'native_notifications': this.nativeNotifications,
       'transaction_alerts': this.transactionAlerts,
@@ -71,6 +75,7 @@ class PreferencesController extends ChangeNotifier {
       'staff_alerts': this.staffAlerts,
       'reduce_motion': this.reduceMotion,
       'compact_lists': this.compactLists,
+      'biometrics_enabled': this.biometricsEnabled,
     }));
     notifyListeners();
   }

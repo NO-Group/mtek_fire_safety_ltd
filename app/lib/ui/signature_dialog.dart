@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../core/biometric_service.dart';
+import '../core/preferences_controller.dart';
 import '../data/auth_store.dart';
 import '../data/store.dart';
 
@@ -74,6 +76,19 @@ Future<StaffUser?> confirmSignature(BuildContext context, {bool force = false}) 
           ],
         ),
         actions: [
+          if (PreferencesController.instance.biometricsEnabled)
+            TextButton.icon(
+              icon: const Icon(Icons.fingerprint),
+              label: const Text('Use biometrics'),
+              onPressed: () async {
+                final saved = await BiometricService.instance.signaturePasscode();
+                if (saved == null) { setState(() => error = 'Biometric authentication failed or no passcode is saved'); return; }
+                final verified = await auth.verifySignatureAny(saved, force: force);
+                if (!context.mounted) return;
+                if (verified) Navigator.pop(context, true);
+                else setState(() => error = 'Saved signature passcode is no longer valid');
+              },
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
@@ -86,6 +101,9 @@ Future<StaffUser?> confirmSignature(BuildContext context, {bool force = false}) 
               final ok = await auth.verifySignatureAny(passcode.text, force: force);
               if (!context.mounted) return;
               if (ok) {
+                if (PreferencesController.instance.biometricsEnabled) {
+                  await BiometricService.instance.saveSignaturePasscode(passcode.text);
+                }
                 if (auth.lastSignatureBound) {
                   auth.lastSignatureBound = false;
                   ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(

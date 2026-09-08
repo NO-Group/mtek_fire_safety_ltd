@@ -475,7 +475,7 @@ Deno.serve(async (req: Request) => {
         createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
           method: 'POST',
           headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, phone, phone_confirm: true, email_confirm: true, user_metadata: { full_name: name, phone } }),
+          body: JSON.stringify({ email, password, phone, phone_confirm: true, email_confirm: true, user_metadata: { full_name: name, name, phone, role: 'sales', passport_photo: passportPhoto } }),
         });
       } catch {
         return err(503, 'Auth service unreachable — try again shortly');
@@ -509,7 +509,7 @@ Deno.serve(async (req: Request) => {
             retryRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
               method: 'POST',
               headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, phone } }),
+              body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, name, phone, role: 'sales', passport_photo: passportPhoto } }),
             });
           } catch {
             return err(503, 'Auth service unreachable — try again shortly');
@@ -1100,11 +1100,16 @@ Deno.serve(async (req: Request) => {
         if (contact && !contact.includes('@') && !internationalPhone(contact)) {
           throw new HttpErr(400, 'Phone number must include country code, e.g. +2348033498452');
         }
+        const issueKey = String(b.issue_key ?? '').slice(0, 180);
+        if (issueKey) {
+          const existing = await (await coll.archive()).findOne({ issue_key: issueKey, signed_by: user.uid });
+          if (existing) return json({ serial: existing.serial, doc: existing, duplicate: true });
+        }
         const serial = await nextSerial(type);
         const record = {
           doc_type: type, serial, customer: String(b.customer ?? '—').slice(0, 120) || '—',
           customer_contact: contact, total: Number(b.total) || 0,
-          signed_by: user.uid, signed_name: user.name,
+          signed_by: user.uid, signed_name: user.name, issue_key: issueKey || null,
           verify_hash: String(b.hash ?? '').slice(0, 64),
           filename: `mtek_${type}_${serial}_${Date.now()}.pdf`, issued_at: now(),
         };
