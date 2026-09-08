@@ -43,10 +43,16 @@ jobs:
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "$(jq -n --arg query "$SQL" '{query:$query}')")
-          echo "Management API HTTP $HTTP"
-          cat /tmp/sql.json
-          test "$HTTP" -ge 200 -a "$HTTP" -lt 300
-          jq -e '.. | objects | select(has("auth_trigger_repair")) | .auth_trigger_repair | (if type == "string" then fromjson else . end) | .verified == true and .auth_users_user_triggers == 0' /tmp/sql.json
+          BODY=$(tr '\n' ' ' < /tmp/sql.json | head -c 4000)
+          echo "Management API HTTP $HTTP: $BODY"
+          if ! test "$HTTP" -ge 200 -a "$HTTP" -lt 300; then
+            echo "::error::Auth trigger repair HTTP $HTTP: $BODY"
+            exit 1
+          fi
+          if ! jq -e '.. | objects | select(has("verified")) | .verified == true and .auth_users_user_triggers == 0' /tmp/sql.json >/dev/null; then
+            echo "::error::Auth trigger repair was not verified: $BODY"
+            exit 1
+          fi
       - name: Deploy data-api function
         run: |
           set +e
