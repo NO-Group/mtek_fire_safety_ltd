@@ -63,29 +63,32 @@ pw.Widget documentBackground(pw.ImageProvider? logo, PdfPageFormat format) {
   ]);
 }
 
-/// Small verification QR + hash footer (tamper-evidence, SPEC §12.2).
+/// Scannable document summary. The previous QR contained only an opaque
+/// eight-character hash, which could not show a user anything. It now embeds
+/// human-readable document content directly, so any standard QR scanner can
+/// display the type, nine-digit number and document summary without the app.
 pw.Widget verificationFooter(String docType, int serial, String payload) {
-  final hash = _fnv('$docType|$serial|$payload');
+  final content = jsonEncode({
+    'company': 'M-TEK FIRE & SAFETY LTD',
+    'document': docType,
+    'number': serial.toString().padLeft(9, '0'),
+    'content': payload,
+  });
   return pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
     pw.Container(
-      width: 30,
-      height: 30,
-      child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: hash, width: 30, height: 30),
+      width: 44,
+      height: 44,
+      child: pw.BarcodeWidget(
+        barcode: pw.Barcode.qrCode(),
+        data: content,
+        width: 44,
+        height: 44,
+      ),
     ),
     pw.SizedBox(width: 6),
-    pw.Text('Scan to verify',
+    pw.Text('Scan to view document details',
         style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600)),
   ]);
-}
-
-
-String _fnv(String input) {
-  var h = 0x811c9dc5;
-  for (final c in utf8.encode(input)) {
-    h ^= c;
-    h = (h * 0x01000193) & 0xFFFFFFFF;
-  }
-  return h.toRadixString(16).padLeft(8, '0');
 }
 
 /// Corporate letterhead used identically on every document. It contains only

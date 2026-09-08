@@ -31,6 +31,18 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      - name: Remove obsolete Auth profile trigger
+        run: |
+          # Staff profiles live in MongoDB. Remove legacy public auth.users
+          # triggers that make GoTrue return "Database error creating new user".
+          SQL=$(cat supabase/migrations/20260908160000_remove_auth_profile_trigger.sql)
+          HTTP=$(curl -sS -o /tmp/sql.json -w '%{http_code}' \
+            -X POST "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg query "$SQL" '{query:$query}')")
+          cat /tmp/sql.json
+          test "$HTTP" -ge 200 -a "$HTTP" -lt 300
       - name: Deploy data-api function
         run: |
           set +e
