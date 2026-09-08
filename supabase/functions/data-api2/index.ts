@@ -95,6 +95,7 @@ const coll = {
   settings: () => db(DB.core).then(d => d.collection('settings')),
   products: () => db(DB.inventory).then(d => d.collection('products')),
   adjustments: () => db(DB.inventory).then(d => d.collection('stock_adjustments')),
+  stockReceipts: () => db(DB.inventory).then(d => d.collection('stock_receipts')),
   profiles: () => db(DB.people).then(d => d.collection('profiles')),
   customers: () => db(DB.people).then(d => d.collection('customers')),
   sales: () => db(DB.billing).then(d => d.collection('sales')),
@@ -114,7 +115,7 @@ const pad9 = (n: number) => String(n).padStart(9, '0');
 // deno-lint-ignore no-explicit-any
 const ins = async (c: Promise<any>, doc: Record<string, unknown>) => (await c).insertOne(doc);
 const fmtN = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
-const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote'];
+const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote', 'stockreceipt'];
 const now = () => new Date().toISOString();
 
 function json(data: unknown, status = 200) {
@@ -916,6 +917,70 @@ Deno.serve(async (req: Request) => {
         await audit('billing', 'invoice-payment', `${inv.no} ${pay}`, user);
         await notify('transaction', 'Invoice payment received', `${user.name} recorded a ${fmtN(pay)} payment against ${inv.no}`, String(inv.no), user);
         return json({ ok: true, receipt_no: recNo, status: Number(inv.amount_paid ?? 0) + pay >= Number(inv.total) ? 'paid' : 'partial' });
+      }
+
+      case 'GET /api/stock-receipts': {
+        requireRole(user, ['ceo', 'admin'], 'view stock receipts');
+        const rows = await (await coll.stockReceipts()).find({}).sort({ created_at: -1 }).limit(300).toArray();
+        return json({ rows });
+      }
+
+      case 'POST /api/stock-receipts': {
+        requireRole(user, ['ceo', 'admin'], 'prepare stock receipts');
+        const b = await req.json();
+        const input = Array.isArray(b.rows) ? b.rows : [];
+        const rows = input.map((r: Record<string, unknown>, i: number) => ({
+          sno: i + 1, product_id: String(r.product_id ?? ''),
+          particulars: String(r.particulars ?? '').slice(0, 160),
+          quantity: Math.max(0, Math.trunc(Number(r.quantity) || 0)),
+          damaged: Math.max(0, Math.trunc(Number(r.damaged) || 0)),
+          missing: Math.max(0, Math.trunc(Number(r.missing) || 0)),
+        })).filter((r: Record<string, unknown>) => r.product_id && Number(r.quantity) > 0);
+        if (!rows.length) throw new HttpErr(400, 'Add at least one stock item');
+        for (const r of rows) {
+          if (Number(r.damaged) + Number(r.missing) > Number(r.quantity))
+            throw new HttpErr(400, `Deficits exceed quantity on row ${r.sno}`);
+          if (!await (await coll.products()).findOne({ _id: r.product_id }))
+            throw new HttpErr(400, `Unknown stock item on row ${r.sno}`);
+        }
+        await verifyPasscode(user, String(b.passcode ?? ''));
+        const serial = await nextSerial('stockreceipt');
+        const record = { serial, receipt_date: String(b.date ?? now()), rows,
+          status: 'pending', receiver_id: user.uid, receiver_name: user.name,
+          receiver_signature: String(b.receiver_signature ?? ''), created_at: now() };
+        const out = await (await coll.stockReceipts()).insertOne(record);
+        await audit('inventory', 'stock-receipt-create', `Stock Receipt ${pad9(serial)}`, user);
+        return json({ receipt: { _id: out.insertedId, ...record } }, 201);
+      }
+
+      case 'POST /api/stock-receipts/approve': {
+        requireRole(user, ['ceo'], 'approve stock receipts');
+        const b = await req.json();
+        await verifyPasscode(user, String(b.passcode ?? ''));
+        let id: InstanceType<typeof ObjectId>;
+        try { id = new ObjectId(String(b.id ?? '')); } catch { throw new HttpErr(400, 'Invalid stock receipt'); }
+        const c = await coll.stockReceipts();
+        // Atomically claim approval: repeated/double taps cannot add stock twice.
+        const receipt = await c.findOneAndUpdate(
+          { _id: id, status: 'pending' }, { $set: { status: 'processing' } },
+          { returnDocument: 'before' });
+        if (!receipt) {
+          const existing = await c.findOne({ _id: id });
+          if (!existing) throw new HttpErr(404, 'Stock receipt not found');
+          if (existing.status === 'approved' || existing.status === 'processing') return json({ ok: true, receipt: existing });
+          throw new HttpErr(409, 'Stock receipt cannot be approved');
+        }
+        for (const r of receipt.rows ?? []) {
+          const net = Math.max(0, Number(r.quantity) - Number(r.damaged) - Number(r.missing));
+          if (net) await (await coll.products()).updateOne({ _id: String(r.product_id) }, { $inc: { qty_on_hand: net }, $set: { updated_at: now() } });
+          await (await coll.adjustments()).insertOne({ product_id: String(r.product_id), delta: net,
+            reason: 'restock', note: `Stock Receipt ${pad9(Number(receipt.serial))}; damaged ${r.damaged}; missing ${r.missing}`,
+            by: user.uid, by_name: user.name, created_at: now() });
+        }
+        await c.updateOne({ _id: id, status: 'pending' }, { $set: { status: 'approved', approved_at: now(),
+          approver_id: user.uid, approver_name: user.name, approval_signature: String(b.approval_signature ?? '') } });
+        await audit('inventory', 'stock-receipt-approve', `Stock Receipt ${pad9(Number(receipt.serial))}`, user);
+        return json({ ok: true });
       }
 
       case 'POST /api/settings': {

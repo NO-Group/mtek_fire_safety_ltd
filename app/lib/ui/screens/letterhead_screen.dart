@@ -34,6 +34,7 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
   bool _bold = false, _italic = false, _underline = false, _busy = false;
   double _fontSize = 11;
   TextAlign _alignment = TextAlign.left;
+  final List<List<TextEditingController>> _table = [];
 
   @override
   void initState() {
@@ -82,6 +83,7 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
     for (final c in [_recipient, _address, _subject, _body, _closing]) {
       c.dispose();
     }
+    for (final row in _table) { for (final c in row) { c.dispose(); } }
     super.dispose();
   }
 
@@ -135,6 +137,10 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
             for (final a in [TextAlign.left, TextAlign.center, TextAlign.right, TextAlign.justify])
               _toggle(_alignIcon(a), _alignment == a, () => _alignment = a, a.name),
             const SizedBox(width: 8),
+            IconButton(tooltip: 'Insert table', icon: const Icon(Icons.table_chart_outlined),
+              onPressed: () => setState(() {
+                if (_table.isEmpty) _table.addAll(List.generate(3, (_) => List.generate(3, (_) => TextEditingController())));
+              })),
             DropdownButton<double>(value: _fontSize,
               items: [9, 10, 11, 12, 14, 16, 18].map((s) =>
                 DropdownMenuItem(value: s.toDouble(), child: Text('${s}pt'))).toList(),
@@ -149,6 +155,18 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
             hintText: 'Write the official letter here...'),
         )),
       ])),
+      if (_table.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Card(child: Padding(padding: const EdgeInsets.all(10), child: Column(children: [
+          for (final row in _table) Row(children: [for (final cell in row)
+            Expanded(child: Padding(padding: const EdgeInsets.all(2), child: TextField(
+              controller: cell, decoration: const InputDecoration(isDense: true, hintText: 'Table cell'))))]),
+          Row(children: [TextButton.icon(onPressed: () => setState(() => _table.add(
+            List.generate(_table.first.length, (_) => TextEditingController()))), icon: const Icon(Icons.add), label: const Text('Add row')),
+            TextButton.icon(onPressed: () => setState(() { for (final row in _table) { row.add(TextEditingController()); } }), icon: const Icon(Icons.view_column_outlined), label: const Text('Add column')),
+            const Spacer(), IconButton(tooltip: 'Remove table', onPressed: () => setState(() { for (final row in _table) { for (final c in row) { c.dispose(); } } _table.clear(); }), icon: const Icon(Icons.delete_outline))])
+        ]))),
+      ],
       const SizedBox(height: 12),
       TextField(controller: _closing, maxLines: 3,
           decoration: const InputDecoration(labelText: 'Closing / sign-off')),
@@ -218,6 +236,14 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
             style: pw.TextStyle(fontSize: _fontSize, fontWeight: _bold ? pw.FontWeight.bold : pw.FontWeight.normal,
               fontStyle: _italic ? pw.FontStyle.italic : pw.FontStyle.normal,
               decoration: _underline ? pw.TextDecoration.underline : null, lineSpacing: 3)),
+          if (_table.isNotEmpty) ...[
+            pw.SizedBox(height: 16),
+            pw.TableHelper.fromTextArray(
+              data: [for (final row in _table) [for (final cell in row) cell.text]],
+              border: pw.TableBorder.all(color: PdfColors.grey700, width: .6),
+              cellPadding: const pw.EdgeInsets.all(5),
+            ),
+          ],
           pw.SizedBox(height: 22), pw.Text(_closing.text),
           pw.SizedBox(height: 8),
           pw.Text(AuthStore.instance.current?.name ?? 'Chief Executive Officer',

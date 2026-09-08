@@ -290,7 +290,9 @@ class _StockScreenState extends State<StockScreen> {
 
   void _adjustDialog(BuildContext context, Product p) {
     final qtyCtrl = TextEditingController();
-    AdjustmentReason reason = AdjustmentReason.restock;
+    // Incoming stock must use an approved Stock Receipt, never this manual
+    // correction dialog.
+    AdjustmentReason reason = AdjustmentReason.correction;
     showDialog<void>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -311,7 +313,8 @@ class _StockScreenState extends State<StockScreen> {
                 value: reason,
                 items: [
                   for (final r in AdjustmentReason.values)
-                    DropdownMenuItem(value: r, child: Text(r.name.toUpperCase())),
+                    if (r != AdjustmentReason.restock)
+                      DropdownMenuItem(value: r, child: Text(r.name.toUpperCase())),
                 ],
                 onChanged: (v) => setDialogState(() => reason = v!),
               ),
