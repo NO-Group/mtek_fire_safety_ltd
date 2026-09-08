@@ -67,7 +67,8 @@ jobs:
           set -e
           echo "supabase functions deploy exit code: $CODE"
           grep -E "No change|Deployed|error|Error" /tmp/deploy.log | tail -6
-          grep -q "No change found" /tmp/deploy.log && { echo "::error::CLI said 'No change found' on a FRESH create — delete must have failed"; exit 1; }
+          # "No change found" is valid: this workflow updates the one existing
+          # data-api function in place and never deletes/recreates it.
           exit $CODE
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
