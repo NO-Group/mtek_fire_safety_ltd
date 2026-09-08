@@ -134,7 +134,7 @@ pw.MultiPage _receiptPage(
         pw.Expanded(
           flex: 2,
           child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            pw.Text('No: ${r.serial}',
+            pw.Text('No: ${_pad9(r.serial)}',
                 style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
             ruledField('Date:', value: _d(r.date)),
@@ -335,22 +335,28 @@ pw.MultiPage _invoicePage(
       ]),
       pw.SizedBox(height: 6),
 
-      // Cross-reference fields + No/Date
+      // Three clean information rows: reference numbers, name/date, then
+      // address/phone. Full labels remain readable and every numeric document
+      // reference is rendered as nine digits.
       pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-        // Compact reference fields leave a guaranteed nine-digit document
-        // number area instead of allowing optional references to consume it.
-        pw.SizedBox(width: 104, child: ruledField('MILS:', value: v.milsNo, fontSize: 7.5)),
-        pw.SizedBox(width: 104, child: ruledField('RCPT:', value: v.receiptNo, fontSize: 7.5)),
-        pw.SizedBox(width: 104, child: ruledField('LPO:', value: v.lpoNo, fontSize: 7.5)),
-        pw.Spacer(),
-        pw.Text('No: ${v.serial}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+        pw.Expanded(child: ruledField('MILS No:', value: _docNo(v.milsNo), fontSize: 7.5)),
+        pw.SizedBox(width: 8),
+        pw.Expanded(child: ruledField('Receipt No:', value: _docNo(v.receiptNo), fontSize: 7.5)),
+        pw.SizedBox(width: 8),
+        pw.Expanded(child: ruledField('L.P.O No:', value: _docNo(v.lpoNo), fontSize: 7.5)),
+        pw.SizedBox(width: 12),
+        pw.Text('No: ${_pad9(v.serial)}',
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
       ]),
       pw.Row(children: [
-        pw.Expanded(flex: 3, child: ruledField('Name:', value: v.name)),
-        pw.Expanded(flex: 4, child: ruledField('Address:', value: v.address, maxLines: 2)),
-        pw.Expanded(flex: 3, child: ruledField('Phone:', value: v.phone)),
-        pw.SizedBox(width: 6),
-        pw.SizedBox(width: 82, child: ruledField('Date:', value: _d(v.date), fontSize: 7.5)),
+        pw.Expanded(flex: 4, child: ruledField('Name:', value: v.name)),
+        pw.SizedBox(width: 10),
+        pw.Expanded(flex: 2, child: ruledField('Date:', value: _d(v.date))),
+      ]),
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+        pw.Expanded(flex: 3, child: ruledField('Address:', value: v.address, maxLines: 2)),
+        pw.SizedBox(width: 10),
+        pw.Expanded(flex: 2, child: ruledField('Phone:', value: v.phone)),
       ]),
       pw.SizedBox(height: 4),
 
@@ -488,7 +494,7 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
         pw.Container(
           padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.red900, width: 1.2)),
-          child: pw.Text('MILS No: ${m.serial}',
+          child: pw.Text('MILS No: ${_pad9(m.serial)}',
               style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
         ),
       ]),
@@ -503,11 +509,11 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
         pw.Expanded(child: ruledField('Next Service Date:', value: _d(m.nextServiceDate), fontSize: 7.5)),
       ]),
       pw.Row(children: [
-        pw.Expanded(child: ruledField('INV:', value: m.invoiceNo, fontSize: 7.5)),
+        pw.Expanded(child: ruledField('Invoice No:', value: _docNo(m.invoiceNo), fontSize: 7.5)),
         pw.SizedBox(width: 6),
-        pw.Expanded(child: ruledField('RCPT:', value: m.receiptNo, fontSize: 7.5)),
+        pw.Expanded(child: ruledField('Receipt No:', value: _docNo(m.receiptNo), fontSize: 7.5)),
         pw.SizedBox(width: 6),
-        pw.Expanded(child: ruledField('LPO:', value: m.lpoNo, fontSize: 7.5)),
+        pw.Expanded(child: ruledField('L.P.O No:', value: _docNo(m.lpoNo), fontSize: 7.5)),
       ]),
       pw.SizedBox(height: 4),
 
@@ -680,7 +686,7 @@ pw.MultiPage _waybillPage(
             decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 1.2)),
             child: pw.Column(children: [
               pw.Text('No:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-              pw.Text('${w.serial}',
+              pw.Text(_pad9(w.serial),
                   style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
               pw.Text('Date: ${_dt(w.date)}', style: const pw.TextStyle(fontSize: 8)),
             ]),
@@ -754,7 +760,8 @@ pw.MultiPage _waybillPage(
 }
 
 pw.Widget _refBox(String label, String value) {
-  final valueSize = value.length > 9 ? 6.5 : 7.5;
+  final displayValue = _docNo(value);
+  final valueSize = displayValue.length > 9 ? 6.5 : 7.5;
   return pw.Expanded(
     child: pw.Container(
       margin: const pw.EdgeInsets.only(right: 4),
@@ -764,7 +771,7 @@ pw.Widget _refBox(String label, String value) {
         pw.Text(label, style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(width: 2),
         pw.Expanded(
-          child: pw.Text(value, maxLines: 1, softWrap: false,
+          child: pw.Text(displayValue, maxLines: 1, softWrap: false,
               style: pw.TextStyle(fontSize: valueSize, fontWeight: pw.FontWeight.bold)),
         ),
       ]),
@@ -855,7 +862,7 @@ pw.MultiPage _deliveryNotePage(
             child: pw.Column(children: [
               pw.Text('Delivery Note No:',
                   style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-              pw.Text('${d.serial}',
+              pw.Text(_pad9(d.serial),
                   style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
             ]),
           ),
@@ -972,3 +979,16 @@ String _money(num n) => n.toStringAsFixed(n.truncateToDouble() == n ? 0 : 2)
 String _qty(num q) => q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(1);
 String _nairaPart(num n) => n.floor().toString().replaceAll(RegExp(r'\B(?=(\d{3})+(?!\d))'), ',');
 String _koboPart(num n) => ((n - n.floor()) * 100).round().toString().padLeft(2, '0');
+
+/// Printed document serials are always exactly nine digits.
+String _pad9(int? value) => (value ?? 0).toString().padLeft(9, '0');
+
+/// User-entered cross references receive the same nine-digit treatment when
+/// they are numeric. Prefixed references are preserved verbatim.
+String _docNo(String value) {
+  final clean = value.trim();
+  if (clean.isEmpty) return '';
+  return RegExp(r'^\d+$').hasMatch(clean) && clean.length <= 9
+      ? clean.padLeft(9, '0')
+      : clean;
+}
