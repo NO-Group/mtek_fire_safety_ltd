@@ -34,6 +34,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         'sales' => t.type == TxnType.salePayment || t.type == TxnType.creditSale,
         'invoices' => t.type == TxnType.invoicePayment,
         'mils' => t.type == TxnType.milsPayment,
+        'expenses' => t.type == TxnType.expense,
         'refunds' => t.isRefund,
         _ => true,
       };
@@ -74,7 +75,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           Wrap(
             spacing: 8,
             children: [
-              for (final f in const [('all', 'All'), ('sales', 'Sales & credit'), ('invoices', 'Invoice payments'), ('mils', 'MILS payments'), ('refunds', 'Refunds')])
+              for (final f in const [('all', 'All'), ('sales', 'Sales & credit'), ('invoices', 'Invoice payments'), ('mils', 'MILS payments'), ('expenses', 'Expenses'), ('refunds', 'Refunds')])
                 ChoiceChip(
                   label: Text(f.$2),
                   selected: _filter == f.$1,
@@ -121,13 +122,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       itemBuilder: (context, i) {
                         if (i == txns.length) return const LoadOlderTile('transactions');
                         final t = txns[i];
+                        final outgoing = t.isRefund || t.type == TxnType.expense;
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: t.isRefund ? Mtek.dangerTint : Mtek.brandTint,
+                            backgroundColor: outgoing ? Mtek.dangerTint : Mtek.brandTint,
                             child: Icon(
-                              t.isRefund ? Icons.undo : Icons.arrow_downward,
+                              outgoing ? Icons.arrow_upward : Icons.arrow_downward,
                               size: 18,
-                              color: t.isRefund ? Mtek.danger : Mtek.brand600,
+                              color: outgoing ? Mtek.danger : Mtek.brand600,
                             ),
                           ),
                           title: Text(
@@ -136,8 +138,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           ),
                           subtitle: Text('${fmt.fmtDateTime(t.date)} · ${MethodIcon.label(t.method)} · ${t.id}'),
                           trailing: AmountText(
-                            t.isRefund ? -t.amount : t.amount,
-                            color: t.isRefund ? Mtek.danger : Mtek.success,
+                            outgoing ? -t.amount : t.amount,
+                            color: outgoing ? Mtek.danger : Mtek.success,
                           ),
                           onTap: () => _openTransaction(context, t),
                         );
@@ -236,6 +238,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         TxnType.creditSale => 'Credit sale (receivable)',
         TxnType.invoicePayment => 'Invoice payment',
         TxnType.milsPayment => 'MILS payment',
+        TxnType.expense => 'Payment voucher expense',
         TxnType.refund => 'Refund',
       };
 

@@ -6,7 +6,7 @@ enum ProductCategory { fire, safety, security, solar, automation }
 
 enum PaymentMethod { cash, transfer, pos, credit }
 
-enum TxnType { salePayment, creditSale, invoicePayment, milsPayment, refund }
+enum TxnType { salePayment, creditSale, invoicePayment, milsPayment, expense, refund }
 
 enum InvoiceStatus { unpaid, partial, paid, overdue }
 
@@ -297,6 +297,7 @@ class StaffMember {
   final String role; // ceo | admin | sales
   final String staffId;
   final DateTime? createdAt;
+  final String passportPhoto;
 
   const StaffMember({
     required this.uid,
@@ -306,6 +307,7 @@ class StaffMember {
     required this.role,
     this.staffId = '',
     this.createdAt,
+    this.passportPhoto = '',
   });
 
   factory StaffMember.fromJson(Map<String, dynamic> j) => StaffMember(
@@ -316,5 +318,6 @@ class StaffMember {
         role: '${j['role'] ?? 'sales'}',
         staffId: '${j['staff_id'] ?? ''}',
         createdAt: DateTime.tryParse('${j['created_at'] ?? ''}'),
+        passportPhoto: '${j['passport_photo'] ?? ''}',
       );
 }

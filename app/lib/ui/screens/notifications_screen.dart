@@ -40,6 +40,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         'document' => Icons.description_outlined,
         'stock' => Icons.inventory_2_outlined,
         'stockApproval' => Icons.approval_outlined,
+        'voucherApproval' => Icons.payments_outlined,
         'customer' => Icons.person_add_alt_1_outlined,
         'product' => Icons.category_outlined,
         'mils' => Icons.build_circle_outlined,
@@ -112,11 +113,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           subtitle: Text('${n.message}\n${fmt.fmtDateTime(n.createdAt)} · ${n.createdByName}',
                               style: const TextStyle(fontSize: 12.5)),
                           isThreeLine: true,
-                          trailing: n.kind == 'stockApproval' && AuthStore.instance.isCeo
+                          trailing: (n.kind == 'stockApproval' || n.kind == 'voucherApproval') && AuthStore.instance.isCeo
                               ? FilledButton.icon(
-                                  onPressed: _loading ? null : () => _approveStockReceipt(n),
+                                  onPressed: _loading ? null : () => n.kind == 'stockApproval'
+                                      ? _approveStockReceipt(n) : _approvePaymentVoucher(n),
                                   icon: const Icon(Icons.draw_outlined, size: 16),
-                                  label: const Text('Approve'),
+                                  label: Text(n.kind == 'voucherApproval' ? 'Approve & Pay' : 'Approve'),
                                 )
                               : n.createdBy == AuthStore.instance.remoteSignInUid && canAnnounce
                                   ? TextButton(
@@ -134,6 +136,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _approvePaymentVoucher(AppNotification notification) async {
+    final signer = await confirmSignature(context, force: true);
+    if (signer == null || !mounted) return;
+    setState(() => _loading = true);
+    final response = await AppStore.instance.api?.post('/api/payment-vouchers/approve', {
+      'id': notification.ref,
+      'passcode': AuthStore.instance.lastVerifiedPasscode ?? '',
+    });
+    if (response != null && response.ok) {
+      await AppStore.instance.markNotificationRead(notification.id);
+      await AppStore.instance.refreshRemote();
+      await AppStore.instance.refreshNotifications();
+    }
+    if (!mounted) return;
+    setState(() => _loading = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: response != null && response.ok ? Mtek.success : Mtek.danger,
+      content: Text(response != null && response.ok ? 'Payment Voucher approved and posted as expenditure.' :
+        '${response?.json is Map ? (response!.json as Map)['error'] : 'Approval failed.'}'),
+    ));
   }
 
   Future<void> _approveStockReceipt(AppNotification notification) async {

@@ -22,6 +22,7 @@ class StaffUser {
   final String passwordHash;
   final String signaturePasscodeHash;
   final String? signaturePng; // base64 data-URL of the drawn signature
+  final String? passportPhoto; // compulsory for new accounts
   StaffUser({
     required this.name,
     required this.email,
@@ -29,6 +30,7 @@ class StaffUser {
     required this.passwordHash,
     required this.signaturePasscodeHash,
     this.signaturePng,
+    this.passportPhoto,
   });
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +38,7 @@ class StaffUser {
         'passwordHash': passwordHash,
         'signaturePasscodeHash': signaturePasscodeHash,
         'signaturePng': signaturePng,
+        'passportPhoto': passportPhoto,
       };
   static StaffUser fromJson(Map<String, dynamic> j) => StaffUser(
         name: '${j['name'] ?? ''}'.trim(),
@@ -44,6 +47,7 @@ class StaffUser {
         passwordHash: '${j['passwordHash'] ?? ''}',
         signaturePasscodeHash: '${j['signaturePasscodeHash'] ?? ''}',
         signaturePng: j['signaturePng'] as String?,
+        passportPhoto: j['passportPhoto'] as String?,
       );
 }
 
@@ -184,9 +188,11 @@ class AuthStore extends ChangeNotifier {
     required String signaturePasscode,
     required String role,
     String? signaturePng,
+    String? passportPhoto,
   }) {
     final mail = email.trim().toLowerCase();
     if (name.trim().isEmpty) return 'Enter your full name';
+    if (passportPhoto == null || passportPhoto.isEmpty) return 'A passport photograph is required';
     if (!mail.contains('@')) return 'Enter a valid email';
     if (password.length < 6) return 'Password must be at least 6 characters';
     if (signaturePasscode.length < 4) {
@@ -204,6 +210,7 @@ class AuthStore extends ChangeNotifier {
       passwordHash: demoHash(password),
       signaturePasscodeHash: demoHash(signaturePasscode),
       signaturePng: signaturePng,
+      passportPhoto: passportPhoto,
     ));
     current = users.last;
     notifyListeners();
@@ -228,6 +235,7 @@ class AuthStore extends ChangeNotifier {
     required String password,
     required String signaturePasscode,
     required String recoveryString,
+    required String passportPhoto,
   }) async {
     final api = AppStore.instance.api;
     if (!Env.authApiConfigured || api == null) {
@@ -241,6 +249,7 @@ class AuthStore extends ChangeNotifier {
       'password': password,
       'signature_passcode': signaturePasscode,
       'recovery_string': recoveryString,
+      'passport_photo': passportPhoto,
     });
     final j = res?.json;
     final serverOk = res != null && res.ok && j is Map && j['access_token'] is String && j['user'] is Map;
@@ -260,6 +269,7 @@ class AuthStore extends ChangeNotifier {
     final localErr = signUp(
       name: name, email: mail, password: password,
       signaturePasscode: signaturePasscode, role: 'sales',
+      passportPhoto: passportPhoto,
     );
     if (localErr != null) return localErr;
     await _persistUsers();

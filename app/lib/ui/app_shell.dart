@@ -14,6 +14,7 @@ import 'screens/invoices_screen.dart';
 import 'screens/letterhead_screen.dart';
 import 'screens/mils_screen.dart';
 import 'screens/notifications_screen.dart';
+import 'screens/payment_vouchers_screen.dart';
 import 'screens/receipts_screen.dart';
 import 'screens/sales_screen.dart';
 import 'screens/staff_screen.dart';
@@ -38,6 +39,7 @@ const _insights = Destination('insights', 'Insights', Icons.insights_outlined, I
 const _transactions = Destination('transactions', 'Transactions', Icons.swap_horiz_outlined, Icons.swap_horiz, TransactionsScreen());
 const _customers = Destination('customers', 'Customers', Icons.people_outline, Icons.people, CustomersScreen());
 const _receipts = Destination('receipts', 'Receipts', Icons.receipt_long_outlined, Icons.receipt_long, ReceiptsScreen());
+const _vouchers = Destination('vouchers', 'Payment Vouchers', Icons.payments_outlined, Icons.payments, PaymentVouchersScreen());
 const _invoices = Destination('invoices', 'Invoices', Icons.request_quote_outlined, Icons.request_quote, InvoicesScreen());
 const _waybills = Destination('waybills', 'Waybills', Icons.local_shipping_outlined, Icons.local_shipping, WaybillsScreen());
 const _deliveryNotes = Destination('deliverynotes', 'Delivery Notes', Icons.inventory_2_outlined, Icons.inventory_2, DeliveryNotesScreen());
@@ -72,25 +74,26 @@ List<Destination> destinationsFor(String? role) {
 /// CEO receives the private official-letter composer in addition to all
 /// operational destinations. Admin cannot navigate to or render it.
 const _ceoDestinations = <Destination>[
-  _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
+  _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
   _mils, _sales, _stock, _stockReceipts, _summary, _docs, _letterhead, _notifications, _staff, _settings,
 ];
 
 /// The complete operational destination set (admin view).
 const _allDestinations = <Destination>[
-  _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
+  _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
   _mils, _sales, _stock, _stockReceipts, _summary, _docs, _notifications, _staff, _settings,
 ];
 
 /// Kept for backwards compatibility (admin view).
 const destinations = <Destination>[
-  _insights, _transactions, _customers, _receipts, _invoices, _waybills, _deliveryNotes,
+  _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
   _mils, _sales, _stock, _stockReceipts, _summary, _docs, _notifications, _staff, _settings,
 ];
 
 Widget _freshScreen(String id) => switch (id) {
   'insights' => InsightsScreen(), 'transactions' => TransactionsScreen(),
   'customers' => CustomersScreen(), 'receipts' => ReceiptsScreen(),
+  'vouchers' => PaymentVouchersScreen(),
   'invoices' => InvoicesScreen(), 'waybills' => WaybillsScreen(),
   'deliverynotes' => DeliveryNotesScreen(), 'mils' => MilsScreen(),
   'sales' => SalesScreen(), 'stock' => StockScreen(),

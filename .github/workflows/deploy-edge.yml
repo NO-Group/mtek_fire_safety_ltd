@@ -34,22 +34,10 @@ jobs:
       - name: Deploy data-api function
         run: |
           set +e
-          # DELETE + CREATE: the PATCH-update path has been accepted by the API
-          # while the runtime kept serving the previous bundle. A fresh create
-          # forces a brand-new function activation (few seconds of downtime).
-          # UPDATES never take over on this project: the CLI answers "No
-          # change found" for every redeploy (its stored-hash comparison is
-          # stuck), so the gateway keeps serving the FIRST deployment
-          # forever. Bisect proved fresh names activate fine. Therefore:
-          # hard-delete via the management API, then create fresh via CLI.
-          echo "--- DELETE via management API ---"
-          curl -s -o /tmp/del.json -w "delete HTTP %{http_code}\n" \
-            -X DELETE "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/functions/data-api2" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" | tee /tmp/delete.log
-          cat /tmp/del.json | tee -a /tmp/delete.log; echo "" | tee -a /tmp/delete.log
-          sleep 15
-          echo "--- CREATE via CLI ---"
-          supabase functions deploy data-api2 --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
+          # Update the one existing production function in place. Never delete
+          # it or create numbered replacement functions.
+          echo "--- UPDATE existing data-api via CLI ---"
+          supabase functions deploy data-api --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" --debug > /tmp/deploy.log 2>&1
           CODE=$?
           set -e
           echo "supabase functions deploy exit code: $CODE"
@@ -68,7 +56,7 @@ jobs:
           WANT='2026-09-07-sync1'
           BODY=""
           for i in $(seq 1 40); do
-            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api2/health?poll=${GITHUB_RUN_ID}-$i" || true)
+            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health?poll=${GITHUB_RUN_ID}-$i" || true)
             BODY=$(cat /tmp/h.json 2>/dev/null || true)
             echo "try $i (HTTP $CODE): ${BODY:0:160}"
             case "$BODY" in

@@ -103,6 +103,7 @@ const coll = {
   invoices: () => db(DB.billing).then(d => d.collection('invoices')),
   receipts: () => db(DB.billing).then(d => d.collection('receipts')),
   payments: () => db(DB.billing).then(d => d.collection('invoice_payments')),
+  vouchers: () => db(DB.billing).then(d => d.collection('payment_vouchers')),
   mils: () => db(DB.mils).then(d => d.collection('logs')),
   archive: () => db(DB.documents).then(d => d.collection('archive')),
   audit: () => db(DB.audit).then(d => d.collection('events')),
@@ -115,7 +116,7 @@ const pad9 = (n: number) => String(n).padStart(9, '0');
 // deno-lint-ignore no-explicit-any
 const ins = async (c: Promise<any>, doc: Record<string, unknown>) => (await c).insertOne(doc);
 const fmtN = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
-const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote', 'stockreceipt'];
+const BOOK_TYPES = ['receiptIssue', 'receipt', 'invoice', 'mils', 'waybill', 'deliverynote', 'stockreceipt', 'paymentvoucher'];
 const now = () => new Date().toISOString();
 
 function json(data: unknown, status = 200) {
@@ -446,9 +447,12 @@ Deno.serve(async (req: Request) => {
       const password = String(b.password ?? '');
       const passcode = String(b.signature_passcode ?? '');
       const recovery = String(b.recovery_string ?? '');
+      const passportPhoto = String(b.passport_photo ?? '');
       if (!name) return err(400, 'Enter your full name');
       if (!email.includes('@')) return err(400, 'Enter a valid email');
       if (!phone) return err(400, 'Enter a phone number');
+      if (!passportPhoto.startsWith('data:image/') || passportPhoto.length > 2_100_000)
+        return err(400, 'A valid passport photograph under 1.5 MB is required');
       if (password.length < 6) return err(400, 'Password must be at least 6 characters');
       if (passcode.length < 4) return err(400, 'Signature passcode must be at least 4 characters');
       if (passcode === password) return err(400, 'Signature passcode must be different from your password');
@@ -524,6 +528,7 @@ Deno.serve(async (req: Request) => {
         { $set: {
           email, phone, full_name: fullName, role: 'sales',
           staff_id: `MFSL-${uid.replaceAll('-', '').slice(0, 8).toUpperCase()}`,
+          passport_photo: passportPhoto,
           sig_salt: salt, sig_hash: await hashPass(passcode, salt),
           recovery_salt: recoverySalt, recovery_hash: await hashRecovery(recovery, recoverySalt),
           created_at: now(),
@@ -930,6 +935,50 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true, receipt_no: recNo, status: Number(inv.amount_paid ?? 0) + pay >= Number(inv.total) ? 'paid' : 'partial' });
       }
 
+      case 'GET /api/payment-vouchers': {
+        requireRole(user, ['ceo', 'admin'], 'view payment vouchers');
+        return json({ rows: await (await coll.vouchers()).find({}).sort({ created_at: -1 }).limit(300).toArray() });
+      }
+      case 'POST /api/payment-vouchers': {
+        requireRole(user, ['ceo', 'admin'], 'prepare payment vouchers');
+        const b = await req.json();
+        await verifyPasscode(user, String(b.passcode ?? ''));
+        const amount = Math.max(0, Math.trunc(Number(b.amount) || 0));
+        if (!String(b.payee ?? '').trim() || !String(b.particulars ?? '').trim() || !amount)
+          throw new HttpErr(400, 'Payee, particulars and amount are required');
+        const serial = await nextSerial('paymentvoucher');
+        const record = { serial, voucher_date: String(b.date ?? now()), payee: String(b.payee).slice(0, 120),
+          particulars: String(b.particulars).slice(0, 1000), amount,
+          method: ['cash','transfer','cheque','pos'].includes(String(b.method)) ? String(b.method) : 'cash',
+          cheque_no: String(b.cheque_no ?? ''), debit_account: String(b.debit_account ?? ''),
+          status: 'pending', prepared_by: user.uid, prepared_name: user.name,
+          checked_by: user.uid, checked_name: user.name, created_at: now() };
+        const out = await (await coll.vouchers()).insertOne(record);
+        await notify('voucherApproval', 'Payment Voucher awaiting approval',
+          `${user.name} submitted Payment Voucher ${pad9(serial)} for ${record.payee}.`, String(out.insertedId), user);
+        await audit('billing', 'voucher-create', `Payment Voucher ${pad9(serial)}`, user);
+        return json({ voucher: { _id: out.insertedId, ...record } }, 201);
+      }
+      case 'POST /api/payment-vouchers/approve': {
+        requireRole(user, ['ceo'], 'approve payment vouchers');
+        const b = await req.json();
+        await verifyPasscode(user, String(b.passcode ?? ''), true);
+        let id: InstanceType<typeof ObjectId>; try { id = new ObjectId(String(b.id ?? '')); } catch { throw new HttpErr(400, 'Invalid voucher'); }
+        const vouchers = await coll.vouchers();
+        const voucher = await vouchers.findOneAndUpdate({ _id: id, status: 'pending' },
+          { $set: { status: 'processing' } }, { returnDocument: 'before' });
+        if (!voucher) { const old = await vouchers.findOne({ _id: id }); if (old?.status === 'paid' || old?.status === 'processing') return json({ ok: true }); throw new HttpErr(404, 'Pending voucher not found'); }
+        const t = now();
+        await (await coll.txns()).insertOne({ txn_type: 'expense', method: voucher.method,
+          amount: voucher.amount, reference: `PV-${pad9(Number(voucher.serial))}`, txn_date: t, created_by: user.uid });
+        await vouchers.updateOne({ _id: id }, { $set: { status: 'paid', approved_by: user.uid,
+          approved_name: user.name, paid_by: user.uid, paid_name: user.name, paid_at: t } });
+        await (await coll.notifications()).updateMany({ kind: 'voucherApproval', ref: String(id) },
+          { $set: { kind: 'transaction', title: 'Payment Voucher approved', message: `Payment Voucher ${pad9(Number(voucher.serial))} was paid.` } });
+        await audit('billing', 'voucher-pay', `Payment Voucher ${pad9(Number(voucher.serial))}`, user);
+        return json({ ok: true });
+      }
+
       case 'GET /api/stock-receipts': {
         requireRole(user, ['ceo', 'admin'], 'view stock receipts');
         const rows = await (await coll.stockReceipts()).find({}).sort({ created_at: -1 }).limit(300).toArray();
@@ -1278,6 +1327,7 @@ Deno.serve(async (req: Request) => {
               phone: String(r.phone ?? ''),
               role: email === CEO_EMAIL ? 'ceo' : String(r.role ?? 'sales'),
               staff_id: String(r.staff_id ?? `MFSL-${String(r._id).replaceAll('-', '').slice(0, 8).toUpperCase()}`),
+              passport_photo: String(r.passport_photo ?? ''),
               created_at: r.created_at ?? null,
             };
           }),

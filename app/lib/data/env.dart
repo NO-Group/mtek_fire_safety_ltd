@@ -1,7 +1,7 @@
 /// Build-time configuration. EVERYTHING is baked in: the apps (APK and
 /// Windows EXE) ship pointing at the company's REAL server — a plain
 /// `flutter build apk --release` needs no flags at all.
-/// NOTE: the API lives at `data-api2` — the original `data-api` function
+/// NOTE: the API lives at `data-api` — the original `data-api` function
 /// name got a corrupted deployment cache on Supabase's edge (every new
 /// deploy of it kept serving a days-old bundle; verified by canary bisect),
 /// so the identical code now deploys under a fresh name.
@@ -10,7 +10,7 @@
 abstract final class Env {
   /// "Sign to issue" passcode gate. `true` skips the passcode prompt for
   /// everyone (was used temporarily on 2026-09-03). Keep in step with the
-  /// SIGNATURE_GATE constant in supabase/functions/data-api2/index.ts.
+  /// SIGNATURE_GATE constant in supabase/functions/data-api/index.ts.
   static const bool signatureGateDisabled = false;
 
   static const supabaseUrl = String.fromEnvironment(
@@ -23,7 +23,7 @@ abstract final class Env {
   );
   static const apiBase = String.fromEnvironment(
     'MILS_API_BASE',
-    defaultValue: 'https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api2',
+    defaultValue: 'https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api',
   );
 
   /// OFFLINE-ONLY switch. `true` disconnects the MongoDB data API entirely

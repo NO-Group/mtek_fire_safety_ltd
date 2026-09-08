@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -17,6 +20,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _signup = false;
   String? _error;
+  String? _passportPhoto;
 
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -223,6 +227,14 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 10),
         TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone number', prefixIcon: Icon(Icons.phone_outlined))),
         const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _pickPassportPhoto,
+          icon: _passportPhoto == null
+              ? const Icon(Icons.add_a_photo_outlined)
+              : ClipOval(child: Image.memory(base64Decode(_passportPhoto!.split(',').last), width: 34, height: 34, fit: BoxFit.cover)),
+          label: Text(_passportPhoto == null ? 'Add passport photograph *' : 'Passport photograph selected — change'),
+        ),
+        const SizedBox(height: 10),
         TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Account password (min 6)', prefixIcon: Icon(Icons.lock_outline))),
         const SizedBox(height: 14),
         Container(
@@ -351,7 +363,26 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _error = err);
   }
 
+  Future<void> _pickPassportPhoto() async {
+    final picked = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    final file = picked == null || picked.files.isEmpty ? null : picked.files.first;
+    if (file?.bytes == null) return;
+    if (file!.bytes!.length > 1500000) {
+      setState(() => _error = 'Passport photograph must be smaller than 1.5 MB.');
+      return;
+    }
+    final ext = (file.extension ?? 'jpg').toLowerCase();
+    setState(() {
+      _passportPhoto = 'data:image/${ext == 'png' ? 'png' : 'jpeg'};base64,${base64Encode(file.bytes!)}';
+      _error = null;
+    });
+  }
+
   Future<void> _createAccount() async {
+    if (_passportPhoto == null) {
+      setState(() => _error = 'A passport photograph is compulsory for registration.');
+      return;
+    }
     if (_passcode.text != _passcode2.text) {
       setState(() => _error = 'Signature passcodes do not match');
       return;
@@ -382,6 +413,7 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _password.text,
         signaturePasscode: _passcode.text,
         recoveryString: _recovery.text.trim(),
+        passportPhoto: _passportPhoto!,
       );
       if (!mounted) return;
       setState(() { _busy = false; _error = remoteErr; });
@@ -394,6 +426,7 @@ class _LoginScreenState extends State<LoginScreen> {
       signaturePasscode: _passcode.text,
       role: _role,
       signaturePng: _signaturePng,
+      passportPhoto: _passportPhoto,
     );
     setState(() => _error = err);
   }

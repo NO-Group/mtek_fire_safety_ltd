@@ -459,7 +459,7 @@ class AppStore extends ChangeNotifier {
             payload: item.ref,
             kind: item.kind,
             critical: item.kind == 'stock' || item.kind == 'approval' ||
-                item.kind == 'stockApproval' || item.kind == 'staff',
+                item.kind == 'stockApproval' || item.kind == 'voucherApproval' || item.kind == 'staff',
           ));
         }
       }
@@ -1340,7 +1340,7 @@ class AppStore extends ChangeNotifier {
       if (from != null && t.date.isBefore(from)) continue;
       if (to != null && t.date.isAfter(to)) continue;
       if (t.isReceivable) continue; // recorded in ledger, recognised on payment
-      sum += t.isRefund ? -t.amount : t.amount;
+      sum += (t.isRefund || t.type == TxnType.expense) ? -t.amount : t.amount;
     }
     return sum;
   }

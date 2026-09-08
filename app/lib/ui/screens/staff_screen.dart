@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -61,6 +62,11 @@ class _StaffScreenState extends State<StaffScreen> {
     }
   }
 
+  Uint8List? _passport(StaffMember s) {
+    if (s.passportPhoto.isEmpty) return null;
+    try { return base64Decode(s.passportPhoto.split(',').last); } catch (_) { return null; }
+  }
+
   String _staffId(StaffMember s) => s.staffId.isNotEmpty
       ? s.staffId
       : 'MFSL-${s.uid.replaceAll('-', '').padRight(8, '0').substring(0, 8).toUpperCase()}';
@@ -70,6 +76,9 @@ class _StaffScreenState extends State<StaffScreen> {
       builder: (context) => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (_passport(s) != null) Center(child: ClipRRect(borderRadius: BorderRadius.circular(12),
+            child: Image.memory(_passport(s)!, width: 100, height: 120, fit: BoxFit.cover))),
+          if (_passport(s) != null) const SizedBox(height: 12),
           Text(s.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 14),
           _detail('Staff ID', _staffId(s)), _detail('Role', s.role.toUpperCase()),
@@ -107,7 +116,9 @@ class _StaffScreenState extends State<StaffScreen> {
               pw.SizedBox(height: 7), pw.Text('ID: ${_staffId(s)}', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
               pw.Text(s.email, style: const pw.TextStyle(fontSize: 6.5)),
               if (s.phone.isNotEmpty) pw.Text(s.phone, style: const pw.TextStyle(fontSize: 6.5)),
-            ])))
+            ]))),
+          if (_passport(s) != null) pw.Padding(padding: const pw.EdgeInsets.only(right: 10),
+            child: pw.Image(pw.MemoryImage(_passport(s)!), width: 42, height: 54, fit: pw.BoxFit.cover)),
         ]))));
     final Uint8List bytes = await pdf.save();
     final outcome = await savePdf(bytes: bytes, filename: '${_staffId(s)}-id-card.pdf');
@@ -159,10 +170,11 @@ class _StaffScreenState extends State<StaffScreen> {
                         return ListTile(
                           leading: CircleAvatar(
                             backgroundColor: _roleColor(s.role),
-                            child: Text(
+                            backgroundImage: _passport(s) == null ? null : MemoryImage(_passport(s)!),
+                            child: _passport(s) == null ? Text(
                               s.name.isEmpty ? '?' : s.name.trim()[0].toUpperCase(),
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                            ),
+                            ) : null,
                           ),
                           title: Text(s.name.isEmpty ? s.email : s.name,
                               style: const TextStyle(fontWeight: FontWeight.w600)),
