@@ -121,12 +121,18 @@ class ReceiptsScreen extends StatelessWidget {
                     child: const Icon(Icons.local_fire_department, color: Colors.white),
                   ),
                   const SizedBox(width: 12),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('M-TEK FIRE & SAFETY LTD', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                      Text('Kaduna, Nigeria · RC 1082534', style: TextStyle(fontSize: 11, color: Mtek.gray500)),
-                    ],
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('M-TEK FIRE & SAFETY LTD', maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        Text('Kaduna, Nigeria · RC 1082534', maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: Mtek.gray500)),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -171,33 +177,31 @@ class ReceiptsScreen extends StatelessWidget {
               Text('Issued by: ${r.issuedBy} — thank you for your business.',
                   style: const TextStyle(fontSize: 11, color: Mtek.gray500)),
               const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
+              LayoutBuilder(builder: (context, box) {
+                final narrow = box.maxWidth < 390;
+                final width = narrow ? box.maxWidth : (box.maxWidth - 20) / 3;
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    SizedBox(width: width, child: OutlinedButton.icon(
                       onPressed: () => _sendReceipt(context, r),
-                      icon: const Icon(Icons.chat_outlined, size: 18),
-                      label: const Text('WhatsApp'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.share_outlined, size: 18),
+                      label: const Text('Share PDF'),
+                    )),
+                    SizedBox(width: width, child: OutlinedButton.icon(
                       onPressed: () => _sendReceipt(context, r),
                       icon: const Icon(Icons.mail_outline, size: 18),
                       label: const Text('Email'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
+                    )),
+                    SizedBox(width: width, child: FilledButton.icon(
                       onPressed: () => _printReceipt(context, r),
                       icon: const Icon(Icons.print_outlined, size: 18),
                       label: const Text('Print'),
-                    ),
-                  ),
-                ],
-              ),
+                    )),
+                  ],
+                );
+              }),
             ],
           ),
         ),
