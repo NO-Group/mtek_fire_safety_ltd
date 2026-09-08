@@ -190,10 +190,11 @@ class AppStore extends ChangeNotifier {
           receipts.add(Receipt(
             number: '${m['no'] ?? ''}',
             date: DateTime.tryParse('${m['created_at']}') ?? DateTime.now(),
-            customer: Customer(
-                id: '${m['customer_id'] ?? 'r'}',
-                name: '${m['customer_name'] ?? '—'}',
-                isCorporate: false, phone: '', email: '', address: ''),
+            customer: _lookupCustomer(
+              customers,
+              m['customer_id'] as String?,
+              '${m['customer_name'] ?? '—'}',
+            ),
             amount: _asInt(m['amount']),
             method: PaymentMethod.values.firstWhere((t) => t.name == m['method'],
                 orElse: () => PaymentMethod.cash),
@@ -820,7 +821,11 @@ class AppStore extends ChangeNotifier {
         receipts.add(Receipt(
           number: '${m['number'] ?? ''}',
           date: DateTime.tryParse('${m['date']}') ?? DateTime.now(),
-          customer: Customer(id: 'r', name: '${m['customer'] ?? ''}', isCorporate: false, phone: '', email: '', address: ''),
+          customer: _lookupCustomer(
+            customers,
+            m['customer_id'] as String?,
+            '${m['customer'] ?? ''}',
+          ),
           amount: _asInt(m['amount']),
           method: PaymentMethod.values.firstWhere((t) => t.name == m['method'], orElse: () => PaymentMethod.cash),
           forDoc: '${m['for_doc'] ?? ''}',
@@ -1081,8 +1086,11 @@ class AppStore extends ChangeNotifier {
         'receipts': pick('receipts', recRows, (r) => {
           'no': r['number'], 'created_at': r['date'], 'amount': r['amount'], 'method': r['method'],
           'source': '${r['for_doc']}'.startsWith('MTK-INV') ? 'invoice' : 'sale',
-          'reference': r['for_doc'], 'customer_name': r['customer'], 'issued_name': r['issued_by'],
-          'customer_signature': r['customer_signature'],
+          'reference': r['for_doc'], 'customer_id': custRef(r['customer_id']),
+          'customer_name': r['customer'],
+          'customer_contact': '${r['customer_phone']}'.isNotEmpty
+              ? r['customer_phone'] : r['customer_email'],
+          'issued_name': r['issued_by'], 'customer_signature': r['customer_signature'],
         }),
         'invoices': pick('invoices', invRows, (r) => {
           'no': r['number'], 'created_at': r['issued'], 'due': r['due'],
@@ -1189,6 +1197,31 @@ class AppStore extends ChangeNotifier {
   }) async {
     final number = 'MTK-REC-${serial.toString().padLeft(9, '0')}';
     if (receipts.any((receipt) => receipt.number == number)) return;
+
+    // Receipt entry is customer entry: reuse a matching customer, otherwise
+    // create and sync one automatically. Phone is the strongest practical
+    // identity; name is the fallback when no phone was supplied.
+    final normalizedName = customer.name.trim().toLowerCase();
+    final normalizedPhone = customer.phone.replaceAll(RegExp(r'\D'), '');
+    final matches = customers.where((candidate) {
+      final phone = candidate.phone.replaceAll(RegExp(r'\D'), '');
+      if (normalizedPhone.isNotEmpty && phone.isNotEmpty) {
+        return phone == normalizedPhone;
+      }
+      return candidate.name.trim().toLowerCase() == normalizedName;
+    }).toList();
+    final receiptCustomer = matches.isNotEmpty
+        ? matches.first
+        : Customer(
+            id: 'C-REC-${serial.toString().padLeft(9, '0')}',
+            name: customer.name.trim(),
+            isCorporate: customer.isCorporate,
+            phone: customer.phone.trim(),
+            email: customer.email.trim(),
+            address: customer.address.trim(),
+          );
+    if (matches.isEmpty) addCustomer(receiptCustomer);
+
     transactions.add(Transaction(
       id: 'TXN-REC-${serial.toString().padLeft(9, '0')}',
       date: date,
@@ -1200,7 +1233,7 @@ class AppStore extends ChangeNotifier {
     receipts.add(Receipt(
       number: number,
       date: date,
-      customer: customer,
+      customer: receiptCustomer,
       amount: amount,
       method: method,
       forDoc: purpose,
@@ -1210,7 +1243,9 @@ class AppStore extends ChangeNotifier {
     ));
     await writeStore('transactions', transactions.map(txnToJson).toList());
     await writeStore('receipts', receipts.map(receiptToJson).toList());
-    unawaited(flushSyncQueue());
+    // Wait for the cloud attempt before reporting completion. If offline, the
+    // local records remain pending and the normal reconnect sync retries them.
+    await flushSyncQueue();
     notifyListeners();
   }
 
@@ -1801,7 +1836,9 @@ Map<String, dynamic> txnToJson(Transaction t) => {
 Map<String, dynamic> receiptToJson(Receipt r) => {
       'number': r.number, 'date': r.date.toIso8601String(),
       'customer_signature': r.customerSignature,
-      'customer': r.customer.name, 'amount': r.amount,
+      'customer': r.customer.name, 'customer_id': r.customer.id,
+      'customer_phone': r.customer.phone, 'customer_email': r.customer.email,
+      'customer_address': r.customer.address, 'amount': r.amount,
       'method': r.method.name, 'for_doc': r.forDoc,
       'signed_by': r.signedBy, 'issued_by': r.issuedBy,
     };
