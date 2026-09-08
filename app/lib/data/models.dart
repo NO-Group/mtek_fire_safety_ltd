@@ -295,6 +295,8 @@ class StaffMember {
   final String email;
   final String phone;
   final String role; // ceo | admin | sales
+  final String staffId;
+  final DateTime? createdAt;
 
   const StaffMember({
     required this.uid,
@@ -302,6 +304,8 @@ class StaffMember {
     required this.email,
     required this.phone,
     required this.role,
+    this.staffId = '',
+    this.createdAt,
   });
 
   factory StaffMember.fromJson(Map<String, dynamic> j) => StaffMember(
@@ -310,5 +314,7 @@ class StaffMember {
         email: '${j['email'] ?? ''}',
         phone: '${j['phone'] ?? ''}',
         role: '${j['role'] ?? 'sales'}',
+        staffId: '${j['staff_id'] ?? ''}',
+        createdAt: DateTime.tryParse('${j['created_at'] ?? ''}'),
       );
 }

@@ -472,17 +472,27 @@ Deno.serve(async (req: Request) => {
       let created = await createRes.json().catch(() => ({} as Record<string, unknown>));
       if (!createRes.ok) {
         const msg = String((created as Record<string, unknown>).msg ?? (created as Record<string, unknown>).error_description ?? (created as Record<string, unknown>).error ?? '');
-        if (createRes.status === 422 || /already.*(registered|exists)/i.test(msg)) {
-          return err(409, 'An account with that email already exists');
-        }
-        if (createRes.status === 401 || createRes.status === 403) {
+        const duplicate = createRes.status === 422 || /already.*(registered|exists)/i.test(msg);
+        if (duplicate) {
+          // Recover an orphaned Auth user left by an earlier Mongo profile
+          // failure: prove ownership with the supplied password, then finish
+          // creating the missing profile instead of permanently blocking signup.
+          const login = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+            method: 'POST', headers: { apikey: SERVICE_ROLE, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          const existing = await login.json().catch(() => ({} as Record<string, unknown>));
+          if (!login.ok) return err(409, 'An account with that email already exists');
+          created = { id: (existing as Record<string, unknown>).user &&
+            ((existing as Record<string, unknown>).user as Record<string, unknown>).id };
+        } else if (createRes.status === 401 || createRes.status === 403) {
           return err(500, 'Server is not configured for self sign-up (SUPABASE_SERVICE_ROLE_KEY secret missing) — ask the CEO to check Supabase → Edge Functions → Secrets');
         }
         // A phone-related rejection (e.g. an SMS provider strictly
         // required in this project) shouldn't block account creation —
         // retry once without the phone field so sign-up still succeeds;
         // the phone number is still recorded in the MongoDB profile below.
-        if (/phone/i.test(msg)) {
+        if (!duplicate && /phone/i.test(msg)) {
           let retryRes: Response;
           try {
             retryRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
@@ -498,7 +508,7 @@ Deno.serve(async (req: Request) => {
             const msg2 = String((created as Record<string, unknown>).msg ?? (created as Record<string, unknown>).error_description ?? (created as Record<string, unknown>).error ?? '');
             return err(400, msg2 || 'Could not create the account');
           }
-        } else {
+        } else if (!duplicate) {
           return err(400, msg || 'Could not create the account');
         }
       }
@@ -512,7 +522,8 @@ Deno.serve(async (req: Request) => {
       await (await coll.profiles()).updateOne(
         { _id: uid },
         { $set: {
-          _id: uid, email, phone, full_name: fullName, role: 'sales',
+          email, phone, full_name: fullName, role: 'sales',
+          staff_id: `MFSL-${uid.replaceAll('-', '').slice(0, 8).toUpperCase()}`,
           sig_salt: salt, sig_hash: await hashPass(passcode, salt),
           recovery_salt: recoverySalt, recovery_hash: await hashRecovery(recovery, recoverySalt),
           created_at: now(),
@@ -1266,6 +1277,7 @@ Deno.serve(async (req: Request) => {
               uid: String(r._id), name: String(r.full_name ?? ''), email,
               phone: String(r.phone ?? ''),
               role: email === CEO_EMAIL ? 'ceo' : String(r.role ?? 'sales'),
+              staff_id: String(r.staff_id ?? `MFSL-${String(r._id).replaceAll('-', '').slice(0, 8).toUpperCase()}`),
               created_at: r.created_at ?? null,
             };
           }),

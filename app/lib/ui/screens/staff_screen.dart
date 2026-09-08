@@ -1,9 +1,16 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/theme.dart';
 import '../../data/auth_store.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
+import '../../documents/pdf_shared.dart';
+import '../../documents/share_service.dart';
 import '../widgets.dart';
 
 /// STAFF — CEO and Admin see everyone's name, email and phone number. Only
@@ -52,6 +59,59 @@ class _StaffScreenState extends State<StaffScreen> {
     if (err != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
     }
+  }
+
+  String _staffId(StaffMember s) => s.staffId.isNotEmpty
+      ? s.staffId
+      : 'MFSL-${s.uid.replaceAll('-', '').padRight(8, '0').substring(0, 8).toUpperCase()}';
+
+  void _showStaffDetails(StaffMember s) {
+    showModalBottomSheet<void>(context: context, showDragHandle: true,
+      builder: (context) => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(s.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 14),
+          _detail('Staff ID', _staffId(s)), _detail('Role', s.role.toUpperCase()),
+          _detail('Email', s.email), _detail('Phone', s.phone.isEmpty ? 'Not supplied' : s.phone),
+          _detail('Joined', s.createdAt == null ? 'Existing staff account' : s.createdAt!.toLocal().toString().split('.').first),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: () => _downloadIdCard(s), icon: const Icon(Icons.badge_outlined),
+            label: const Text('Download virtual ID card'))),
+        ]))));
+  }
+
+  Widget _detail(String label, String value) => Padding(
+    padding: const EdgeInsets.only(bottom: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: 90, child: Text(label, style: const TextStyle(color: Mtek.gray500))),
+      Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
+    ]));
+
+  Future<void> _downloadIdCard(StaffMember s) async {
+    await MtekPdfFonts.load();
+    final data = await rootBundle.load('assets/branding/logo.png');
+    final logo = pw.MemoryImage(data.buffer.asUint8List());
+    final pdf = pw.Document();
+    pdf.addPage(pw.Page(pageFormat: const PdfPageFormat(243, 153), margin: pw.EdgeInsets.zero,
+      build: (_) => pw.Container(decoration: const pw.BoxDecoration(color: PdfColors.white),
+        child: pw.Row(children: [
+          pw.Container(width: 62, color: PdfColors.blue900, padding: const pw.EdgeInsets.all(10),
+            child: pw.Column(mainAxisAlignment: pw.MainAxisAlignment.center, children: [pw.Image(logo), pw.SizedBox(height: 8),
+              pw.Text('MFSL', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold))])),
+          pw.Expanded(child: pw.Padding(padding: const pw.EdgeInsets.all(12), child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start, mainAxisAlignment: pw.MainAxisAlignment.center, children: [
+              pw.Text('M-TEK FIRE & SAFETY LTD', style: pw.TextStyle(fontSize: 9, color: PdfColors.red900, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 8), pw.Text(s.name, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.Text(s.role.toUpperCase(), style: const pw.TextStyle(fontSize: 8, color: PdfColors.blue800)),
+              pw.SizedBox(height: 7), pw.Text('ID: ${_staffId(s)}', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+              pw.Text(s.email, style: const pw.TextStyle(fontSize: 6.5)),
+              if (s.phone.isNotEmpty) pw.Text(s.phone, style: const pw.TextStyle(fontSize: 6.5)),
+            ])))
+        ]))));
+    final Uint8List bytes = await pdf.save();
+    final outcome = await savePdf(bytes: bytes, filename: '${_staffId(s)}-id-card.pdf');
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(outcome.message)));
   }
 
   @override
@@ -110,6 +170,7 @@ class _StaffScreenState extends State<StaffScreen> {
                           // FittedBox: chip + button can exceed the tile's
                           // trailing space on narrow phones — scale down
                           // instead of painting overflow stripes.
+                          onTap: isCeo ? () => _showStaffDetails(s) : null,
                           trailing: FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Row(

@@ -88,6 +88,18 @@ const destinations = <Destination>[
   _mils, _sales, _stock, _stockReceipts, _summary, _docs, _notifications, _staff, _settings,
 ];
 
+Widget _freshScreen(String id) => switch (id) {
+  'insights' => InsightsScreen(), 'transactions' => TransactionsScreen(),
+  'customers' => CustomersScreen(), 'receipts' => ReceiptsScreen(),
+  'invoices' => InvoicesScreen(), 'waybills' => WaybillsScreen(),
+  'deliverynotes' => DeliveryNotesScreen(), 'mils' => MilsScreen(),
+  'sales' => SalesScreen(), 'stock' => StockScreen(),
+  'stockreceipts' => StockReceiptsScreen(), 'summary' => SummaryScreen(),
+  'docs' => GeneratorScreen(), 'letterhead' => LetterheadScreen(),
+  'notifications' => NotificationsScreen(), 'staff' => StaffScreen(),
+  _ => SettingsScreen(),
+};
+
 /// Primary destinations for the phone bottom bar; everything else lives
 /// behind "More" (opens the drawer).
 const _bottomBarIndexes = [0, 8, 9, 7]; // Insights, Sales, Stock, MILS
@@ -178,21 +190,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (_index >= visible.length) _index = 0;
     final dest = visible[_index];
 
-    Widget body;
-    if (useRail) {
-      body = Row(children: [
-        _rail(extended: extended),
-        Expanded(
-          child: Stack(children: [
-            const Positioned.fill(child: WatermarkBackground()),
-            dest.screen,
-          ]),
-        ),
-      ]);
-    } else {
-      body = Stack(children: [
-        const Positioned.fill(child: WatermarkBackground()),
-        dest.screen,
+    Widget liveBody() {
+      final screen = _freshScreen(dest.id);
+      if (useRail) {
+        return Row(children: [
+          _rail(extended: extended),
+          Expanded(child: Stack(children: [
+            const Positioned.fill(child: WatermarkBackground()), screen,
+          ])),
+        ]);
+      }
+      return Stack(children: [
+        const Positioned.fill(child: WatermarkBackground()), screen,
       ]);
     }
 
@@ -204,7 +213,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       // background refresh from the server), not just the notification badge.
       body: AnimatedBuilder(
         animation: AppStore.instance,
-        builder: (context, _) => body,
+        // Return a fresh screen widget so Flutter actually rebuilds its data
+        // reads after cloud restore/sync; reusing the canonical const instance
+        // caused Insights, Summary and other pages to retain pre-install values.
+        builder: (context, _) => liveBody(),
       ),
       bottomNavigationBar: useBottomBar ? _bottomBar() : null,
     );
