@@ -8,6 +8,7 @@ import '../../core/format.dart' as fmt;
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
+import 'receipts_screen.dart';
 import '../widgets.dart';
 
 /// TRANSACTIONS — unified money ledger (sale payments, invoice payments,
@@ -138,7 +139,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             t.isRefund ? -t.amount : t.amount,
                             color: t.isRefund ? Mtek.danger : Mtek.success,
                           ),
-                          onTap: () => _showDetail(context, t),
+                          onTap: () => _openTransaction(context, t),
                         );
                       },
                     ),
@@ -191,6 +192,19 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       subject: 'MFSL transaction ledger',
       text: 'Filtered MFSL transaction ledger (${transactions.length} entries).',
     ));
+  }
+
+  void _openTransaction(BuildContext context, Transaction t) {
+    // Every collected payment owns a receipt. Match both manually generated
+    // receipts (reference is the receipt number) and sale/invoice payments
+    // (receipt.forDoc is the transaction reference).
+    final matches = AppStore.instance.receipts.where((receipt) =>
+        receipt.number == t.reference || receipt.forDoc == t.reference).toList();
+    if (matches.isNotEmpty && !t.isReceivable && !t.isRefund) {
+      const ReceiptsScreen().previewReceipt(context, matches.last);
+      return;
+    }
+    _showDetail(context, t);
   }
 
   void _showDetail(BuildContext context, Transaction t) {

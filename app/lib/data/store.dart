@@ -1174,6 +1174,46 @@ class AppStore extends ChangeNotifier {
     return doc;
   }
 
+  /// A manually created payment receipt is also a money-ledger transaction.
+  /// Keep both records together so it immediately appears on Transactions and
+  /// can be reopened as its original receipt.
+  Future<void> recordGeneratedReceipt({
+    required int serial,
+    required DateTime date,
+    required Customer customer,
+    required int amount,
+    required PaymentMethod method,
+    required String purpose,
+    required String signedBy,
+    String customerSignature = '',
+  }) async {
+    final number = 'MTK-REC-${serial.toString().padLeft(9, '0')}';
+    if (receipts.any((receipt) => receipt.number == number)) return;
+    transactions.add(Transaction(
+      id: 'TXN-REC-${serial.toString().padLeft(9, '0')}',
+      date: date,
+      type: TxnType.salePayment,
+      amount: amount,
+      method: method,
+      reference: number,
+    ));
+    receipts.add(Receipt(
+      number: number,
+      date: date,
+      customer: customer,
+      amount: amount,
+      method: method,
+      forDoc: purpose,
+      signedBy: signedBy,
+      issuedBy: signedBy,
+      customerSignature: customerSignature,
+    ));
+    await writeStore('transactions', transactions.map(txnToJson).toList());
+    await writeStore('receipts', receipts.map(receiptToJson).toList());
+    unawaited(flushSyncQueue());
+    notifyListeners();
+  }
+
   // ------------------------------------------------------------ settings
   Future<void> updateSettings({
     bool? vatEnabled,

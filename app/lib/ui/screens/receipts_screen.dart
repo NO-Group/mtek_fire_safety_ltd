@@ -87,7 +87,7 @@ class ReceiptsScreen extends StatelessWidget {
                               IconButton(
                                 tooltip: 'Preview PDF',
                                 icon: const Icon(Icons.picture_as_pdf_outlined, color: Mtek.brand600),
-                                onPressed: () => _preview(context, r),
+                                onPressed: () => previewReceipt(context, r),
                               ),
                             ],
                           ),
@@ -101,7 +101,7 @@ class ReceiptsScreen extends StatelessWidget {
     );
   }
 
-  void _preview(BuildContext context, Receipt r) {
+  void previewReceipt(BuildContext context, Receipt r) {
     showDialog<void>(
       context: context,
       builder: (context) => Dialog(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -9,6 +10,8 @@ import '../../core/theme.dart';
 import '../widgets.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
+import '../../data/local_store.dart';
+import '../../data/models.dart';
 import '../../data/store.dart';
 import '../signature_pad.dart';
 import '../../documents/doc_models.dart';
@@ -30,13 +33,76 @@ class GeneratorScreen extends StatefulWidget {
   State<GeneratorScreen> createState() => _GeneratorScreenState();
 }
 
-class _GeneratorScreenState extends State<GeneratorScreen> {
+class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingObserver {
+  static const _receiptDraftKey = 'document_draft_receipt';
   DocType _type = DocType.receipt;
+  Timer? _draftTimer;
+  bool _receiptIssued = false;
 
   @override
   void initState() {
     super.initState();
     _type = widget.initialType;
+    WidgetsBinding.instance.addObserver(this);
+    for (final controller in [_rName, _rAddr, _rPhone, _rEmail, _rAmount, _rFor, _rIrn]) {
+      controller.addListener(_scheduleReceiptDraft);
+    }
+    unawaited(_restoreReceiptDraft());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_saveReceiptDraft());
+    }
+  }
+
+  void _scheduleReceiptDraft() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 350), _saveReceiptDraft);
+  }
+
+  Future<void> _saveReceiptDraft() async {
+    if (_receiptIssued) return;
+    final values = [_rName.text, _rAddr.text, _rPhone.text, _rEmail.text,
+      _rAmount.text, _rFor.text, _rIrn.text];
+    if (values.every((value) => value.trim().isEmpty)) return;
+    await localWrite(_receiptDraftKey, jsonEncode({
+      'name': _rName.text, 'address': _rAddr.text, 'phone': _rPhone.text,
+      'email': _rEmail.text, 'amount': _rAmount.text,
+      'purpose': _rFor.text, 'irn': _rIrn.text,
+      'method': _receipt.method, 'saved_at': DateTime.now().toIso8601String(),
+    }));
+  }
+
+  Future<void> _restoreReceiptDraft() async {
+    final raw = await localRead(_receiptDraftKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final draft = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      _rName.text = '${draft['name'] ?? ''}';
+      _rAddr.text = '${draft['address'] ?? ''}';
+      _rPhone.text = '${draft['phone'] ?? ''}';
+      _rEmail.text = '${draft['email'] ?? ''}';
+      _rAmount.text = '${draft['amount'] ?? ''}';
+      _rFor.text = '${draft['purpose'] ?? ''}';
+      _rIrn.text = '${draft['irn'] ?? ''}';
+      _receipt.method = '${draft['method'] ?? 'Cash'}';
+      _syncControllerValues();
+      if (mounted) setState(() {});
+    } catch (_) {
+      await localWrite(_receiptDraftKey, '');
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _draftTimer?.cancel();
+    unawaited(_saveReceiptDraft());
+    super.dispose();
   }
 
   // One live form state per type — switching tabs keeps context.
@@ -301,7 +367,10 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
               label: Text(m),
               selected: _receipt.method == m,
               selectedColor: Mtek.brandTint,
-              onSelected: (_) => setState(() => _receipt.method = m),
+              onSelected: (_) {
+                setState(() => _receipt.method = m);
+                _scheduleReceiptDraft();
+              },
             ),
         ],
       ),
@@ -1118,6 +1187,34 @@ class _GeneratorScreenState extends State<GeneratorScreen> {
       verifyHash: hash,
       serverIssued: Env.apiConfigured,
     );
+
+    if (_type == DocType.receipt) {
+      final method = switch (_receipt.method.toLowerCase()) {
+        'transfer' => PaymentMethod.transfer,
+        'pos' => PaymentMethod.pos,
+        _ => PaymentMethod.cash,
+      };
+      await AppStore.instance.recordGeneratedReceipt(
+        serial: serial,
+        date: _receipt.date,
+        customer: Customer(
+          id: 'receipt-$serial',
+          name: _receipt.name,
+          isCorporate: false,
+          phone: _receipt.phone,
+          email: _receipt.customerEmail,
+          address: _receipt.address,
+        ),
+        amount: _receipt.amount.round(),
+        method: method,
+        purpose: _receipt.beingPaymentFor,
+        signedBy: signer.name,
+        customerSignature: _receipt.customerSignature,
+      );
+      _receiptIssued = true;
+      _draftTimer?.cancel();
+      await localWrite(_receiptDraftKey, '');
+    }
 
     if (_type == DocType.mils) {
       // A completed MILS sheet IS a maintenance job — feeds the MILS
