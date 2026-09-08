@@ -31,19 +31,22 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Remove obsolete Auth profile trigger
-        continue-on-error: true
+      - name: Remove and verify obsolete Auth profile triggers
         run: |
-          # Staff profiles live in MongoDB. Remove legacy public auth.users
-          # triggers that make GoTrue return "Database error creating new user".
+          set -euo pipefail
+          # Staff profiles live in MongoDB. Remove every user-defined
+          # auth.users trigger, then require the SQL result to prove zero
+          # remain. Never mask this repair as a successful deployment.
           SQL=$(cat supabase/migrations/20260908160000_remove_auth_profile_trigger.sql)
-          HTTP=$(curl -sS -o /tmp/sql.json -w '%{http_code}' \
+          HTTP=$(curl --fail-with-body -sS -o /tmp/sql.json -w '%{http_code}' \
             -X POST "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "$(jq -n --arg query "$SQL" '{query:$query}')")
+          echo "Management API HTTP $HTTP"
           cat /tmp/sql.json
           test "$HTTP" -ge 200 -a "$HTTP" -lt 300
+          jq -e '.. | objects | select(has("auth_trigger_repair")) | .auth_trigger_repair | (if type == "string" then fromjson else . end) | .verified == true and .auth_users_user_triggers == 0' /tmp/sql.json
       - name: Deploy data-api function
         run: |
           set +e
