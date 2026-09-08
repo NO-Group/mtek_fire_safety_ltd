@@ -458,7 +458,8 @@ class AppStore extends ChangeNotifier {
             body: item.message,
             payload: item.ref,
             kind: item.kind,
-            critical: item.kind == 'stock' || item.kind == 'approval' || item.kind == 'staff',
+            critical: item.kind == 'stock' || item.kind == 'approval' ||
+                item.kind == 'stockApproval' || item.kind == 'staff',
           ));
         }
       }

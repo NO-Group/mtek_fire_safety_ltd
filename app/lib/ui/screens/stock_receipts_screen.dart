@@ -99,7 +99,7 @@ class _StockReceiptsScreenState extends State<StockReceiptsScreen> {
   }
 
   Future<void> _approve(Map<String, dynamic> r) async {
-    final signer = await confirmSignature(context); if (signer == null) return;
+    final signer = await confirmSignature(context, force: true); if (signer == null) return;
     final res = await AppStore.instance.api?.post('/api/stock-receipts/approve', {'id': '${r['_id']}', 'passcode': AuthStore.instance.lastVerifiedPasscode ?? '', 'approval_signature': signer.signaturePng ?? ''});
     if (res == null || !res.ok) { _snack('${res?.json is Map ? (res!.json as Map)['error'] : 'Approval failed'}'); return; }
     await AppStore.instance.refreshRemote(); await _load(); _snack('Approved. Net quantities were added to stock.');

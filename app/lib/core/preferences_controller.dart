@@ -41,7 +41,7 @@ class PreferencesController extends ChangeNotifier {
     return switch (kind) {
       'transaction' => transactionAlerts,
       'document' => documentAlerts,
-      'stock' || 'approval' => stockAlerts,
+      'stock' || 'approval' || 'stockApproval' => stockAlerts,
       'staff' || 'announcement' => staffAlerts,
       _ => true,
     };

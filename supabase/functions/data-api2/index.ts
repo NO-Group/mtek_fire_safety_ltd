@@ -256,8 +256,8 @@ async function signatureGateEnabled() {
   return settings?.signature_gate_enabled !== false;
 }
 
-async function verifyPasscode(user: Profile, passcode: string) {
-  if (!await signatureGateEnabled()) return;
+async function verifyPasscode(user: Profile, passcode: string, force = false) {
+  if (!force && !await signatureGateEnabled()) return;
   if (!passcode) throw new HttpErr(403, 'Not signed — passcode required');
   const hash = user.sig_hash && user.sig_salt ? await hashPass(passcode, user.sig_salt) : '';
   if (hash && hash === user.sig_hash) return;
@@ -950,13 +950,18 @@ Deno.serve(async (req: Request) => {
           receiver_signature: String(b.receiver_signature ?? ''), created_at: now() };
         const out = await (await coll.stockReceipts()).insertOne(record);
         await audit('inventory', 'stock-receipt-create', `Stock Receipt ${pad9(serial)}`, user);
+        await notify('stockApproval', 'Stock Receipt awaiting approval',
+          `${user.name} submitted Stock Receipt ${pad9(serial)} for your approval.`,
+          String(out.insertedId), user);
         return json({ receipt: { _id: out.insertedId, ...record } }, 201);
       }
 
       case 'POST /api/stock-receipts/approve': {
         requireRole(user, ['ceo'], 'approve stock receipts');
         const b = await req.json();
-        await verifyPasscode(user, String(b.passcode ?? ''));
+        // Stock approval always requires the CEO's passcode, even if the
+        // general document signature prompt is disabled in Settings.
+        await verifyPasscode(user, String(b.passcode ?? ''), true);
         let id: InstanceType<typeof ObjectId>;
         try { id = new ObjectId(String(b.id ?? '')); } catch { throw new HttpErr(400, 'Invalid stock receipt'); }
         const c = await coll.stockReceipts();
@@ -979,7 +984,14 @@ Deno.serve(async (req: Request) => {
         }
         await c.updateOne({ _id: id, status: 'pending' }, { $set: { status: 'approved', approved_at: now(),
           approver_id: user.uid, approver_name: user.name, approval_signature: String(b.approval_signature ?? '') } });
+        await (await coll.notifications()).updateMany(
+          { kind: 'stockApproval', ref: String(id) },
+          { $set: { kind: 'stock', title: 'Stock Receipt approved',
+            message: `Stock Receipt ${pad9(Number(receipt.serial))} was approved by ${user.name}.` } });
         await audit('inventory', 'stock-receipt-approve', `Stock Receipt ${pad9(Number(receipt.serial))}`, user);
+        await notify('stock', 'Stock quantities updated',
+          `Stock Receipt ${pad9(Number(receipt.serial))} was approved and net quantities were added.`,
+          String(id), user);
         return json({ ok: true });
       }
 

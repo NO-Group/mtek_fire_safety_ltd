@@ -385,8 +385,8 @@ class AuthStore extends ChangeNotifier {
   /// Real backend path: verify against the stored hash (scrypt) in
   /// MongoDB via the data API. Falls back to the local check only when the
   /// API is not configured or unreachable.
-  Future<bool> verifySignatureAny(String passcode) async {
-    if (!AppStore.instance.settings.signatureGateEnabled) {
+  Future<bool> verifySignatureAny(String passcode, {bool force = false}) async {
+    if (!force && !AppStore.instance.settings.signatureGateEnabled) {
       lastVerifiedPasscode = null;
       return true;
     }

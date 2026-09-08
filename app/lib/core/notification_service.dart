@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'preferences_controller.dart';
+import 'widget_bridge.dart';
 
 /// Native Android/Windows notification bridge. In-app records remain the
 /// durable source of truth; this service adds an OS-visible alert and never
@@ -31,6 +32,11 @@ class NotificationService {
           android: android,
           windows: windows,
         ),
+        onDidReceiveNotificationResponse: (_) {
+          // All business alerts are durable in the Notifications workspace;
+          // opening a native alert takes the user to its actionable record.
+          WidgetBridge.requestedScreen.value = 'notifications';
+        },
       );
       _ready = true;
     } catch (error) {

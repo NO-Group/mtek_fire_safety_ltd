@@ -9,9 +9,9 @@ import '../data/store.dart';
 /// Signature gate — shown before issuing any document (receipt, invoice
 /// payment, sale, MILS log). Verifies the user's Signature Passcode.
 /// Returns the signed-in user on success, null on cancel/failure.
-Future<StaffUser?> confirmSignature(BuildContext context) async {
+Future<StaffUser?> confirmSignature(BuildContext context, {bool force = false}) async {
   final auth = AuthStore.instance;
-  if (!AppStore.instance.settings.signatureGateEnabled) {
+  if (!force && !AppStore.instance.settings.signatureGateEnabled) {
     // The CEO disabled authorisation globally. Do not show the dialog and do
     // not retain an old passcode in memory.
     auth.lastVerifiedPasscode = null;
@@ -83,7 +83,7 @@ Future<StaffUser?> confirmSignature(BuildContext context) async {
               // verified SERVER-SIDE when the backend is configured
               // (bcrypt against profiles.sig_passcode_hash); local fallback
               // keeps the app usable offline.
-              final ok = await auth.verifySignatureAny(passcode.text);
+              final ok = await auth.verifySignatureAny(passcode.text, force: force);
               if (!context.mounted) return;
               if (ok) {
                 if (auth.lastSignatureBound) {

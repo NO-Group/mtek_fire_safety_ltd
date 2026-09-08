@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/auth_store.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
+import '../signature_dialog.dart';
 import '../widgets.dart';
 
 /// NOTIFICATIONS — every signed-in user (CEO, Admin, Sales) sees a live feed
@@ -38,6 +39,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         'transaction' => Icons.point_of_sale_outlined,
         'document' => Icons.description_outlined,
         'stock' => Icons.inventory_2_outlined,
+        'stockApproval' => Icons.approval_outlined,
         'customer' => Icons.person_add_alt_1_outlined,
         'product' => Icons.category_outlined,
         'mils' => Icons.build_circle_outlined,
@@ -110,12 +112,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           subtitle: Text('${n.message}\n${fmt.fmtDateTime(n.createdAt)} · ${n.createdByName}',
                               style: const TextStyle(fontSize: 12.5)),
                           isThreeLine: true,
-                          trailing: n.createdBy == AuthStore.instance.remoteSignInUid && canAnnounce
-                              ? TextButton(
-                                  onPressed: () => _showReadReceipts(context, n),
-                                  child: Text('Read ${n.readBy.length}'),
+                          trailing: n.kind == 'stockApproval' && AuthStore.instance.isCeo
+                              ? FilledButton.icon(
+                                  onPressed: _loading ? null : () => _approveStockReceipt(n),
+                                  icon: const Icon(Icons.draw_outlined, size: 16),
+                                  label: const Text('Approve'),
                                 )
-                              : (read ? null : const Icon(Icons.circle, size: 9, color: Mtek.brand600)),
+                              : n.createdBy == AuthStore.instance.remoteSignInUid && canAnnounce
+                                  ? TextButton(
+                                      onPressed: () => _showReadReceipts(context, n),
+                                      child: Text('Read ${n.readBy.length}'),
+                                    )
+                                  : (read ? null : const Icon(Icons.circle, size: 9, color: Mtek.brand600)),
                           onTap: () => AppStore.instance.markNotificationRead(n.id),
                         );
                       },
@@ -126,6 +134,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _approveStockReceipt(AppNotification notification) async {
+    // Approval is deliberately force-authenticated: the CEO must enter the
+    // signature passcode for every individual Stock Receipt approval.
+    final signer = await confirmSignature(context, force: true);
+    if (signer == null || !mounted) return;
+    setState(() => _loading = true);
+    final response = await AppStore.instance.api?.post(
+      '/api/stock-receipts/approve',
+      {
+        'id': notification.ref,
+        'passcode': AuthStore.instance.lastVerifiedPasscode ?? '',
+        'approval_signature': signer.signaturePng ?? '',
+      },
+    );
+    if (response != null && response.ok) {
+      await AppStore.instance.markNotificationRead(notification.id);
+      await AppStore.instance.refreshRemote();
+      await AppStore.instance.refreshNotifications();
+    }
+    if (!mounted) return;
+    setState(() => _loading = false);
+    final message = response != null && response.ok
+        ? 'Stock Receipt approved. Net quantities were added to stock.'
+        : '${response?.json is Map ? (response!.json as Map)['error'] : 'Approval failed — check the connection and try again.'}';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: response != null && response.ok ? Mtek.success : Mtek.danger,
+      content: Text(message),
+    ));
   }
 
   void _showReadReceipts(BuildContext context, AppNotification n) {
