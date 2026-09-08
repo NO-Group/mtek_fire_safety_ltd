@@ -90,7 +90,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       _rFor.text = '${draft['purpose'] ?? ''}';
       _rIrn.text = '${draft['irn'] ?? ''}';
       _receipt.method = '${draft['method'] ?? 'Cash'}';
-      _syncControllerValues();
+      _syncControllersToModel();
       if (mounted) setState(() {});
     } catch (_) {
       await localWrite(_receiptDraftKey, '');
