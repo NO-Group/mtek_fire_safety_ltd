@@ -23,6 +23,13 @@ class Product {
   final int qtyOnHand;
   final int reorderLevel;
   final String unit;
+  final double? length;
+  final String lengthUnit;
+  final double? width;
+  final String widthUnit;
+  final double? size;
+  final String sizeUnit;
+  final List<String> imageUrls;
   final bool isService;
 
   const Product({
@@ -34,6 +41,13 @@ class Product {
     required this.qtyOnHand,
     required this.reorderLevel,
     this.unit = 'pcs',
+    this.length,
+    this.lengthUnit = '',
+    this.width,
+    this.widthUnit = '',
+    this.size,
+    this.sizeUnit = '',
+    this.imageUrls = const [],
     this.isService = false,
   });
 
@@ -48,6 +62,10 @@ class Product {
         qtyOnHand: qtyOnHand ?? this.qtyOnHand,
         reorderLevel: reorderLevel,
         unit: unit,
+        length: length, lengthUnit: lengthUnit,
+        width: width, widthUnit: widthUnit,
+        size: size, sizeUnit: sizeUnit,
+        imageUrls: imageUrls,
         isService: isService,
       );
 }

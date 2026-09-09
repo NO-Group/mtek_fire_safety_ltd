@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/format.dart' as fmt;
@@ -28,6 +31,10 @@ class _StockScreenState extends State<StockScreen> {
     final qty = TextEditingController();
     final reorder = TextEditingController();
     final unit = TextEditingController(text: 'unit');
+    final length = TextEditingController(), lengthUnit = TextEditingController(text: 'cm');
+    final width = TextEditingController(), widthUnit = TextEditingController(text: 'cm');
+    final size = TextEditingController(), sizeUnit = TextEditingController();
+    final pickedImages = <PlatformFile>[];
     var category = ProductCategory.fire;
     var isService = false;
     final ok = await showDialog<bool>(
@@ -37,7 +44,7 @@ class _StockScreenState extends State<StockScreen> {
           title: const Text('Add product'),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
+            child: SingleChildScrollView(child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(controller: name, autofocus: true,
@@ -74,6 +81,34 @@ class _StockScreenState extends State<StockScreen> {
                   Expanded(child: TextField(controller: unit,
                       decoration: const InputDecoration(labelText: 'Unit'))),
                 ]),
+                const SizedBox(height: 10),
+                for (final fields in [
+                  ('Length', length, lengthUnit),
+                  ('Width', width, widthUnit),
+                  ('Size', size, sizeUnit),
+                ]) ...[
+                  Row(children: [
+                    Expanded(flex: 2, child: TextField(controller: fields.$2,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(labelText: '${fields.$1} (optional)'))),
+                    const SizedBox(width: 10),
+                    Expanded(child: TextField(controller: fields.$3,
+                      decoration: const InputDecoration(labelText: 'Unit'))),
+                  ]),
+                  const SizedBox(height: 8),
+                ],
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(
+                      type: FileType.image, allowMultiple: true, withData: true);
+                    if (result != null) setDialog(() {
+                      pickedImages.addAll(result.files.where((f) => f.bytes != null));
+                      if (pickedImages.length > 10) pickedImages.removeRange(10, pickedImages.length);
+                    });
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(pickedImages.isEmpty ? 'Add stock images (optional)' : '${pickedImages.length} image(s) selected'),
+                ),
                 const SizedBox(height: 6),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -82,7 +117,7 @@ class _StockScreenState extends State<StockScreen> {
                   onChanged: (v) => setDialog(() => isService = v),
                 ),
               ],
-            ),
+            )),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -114,8 +149,15 @@ class _StockScreenState extends State<StockScreen> {
     }
 
     try {
+      final id = nextId();
+      final imageData = pickedImages.map((f) {
+        final ext = (f.extension ?? 'jpg').toLowerCase();
+        final mime = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
+        return 'data:$mime;base64,${base64Encode(f.bytes!)}';
+      }).toList();
+      final imageUrls = await AppStore.instance.uploadProductImages(id, imageData);
       await AppStore.instance.addProduct(Product(
-        id: nextId(),
+        id: id,
         name: name.text.trim(),
         category: category,
         costPrice: n(cost.text),
@@ -123,6 +165,10 @@ class _StockScreenState extends State<StockScreen> {
         qtyOnHand: isService ? 0 : n(qty.text),
         reorderLevel: n(reorder.text),
         unit: unit.text.trim().isEmpty ? 'unit' : unit.text.trim(),
+        length: double.tryParse(length.text), lengthUnit: length.text.trim().isEmpty ? '' : lengthUnit.text.trim(),
+        width: double.tryParse(width.text), widthUnit: width.text.trim().isEmpty ? '' : widthUnit.text.trim(),
+        size: double.tryParse(size.text), sizeUnit: size.text.trim().isEmpty ? '' : sizeUnit.text.trim(),
+        imageUrls: imageUrls,
         isService: isService,
       ));
       if (context.mounted) {
@@ -139,6 +185,15 @@ class _StockScreenState extends State<StockScreen> {
             content: Text(msg.isEmpty ? 'Could not save the product — please try again.' : msg)));
       }
     }
+  }
+
+  String _dimensionLabel(Product p) {
+    final values = <String>[
+      if (p.length != null) 'L ${p.length} ${p.lengthUnit}',
+      if (p.width != null) 'W ${p.width} ${p.widthUnit}',
+      if (p.size != null) 'Size ${p.size} ${p.sizeUnit}',
+    ];
+    return values.isEmpty ? '' : ' · ${values.join(' · ')}';
   }
 
   /// Optional bulk path: pick an edited TXT file, rows upsert over the
@@ -242,24 +297,17 @@ class _StockScreenState extends State<StockScreen> {
                 itemBuilder: (context, i) {
                   final p = list[i];
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: p.isOutOfStock
-                          ? Mtek.dangerTint
-                          : p.isLow
-                              ? Mtek.warnTint
-                              : Mtek.brandTint,
-                      child: Text(
-                        '${p.qtyOnHand}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: p.isOutOfStock ? Mtek.danger : p.isLow ? Mtek.warn : Mtek.brand600,
-                        ),
-                      ),
-                    ),
+                    leading: p.imageUrls.isNotEmpty
+                      ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(
+                          p.imageUrls.first, width: 46, height: 46, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.inventory_2_outlined)))
+                      : CircleAvatar(
+                          backgroundColor: p.isOutOfStock ? Mtek.dangerTint : p.isLow ? Mtek.warnTint : Mtek.brandTint,
+                          child: Text('${p.qtyOnHand}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
+                            color: p.isOutOfStock ? Mtek.danger : p.isLow ? Mtek.warn : Mtek.brand600))),
                     title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                     subtitle: Text(
-                        '${p.id} · ${p.category.name.toUpperCase()} · cost ${fmt.naira(p.costPrice)} · reorder @ ${p.reorderLevel}'),
+                        '${p.id} · ${p.category.name.toUpperCase()} · ${p.qtyOnHand} ${p.unit} · cost ${fmt.naira(p.costPrice)}${_dimensionLabel(p)}'),
                     trailing: FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Row(

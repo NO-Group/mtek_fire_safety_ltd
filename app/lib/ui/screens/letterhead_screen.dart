@@ -105,7 +105,7 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
         icon: Icons.article_outlined,
         actions: [
           OutlinedButton.icon(onPressed: _busy ? null : _preview,
-              icon: const Icon(Icons.preview_outlined), label: const Text('Preview')),
+              icon: const Icon(Icons.print_outlined), label: const Text('Print')),
           const SizedBox(width: 8),
           FilledButton.icon(onPressed: _busy ? null : _share,
               icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('Share PDF')),
@@ -221,16 +221,18 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
           child: pw.Text('Page ${c.pageNumber} of ${c.pagesCount}',
             style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600))),
         build: (_) => [
-          pw.Align(alignment: pw.Alignment.centerRight, child: pw.Text(_date(DateTime.now()))),
-          if (_recipient.text.trim().isNotEmpty) ...[
-            pw.SizedBox(height: 18), pw.Text(_recipient.text, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-          ],
-          if (_address.text.trim().isNotEmpty) pw.Text(_address.text),
-          if (_subject.text.trim().isNotEmpty) ...[
-            pw.SizedBox(height: 18),
-            pw.Text(_subject.text.toUpperCase(), textAlign: pw.TextAlign.center,
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
-          ],
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Align(alignment: pw.Alignment.centerRight, child: pw.Text(_date(DateTime.now()))),
+            if (_recipient.text.trim().isNotEmpty) ...[
+              pw.SizedBox(height: 18), pw.Text(_recipient.text, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            ],
+            if (_address.text.trim().isNotEmpty) pw.Text(_address.text),
+            if (_subject.text.trim().isNotEmpty) ...[
+              pw.SizedBox(height: 18),
+              pw.Container(width: double.infinity, child: pw.Text(_subject.text.toUpperCase(), textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline))),
+            ],
+          ]),
           pw.SizedBox(height: 16),
           pw.Text(_body.text, textAlign: align,
             style: pw.TextStyle(fontSize: _fontSize, fontWeight: _bold ? pw.FontWeight.bold : pw.FontWeight.normal,
@@ -244,11 +246,13 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
               cellPadding: const pw.EdgeInsets.all(5),
             ),
           ],
-          pw.SizedBox(height: 22), pw.Text(_closing.text),
-          pw.SizedBox(height: 8),
-          pw.Text(AuthStore.instance.current?.name ?? 'Chief Executive Officer',
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-          pw.Text('Chief Executive Officer'),
+          pw.SizedBox(height: 22),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text(_closing.text), pw.SizedBox(height: 8),
+            pw.Text(AuthStore.instance.current?.name ?? 'Chief Executive Officer',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.Text('Chief Executive Officer'),
+          ]),
         ],
       ));
       return pdf.save();

@@ -818,18 +818,62 @@ Deno.serve(async (req: Request) => {
         let upserted = 0;
         for (const r of rows) {
           if (!r.id || !r.name) continue;
-          await (await coll.products()).updateOne({ _id: String(r.id) }, { $set: {
-            name: String(r.name), category: r.category ?? 'Fire',
+          const productCollection = await coll.products();
+          const normalizedName = String(r.name).trim().replace(/\s+/g, ' ');
+          const duplicate = await productCollection.findOne({
+            _id: { $ne: String(r.id) },
+            name: { $regex: `^${normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+          });
+          if (duplicate) throw new HttpErr(409, `Stock item "${normalizedName}" already exists`);
+          await productCollection.updateOne({ _id: String(r.id) }, { $set: {
+            name: normalizedName, category: r.category ?? 'Fire',
             cost_price: Number(r.cost_price) || 0, selling_price: Number(r.selling_price) || 0,
             qty_on_hand: Math.max(0, Math.trunc(Number(r.qty_on_hand) || 0)),
             reorder_level: Math.max(0, Math.trunc(Number(r.reorder_level) || 0)),
-            unit: r.unit ?? 'unit', is_service: !!r.is_service, updated_at: now(),
+            unit: r.unit ?? 'unit',
+            length: Number.isFinite(Number(r.length)) ? Number(r.length) : null,
+            length_unit: String(r.length_unit ?? ''),
+            width: Number.isFinite(Number(r.width)) ? Number(r.width) : null,
+            width_unit: String(r.width_unit ?? ''),
+            size: Number.isFinite(Number(r.size)) ? Number(r.size) : null,
+            size_unit: String(r.size_unit ?? ''),
+            image_urls: Array.isArray(r.image_urls) ? r.image_urls.map(String).slice(0, 10) : [],
+            is_service: !!r.is_service, updated_at: now(),
           } }, { upsert: true });
           upserted++;
         }
         await audit('inventory', 'upsert', `${upserted} products`, user);
         await notify('product', 'Stock catalogue updated', `${user.name} added/updated ${upserted} product${upserted === 1 ? '' : 's'}`, `${upserted}`, user);
         return json({ ok: true, upserted });
+      }
+
+      case 'POST /api/products/images': {
+        requireRole(user, ['ceo', 'admin'], 'upload stock images');
+        const b = await req.json();
+        const productId = String(b.product_id ?? '').trim();
+        const images = Array.isArray(b.images) ? b.images.slice(0, 10) : [];
+        if (!productId || !images.length) throw new HttpErr(400, 'Product and image required');
+        // Images alone live in Supabase Storage. Product and transaction data
+        // remain in MongoDB. Ensure the dedicated public bucket exists.
+        await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+          method: 'POST', headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'stock-images', name: 'stock-images', public: true, file_size_limit: 5242880, allowed_mime_types: ['image/jpeg','image/png','image/webp'] }),
+        });
+        const urls: string[] = [];
+        for (let i = 0; i < images.length; i++) {
+          const match = String(images[i]).match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
+          if (!match) throw new HttpErr(400, 'Only JPEG, PNG or WebP images are accepted');
+          const binary = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0));
+          if (binary.length > 5 * 1024 * 1024) throw new HttpErr(400, 'Each stock image must be under 5 MB');
+          const ext = match[1].split('/')[1].replace('jpeg', 'jpg');
+          const path = `${productId}/${crypto.randomUUID()}.${ext}`;
+          const uploaded = await fetch(`${SUPABASE_URL}/storage/v1/object/stock-images/${path}`, {
+            method: 'POST', headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': match[1], 'x-upsert': 'false' }, body: binary,
+          });
+          if (!uploaded.ok) throw new HttpErr(502, `Stock image upload failed: ${await uploaded.text()}`);
+          urls.push(`${SUPABASE_URL}/storage/v1/object/public/stock-images/${path}`);
+        }
+        return json({ urls }, 201);
       }
 
       case 'POST /api/stock/adjust': {
@@ -1168,7 +1212,15 @@ Deno.serve(async (req: Request) => {
             cost_price: Number(r.cost_price) || 0, selling_price: Number(r.selling_price) || 0,
             qty_on_hand: Math.max(0, Math.trunc(Number(r.qty_on_hand) || 0)),
             reorder_level: Math.max(0, Math.trunc(Number(r.reorder_level) || 0)),
-            unit: r.unit ?? 'unit', is_service: !!r.is_service, updated_at: now(),
+            unit: r.unit ?? 'unit',
+            length: Number.isFinite(Number(r.length)) ? Number(r.length) : null,
+            length_unit: String(r.length_unit ?? ''),
+            width: Number.isFinite(Number(r.width)) ? Number(r.width) : null,
+            width_unit: String(r.width_unit ?? ''),
+            size: Number.isFinite(Number(r.size)) ? Number(r.size) : null,
+            size_unit: String(r.size_unit ?? ''),
+            image_urls: Array.isArray(r.image_urls) ? r.image_urls.map(String).slice(0, 10) : [],
+            is_service: !!r.is_service, updated_at: now(),
           } }, { upsert: true });
           accepted.push(key);
         }

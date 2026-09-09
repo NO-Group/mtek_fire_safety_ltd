@@ -714,6 +714,11 @@ class AppStore extends ChangeNotifier {
   /// pre-seeded — everything is entered here) and push it to the same server
   /// both builds use. Local cache mirrors it; offline it queues for sync.
   Future<void> addProduct(Product p) async {
+    final normalized = p.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    if (products.any((x) => x.id != p.id &&
+        x.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ') == normalized)) {
+      throw Exception('This stock item already exists. Select or edit the existing item instead.');
+    }
     final serverApplied = await _apiPost('/api/products/upsert', {
       'products': [productToJson(p)],
     });
@@ -731,6 +736,21 @@ class AppStore extends ChangeNotifier {
       unawaited(flushSyncQueue());
     }
     notifyListeners();
+  }
+
+  Future<List<String>> uploadProductImages(String productId, List<String> dataUrls) async {
+    if (dataUrls.isEmpty) return const [];
+    if (_api == null || AuthStore.instance.accessToken == null) {
+      throw Exception('Cloud connection is required to upload stock images.');
+    }
+    final res = await _api!.post('/api/products/images', {
+      'product_id': productId, 'images': dataUrls,
+    });
+    if (res == null || !res.ok || res.json is! Map) {
+      throw Exception((res?.json is Map ? (res!.json as Map)['error'] : null) ??
+          'Could not upload stock images.');
+    }
+    return ((res.json as Map)['urls'] as List? ?? const []).map((x) => '$x').toList();
   }
 
   /// Attach real site photos (data URLs) to a MILS job.
@@ -1788,7 +1808,12 @@ Map<String, dynamic> productToJson(Product p) => {
       'id': p.id, 'name': p.name, 'category': p.category.name,
       'cost_price': p.costPrice, 'selling_price': p.sellingPrice,
       'qty_on_hand': p.qtyOnHand, 'reorder_level': p.reorderLevel,
-      'unit': p.unit, 'is_service': p.isService,
+      'unit': p.unit,
+      'length': p.length, 'length_unit': p.lengthUnit,
+      'width': p.width, 'width_unit': p.widthUnit,
+      'size': p.size, 'size_unit': p.sizeUnit,
+      'image_urls': p.imageUrls,
+      'is_service': p.isService,
     };
 
 List<Product> parseProducts(dynamic raw) {
@@ -1805,6 +1830,10 @@ List<Product> parseProducts(dynamic raw) {
       qtyOnHand: _asInt(m['qty_on_hand'] ?? m['QTY / OPENING BALANCE']),
       reorderLevel: _asInt(m['reorder_level'] ?? m['REORDER LEVEL']),
       unit: '${m['unit'] ?? 'pcs'}',
+      length: (m['length'] as num?)?.toDouble(), lengthUnit: '${m['length_unit'] ?? ''}',
+      width: (m['width'] as num?)?.toDouble(), widthUnit: '${m['width_unit'] ?? ''}',
+      size: (m['size'] as num?)?.toDouble(), sizeUnit: '${m['size_unit'] ?? ''}',
+      imageUrls: (m['image_urls'] as List? ?? const []).map((x) => '$x').toList(),
       isService: m['is_service'] == true,
     );
   }).toList();

@@ -340,7 +340,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Widget _rail({required bool extended}) {
     return Container(
       decoration: const BoxDecoration(gradient: Mtek.navyGradient),
-      child: NavigationRail(
+      child: LayoutBuilder(builder: (context, constraints) => Scrollbar(
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          primary: true,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: NavigationRail(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         extended: extended,
@@ -369,7 +375,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               label: Text(d.label),
             ),
         ],
-      ),
+            ),
+          ),
+        ),
+      )),
     );
   }
 

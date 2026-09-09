@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/format.dart' as fmt;
+import '../../core/phone.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/auth_store.dart';
@@ -156,6 +157,35 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
+  Future<void> _addCustomerAtSale(AppStore store, void Function(VoidCallback) update) async {
+    final name = TextEditingController(), phone = TextEditingController();
+    final ok = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Add new customer'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: 'Name / company *')),
+        const SizedBox(height: 10),
+        TextField(controller: phone, keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(labelText: 'Phone with country code *', hintText: '+2348033498452')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Add customer')),
+      ],
+    ));
+    if (ok != true || !mounted) return;
+    final phoneError = internationalPhoneError(phone.text, required: true);
+    if (name.text.trim().length < 2 || phoneError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(phoneError ?? 'Enter the customer name.')));
+      return;
+    }
+    final customer = Customer(
+      id: 'C${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}',
+      name: name.text.trim(), isCorporate: false,
+      phone: normalizeInternationalPhone(phone.text), email: '', address: '');
+    store.addCustomer(customer);
+    update(() => _customer = customer);
+  }
+
   Widget _cartPanel(AppStore store, int subtotal, {StateSetter? routeSetState}) {
     void update(VoidCallback change) {
       setState(change);
@@ -226,6 +256,9 @@ class _SalesScreenState extends State<SalesScreen> {
               ],
               onChanged: (c) => update(() => _customer = c),
             ),
+            Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+              onPressed: () => _addCustomerAtSale(store, update),
+              icon: const Icon(Icons.person_add_alt_1), label: const Text('Add new customer'))),
             const SizedBox(height: 12),
             ..._cart.values.map((i) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),

@@ -842,10 +842,31 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Column(children: [
-              TextField(
-                decoration: const InputDecoration(labelText: 'Product *'),
-                controller: TextEditingController(text: _waybill.rows[i].product),
-                onChanged: (v) => _waybill.rows[i].product = v,
+              Autocomplete<Product>(
+                initialValue: TextEditingValue(text: _waybill.rows[i].product),
+                displayStringForOption: (p) => p.name,
+                optionsBuilder: (value) {
+                  final q = value.text.trim().toLowerCase();
+                  if (q.isEmpty) return const Iterable<Product>.empty();
+                  return AppStore.instance.products.where((p) =>
+                    p.name.toLowerCase().contains(q) || p.id.toLowerCase().contains(q));
+                },
+                onSelected: (p) => setState(() {
+                  _waybill.rows[i].product = p.name;
+                  if (_waybill.rows[i].techSpec.trim().isEmpty) {
+                    final specs = <String>[
+                      if (p.length != null) 'L ${p.length} ${p.lengthUnit}',
+                      if (p.width != null) 'W ${p.width} ${p.widthUnit}',
+                      if (p.size != null) 'Size ${p.size} ${p.sizeUnit}',
+                    ];
+                    _waybill.rows[i].techSpec = specs.join(' · ');
+                  }
+                }),
+                fieldViewBuilder: (_, controller, focus, submit) => TextField(
+                  controller: controller, focusNode: focus,
+                  decoration: const InputDecoration(labelText: 'Product *', hintText: 'Type to select existing stock'),
+                  onChanged: (v) => _waybill.rows[i].product = v,
+                ),
               ),
               Row(children: [
                 Expanded(child: TextField(
