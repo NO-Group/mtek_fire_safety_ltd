@@ -96,7 +96,7 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
   void _formatSelectedLines({required bool numbered}) {
     final selection = _body.selection;
     if (!selection.isValid) return;
-    final start = _body.text.lastIndexOf('\n', selection.start - 1) + 1;
+    final start = selection.start <= 0 ? 0 : _body.text.lastIndexOf('\n', selection.start - 1) + 1;
     final after = _body.text.indexOf('\n', selection.end);
     final end = after < 0 ? _body.text.length : after;
     var n = 0;
@@ -261,7 +261,8 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
         Card(child: Padding(padding: const EdgeInsets.all(10), child: Column(children: [
           for (final row in _table) Row(children: [for (final cell in row)
             Expanded(child: Padding(padding: const EdgeInsets.all(2), child: TextField(
-              controller: cell, decoration: const InputDecoration(isDense: true, hintText: 'Table cell'))))]),
+              controller: cell, onChanged: (_) => _scheduleSave(),
+              decoration: const InputDecoration(isDense: true, hintText: 'Table cell'))))]),
           Row(children: [TextButton.icon(onPressed: () => setState(() => _table.add(
             List.generate(_table.first.length, (_) => TextEditingController()))), icon: const Icon(Icons.add), label: const Text('Add row')),
             TextButton.icon(onPressed: () => setState(() { for (final row in _table) { row.add(TextEditingController()); } }), icon: const Icon(Icons.view_column_outlined), label: const Text('Add column')),
@@ -317,7 +318,11 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
         const SizedBox(height: 8), TextField(controller: replace, decoration: const InputDecoration(labelText: 'Replace with')),
       ]), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Replace all'))]));
-    if (ok == true && find.text.isNotEmpty) _setBody(_body.text.replaceAll(find.text, replace.text));
+    if (ok == true && find.text.isNotEmpty) {
+      _undo.add(_body.text); _redo.clear();
+      _setBody(_body.text.replaceAll(find.text, replace.text));
+      setState(() {}); _scheduleSave();
+    }
   }
 
   Future<void> _chooseTemplate() async {
@@ -341,6 +346,7 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Replace'))]));
       if (replace != true) return;
     }
+    _undo.add(_body.text); _redo.clear();
     _setBody(text); setState(() {}); _scheduleSave();
   }
 
