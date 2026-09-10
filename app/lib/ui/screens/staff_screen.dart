@@ -62,6 +62,27 @@ class _StaffScreenState extends State<StaffScreen> {
     }
   }
 
+  Future<void> _deleteStaff(StaffMember s) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Permanently delete staff?'),
+      content: Text('Delete ${s.name.isEmpty ? s.email : s.name} from MFSL Office and Supabase Authentication? '
+        'They will immediately lose access. Historical documents and transactions will be preserved.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Mtek.danger),
+          onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete permanently')),
+      ],
+    ));
+    if (confirmed != true || !mounted) return;
+    setState(() => _busyUid = s.uid);
+    final error = await AppStore.instance.deleteStaff(s.uid);
+    if (!mounted) return;
+    setState(() => _busyUid = null);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: error == null ? Mtek.success : Mtek.danger,
+      content: Text(error ?? 'Staff account permanently deleted from the backend.')));
+  }
+
   Uint8List? _passport(StaffMember s) {
     if (s.passportPhoto.isEmpty) return null;
     try { return base64Decode(s.passportPhoto.split(',').last); } catch (_) { return null; }
@@ -89,6 +110,18 @@ class _StaffScreenState extends State<StaffScreen> {
           SizedBox(width: double.infinity, child: FilledButton.icon(
             onPressed: () => _downloadIdCard(s), icon: const Icon(Icons.badge_outlined),
             label: const Text('Download virtual ID card'))),
+          if (AuthStore.instance.isCeo && s.role != 'ceo') ...[
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(foregroundColor: Mtek.danger),
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteStaff(s);
+              },
+              icon: const Icon(Icons.person_remove_outlined),
+              label: const Text('Delete staff permanently'),
+            )),
+          ],
         ]))));
   }
 

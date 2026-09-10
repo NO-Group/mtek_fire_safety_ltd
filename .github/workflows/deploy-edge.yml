@@ -80,7 +80,7 @@ jobs:
       - name: Verify live bundle version
         run: |
           set -euo pipefail
-          WANT='2026-09-10-launch-audit1'
+          WANT='2026-09-10-office1'
           BODY=""
           for i in $(seq 1 40); do
             CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health?deep=1&full=1&poll=${GITHUB_RUN_ID}-$i" || true)

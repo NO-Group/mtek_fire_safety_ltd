@@ -29,6 +29,8 @@ class Product {
   final String widthUnit;
   final double? size;
   final String sizeUnit;
+  final double? weight;
+  final String weightUnit;
   final List<String> imageUrls;
   final bool isService;
 
@@ -47,6 +49,8 @@ class Product {
     this.widthUnit = '',
     this.size,
     this.sizeUnit = '',
+    this.weight,
+    this.weightUnit = '',
     this.imageUrls = const [],
     this.isService = false,
   });
@@ -65,6 +69,7 @@ class Product {
         length: length, lengthUnit: lengthUnit,
         width: width, widthUnit: widthUnit,
         size: size, sizeUnit: sizeUnit,
+        weight: weight, weightUnit: weightUnit,
         imageUrls: imageUrls,
         isService: isService,
       );

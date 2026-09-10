@@ -715,6 +715,25 @@ class AppStore extends ChangeNotifier {
     }
   }
 
+  Future<String?> deleteStaff(String uid) async {
+    if (!AuthStore.instance.isCeo) return 'Only the CEO can delete staff accounts';
+    if (_api == null || AuthStore.instance.accessToken == null) {
+      return 'Cloud connection is required. Staff was not deleted.';
+    }
+    try {
+      final res = await _api!.post('/api/staff/delete', {'uid': uid});
+      if (res == null || !res.ok) {
+        return (res?.json is Map ? '${(res!.json as Map)['error'] ?? ''}' : '').trim().isNotEmpty
+            ? '${(res!.json as Map)['error']}' : 'Staff deletion failed';
+      }
+      staff.removeWhere((member) => member.uid == uid);
+      notifyListeners();
+      return null;
+    } catch (error) {
+      return error.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
   /// Role reported by the API for the signed-in user (ceo/admin/sales).
   String remoteRole = '';
 
@@ -788,6 +807,7 @@ class AppStore extends ChangeNotifier {
       unit: original.unit, length: original.length, lengthUnit: original.lengthUnit,
       width: original.width, widthUnit: original.widthUnit,
       size: original.size, sizeUnit: original.sizeUnit,
+      weight: original.weight, weightUnit: original.weightUnit,
       imageUrls: original.imageUrls, isService: original.isService,
     );
     if (_api == null || AuthStore.instance.accessToken == null) {
@@ -813,6 +833,7 @@ class AppStore extends ChangeNotifier {
       unit: original.unit, length: original.length, lengthUnit: original.lengthUnit,
       width: original.width, widthUnit: original.widthUnit,
       size: original.size, sizeUnit: original.sizeUnit,
+      weight: original.weight, weightUnit: original.weightUnit,
       imageUrls: List.unmodifiable(imageUrls), isService: original.isService,
     );
     if (_api == null || AuthStore.instance.accessToken == null) {
@@ -1932,6 +1953,7 @@ Map<String, dynamic> productToJson(Product p) => {
       'length': p.length, 'length_unit': p.lengthUnit,
       'width': p.width, 'width_unit': p.widthUnit,
       'size': p.size, 'size_unit': p.sizeUnit,
+      'weight': p.weight, 'weight_unit': p.weightUnit,
       'image_urls': p.imageUrls,
       'is_service': p.isService,
     };
@@ -1953,6 +1975,7 @@ List<Product> parseProducts(dynamic raw) {
       length: (m['length'] as num?)?.toDouble(), lengthUnit: '${m['length_unit'] ?? ''}',
       width: (m['width'] as num?)?.toDouble(), widthUnit: '${m['width_unit'] ?? ''}',
       size: (m['size'] as num?)?.toDouble(), sizeUnit: '${m['size_unit'] ?? ''}',
+      weight: (m['weight'] as num?)?.toDouble(), weightUnit: '${m['weight_unit'] ?? ''}',
       imageUrls: (m['image_urls'] as List? ?? const []).map((x) => '$x').toList(),
       isService: m['is_service'] == true,
     );

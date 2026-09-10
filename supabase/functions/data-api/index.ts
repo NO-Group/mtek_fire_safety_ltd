@@ -52,7 +52,7 @@ const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
 const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-10-launch-audit1';
+const BUNDLE_VERSION = '2026-09-10-office1';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -880,6 +880,9 @@ Deno.serve(async (req: Request) => {
             width_unit: String(r.width_unit ?? ''),
             size: Number.isFinite(Number(r.size)) ? Number(r.size) : null,
             size_unit: String(r.size_unit ?? ''),
+            weight: Number.isFinite(Number(r.weight)) ? Math.max(0, Number(r.weight)) : null,
+            weight_unit: ['mg', 'g', 'kg', 'tonne', 'oz', 'lb'].includes(String(r.weight_unit))
+              ? String(r.weight_unit) : '',
             image_urls: Array.isArray(r.image_urls) ? r.image_urls.map(String).slice(0, 10) : [],
             is_service: !!r.is_service, updated_at: now(),
           } }, { upsert: true });
@@ -1305,6 +1308,9 @@ Deno.serve(async (req: Request) => {
             width_unit: String(r.width_unit ?? ''),
             size: Number.isFinite(Number(r.size)) ? Number(r.size) : null,
             size_unit: String(r.size_unit ?? ''),
+            weight: Number.isFinite(Number(r.weight)) ? Math.max(0, Number(r.weight)) : null,
+            weight_unit: ['mg', 'g', 'kg', 'tonne', 'oz', 'lb'].includes(String(r.weight_unit))
+              ? String(r.weight_unit) : '',
             image_urls: Array.isArray(r.image_urls) ? r.image_urls.map(String).slice(0, 10) : [],
             is_service: !!r.is_service, updated_at: now(),
           } }, { upsert: true });
@@ -1488,6 +1494,35 @@ Deno.serve(async (req: Request) => {
             };
           }),
         });
+      }
+      case 'POST /api/staff/delete': {
+        requireRole(user, ['ceo'], 'delete staff accounts');
+        if (!SERVICE_ROLE) throw new HttpErr(503, 'Staff deletion is temporarily unavailable');
+        const b = await req.json();
+        const targetUid = String(b.uid ?? '').trim();
+        if (!targetUid) throw new HttpErr(400, 'Staff member id required');
+        if (targetUid === user.uid) throw new HttpErr(400, 'The signed-in CEO account cannot delete itself');
+        const profiles = await coll.profiles();
+        const target = await profiles.findOne({ _id: targetUid }) as Record<string, unknown> | null;
+        if (!target) throw new HttpErr(404, 'Staff member not found');
+        if (String(target.email ?? '').toLowerCase() === CEO_EMAIL || target.role === 'ceo') {
+          throw new HttpErr(400, 'The CEO account cannot be deleted');
+        }
+        // Delete the real Supabase Auth identity first. A 404 is acceptable on
+        // retry, allowing a previous partial attempt to finish profile cleanup.
+        const authDelete = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${targetUid}`, {
+          method: 'DELETE',
+          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` },
+        });
+        if (!authDelete.ok && authDelete.status !== 404) {
+          throw new HttpErr(502, 'Supabase rejected the staff deletion; no local success was recorded');
+        }
+        await profiles.deleteOne({ _id: targetUid });
+        profileCache.delete(targetUid);
+        await audit('people', 'delete-staff', String(target.email ?? targetUid), user);
+        await notify('staff', 'Staff account deleted',
+          `${user.name} permanently removed ${target.full_name ?? target.email} from MFSL Office`, targetUid, user);
+        return json({ ok: true, auth_deleted: true, profile_deleted: true });
       }
       case 'POST /api/staff/role': {
         requireRole(user, ['ceo'], 'promote or demote staff');

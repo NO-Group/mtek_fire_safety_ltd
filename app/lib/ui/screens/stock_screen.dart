@@ -34,6 +34,8 @@ class _StockScreenState extends State<StockScreen> {
     final length = TextEditingController(), lengthUnit = TextEditingController(text: 'cm');
     final width = TextEditingController(), widthUnit = TextEditingController(text: 'cm');
     final size = TextEditingController(), sizeUnit = TextEditingController();
+    final weight = TextEditingController();
+    var weightUnit = 'kg';
     final pickedImages = <PlatformFile>[];
     var category = ProductCategory.fire;
     var isService = false;
@@ -97,6 +99,20 @@ class _StockScreenState extends State<StockScreen> {
                   ]),
                   const SizedBox(height: 8),
                 ],
+                Row(children: [
+                  Expanded(flex: 2, child: TextField(controller: weight,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Weight (optional)'))),
+                  const SizedBox(width: 10),
+                  Expanded(child: DropdownButtonFormField<String>(
+                    value: weightUnit,
+                    decoration: const InputDecoration(labelText: 'Weight unit'),
+                    items: const ['mg', 'g', 'kg', 'tonne', 'oz', 'lb']
+                      .map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
+                    onChanged: (value) => setDialog(() => weightUnit = value ?? 'kg'),
+                  )),
+                ]),
+                const SizedBox(height: 10),
                 OutlinedButton.icon(
                   onPressed: () async {
                     final result = await FilePicker.platform.pickFiles(
@@ -168,6 +184,7 @@ class _StockScreenState extends State<StockScreen> {
         length: double.tryParse(length.text), lengthUnit: length.text.trim().isEmpty ? '' : lengthUnit.text.trim(),
         width: double.tryParse(width.text), widthUnit: width.text.trim().isEmpty ? '' : widthUnit.text.trim(),
         size: double.tryParse(size.text), sizeUnit: size.text.trim().isEmpty ? '' : sizeUnit.text.trim(),
+        weight: double.tryParse(weight.text), weightUnit: weight.text.trim().isEmpty ? '' : weightUnit,
         imageUrls: imageUrls,
         isService: isService,
       ));
@@ -192,6 +209,7 @@ class _StockScreenState extends State<StockScreen> {
       if (p.length != null) 'L ${p.length} ${p.lengthUnit}',
       if (p.width != null) 'W ${p.width} ${p.widthUnit}',
       if (p.size != null) 'Size ${p.size} ${p.sizeUnit}',
+      if (p.weight != null) 'Weight ${p.weight} ${p.weightUnit}',
     ];
     return values.isEmpty ? '' : ' · ${values.join(' · ')}';
   }
