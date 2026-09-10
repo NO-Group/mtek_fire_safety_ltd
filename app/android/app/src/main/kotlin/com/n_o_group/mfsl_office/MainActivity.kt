@@ -1,4 +1,4 @@
-package com.n_o_group.mfsl
+package com.n_o_group.mfsl_office
 
 import android.content.Context
 import android.content.Intent
@@ -91,6 +91,6 @@ class MainActivity : FlutterFragmentActivity() {
         const val KEY_INVOICES = "invoices"
         const val DASH = "—"
 
-        const val ACTION_REFRESH = "com.n_o_group.mfsl.WIDGET_REFRESH"
+        const val ACTION_REFRESH = "com.n_o_group.mfsl_office.WIDGET_REFRESH"
     }
 }

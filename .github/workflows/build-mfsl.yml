@@ -43,6 +43,8 @@ jobs:
         run: bash ci/build-android.sh
         env:
           GH_TOKEN: ${{ github.token }}
+          MFSL_ANDROID_KEYSTORE_BASE64: ${{ secrets.MFSL_ANDROID_KEYSTORE_BASE64 }}
+          MFSL_SIGNING_PASSWORD: ${{ secrets.MFSL_SIGNING_PASSWORD }}
       - name: Attach APK to this run (Artifacts box)
         uses: actions/upload-artifact@v4
         with:
@@ -59,6 +61,8 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          MFSL_WINDOWS_PFX_BASE64: ${{ secrets.MFSL_WINDOWS_PFX_BASE64 }}
+          MFSL_SIGNING_PASSWORD: ${{ secrets.MFSL_SIGNING_PASSWORD }}
       - name: Attach Windows installer + portable zip to this run (Artifacts box)
         uses: actions/upload-artifact@v4
         with:

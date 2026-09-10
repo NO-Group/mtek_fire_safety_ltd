@@ -1,4 +1,4 @@
-package com.n_o_group.mfsl
+package com.n_o_group.mfsl_office
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager

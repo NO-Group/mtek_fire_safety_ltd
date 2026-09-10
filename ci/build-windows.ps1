@@ -38,7 +38,15 @@ flutter build windows --release
 
 $OUT = "build\windows\x64\runner\Release"
 Copy-Item "$OUT\mtek_inventory.exe" "$OUT\MFSL Office.exe"
-dart run msix:create
+if ($env:MFSL_WINDOWS_PFX_BASE64 -and $env:MFSL_SIGNING_PASSWORD) {
+  $pfx = Join-Path $env:RUNNER_TEMP "mfsl-office-windows.pfx"
+  [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:MFSL_WINDOWS_PFX_BASE64))
+  Write-Host "Packaging with the persistent N.O Group self-signed certificate."
+  dart run msix:create --certificate-path $pfx --certificate-password $env:MFSL_SIGNING_PASSWORD
+} else {
+  Write-Warning "Persistent Windows signing secrets are absent; msix will generate a temporary certificate."
+  dart run msix:create
+}
 Copy-Item "$OUT\MFSL-Office-Setup.msix" "$OUT\MFSL.Inventory.Setup.msix"
 
 # Portable zip - WE zip it ourselves; GitHub then serves it byte-for-byte

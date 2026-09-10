@@ -68,6 +68,20 @@ if command -v pdftoppm >/dev/null || (sudo apt-get install -y -qq poppler-utils 
     git add docs/previews && git diff --cached --quiet || \
     ( git commit -qm "ci: refresh PDF layout previews [skip ci]" && git push -q origin "HEAD:${GITHUB_REF_NAME}" ) ) || true
 fi
+# Reusable production identity. Once the two repository secrets are installed,
+# every APK is signed by the same key and can update earlier MFSL Office builds.
+if [ -n "${MFSL_ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${MFSL_SIGNING_PASSWORD:-}" ]; then
+  KEYSTORE="${RUNNER_TEMP:-/tmp}/mfsl-office-android.p12"
+  printf '%s' "$MFSL_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+  chmod 600 "$KEYSTORE"
+  export MFSL_ANDROID_KEYSTORE="$KEYSTORE"
+  export MFSL_ANDROID_STORE_PASSWORD="$MFSL_SIGNING_PASSWORD"
+  export MFSL_ANDROID_KEY_PASSWORD="$MFSL_SIGNING_PASSWORD"
+  export MFSL_ANDROID_KEY_ALIAS="com.n_o_group.mfsl_office"
+  echo "Building with the persistent MFSL Office production signing key."
+else
+  echo "::warning::Production Android signing secrets are absent; using the debug identity."
+fi
 flutter build apk --release
 
 APK="build/app/outputs/flutter-apk/app-release.apk"

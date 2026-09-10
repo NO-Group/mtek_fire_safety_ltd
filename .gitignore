@@ -64,3 +64,12 @@ app/M-TEK-windows.zip
 image-search/
 node_modules/
 backend/data/
+
+# Local production signing material — distribute out of band, never commit
+signing-output/
+*.jks
+*.p12
+*.pfx
+*.cer
+android/key.properties
+app/android/key.properties

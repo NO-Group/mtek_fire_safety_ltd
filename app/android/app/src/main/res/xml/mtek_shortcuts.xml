@@ -9,8 +9,8 @@
         android:shortcutLongLabel="@string/shortcut_new_sale">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.n_o_group.mfsl"
-            android:targetClass="com.n_o_group.mfsl.MainActivity">
+            android:targetPackage="com.n_o_group.mfsl_office"
+            android:targetClass="com.n_o_group.mfsl_office.MainActivity">
             <extra android:name="mtek_screen" android:value="sales" />
         </intent>
     </shortcut>
@@ -23,8 +23,8 @@
         android:shortcutLongLabel="@string/shortcut_new_receipt">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.n_o_group.mfsl"
-            android:targetClass="com.n_o_group.mfsl.MainActivity">
+            android:targetPackage="com.n_o_group.mfsl_office"
+            android:targetClass="com.n_o_group.mfsl_office.MainActivity">
             <extra android:name="mtek_screen" android:value="receipts" />
         </intent>
     </shortcut>
@@ -37,8 +37,8 @@
         android:shortcutLongLabel="@string/shortcut_view_stock">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.n_o_group.mfsl"
-            android:targetClass="com.n_o_group.mfsl.MainActivity">
+            android:targetPackage="com.n_o_group.mfsl_office"
+            android:targetClass="com.n_o_group.mfsl_office.MainActivity">
             <extra android:name="mtek_screen" android:value="stock" />
         </intent>
     </shortcut>
