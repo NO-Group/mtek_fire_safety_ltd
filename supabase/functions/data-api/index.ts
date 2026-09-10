@@ -352,6 +352,23 @@ Deno.serve(async (req: Request) => {
     if (path === '/' || path === '/health') {
       if (url.searchParams.get('deep') === '1') {
         await ensureCore();
+        if (url.searchParams.get('full') === '1') {
+          const [products, customers, txns, receipts, invoices, docs, sales, mils, adjustments] = await Promise.all([
+            (await coll.products()).find({}).limit(1000).toArray(),
+            (await coll.customers()).find({}).limit(1000).toArray(),
+            (await coll.txns()).find({}).limit(300).toArray(),
+            (await coll.receipts()).find({}).limit(300).toArray(),
+            (await coll.invoices()).find({}).limit(300).toArray(),
+            (await coll.archive()).find({}).limit(100).toArray(),
+            (await coll.sales()).find({}).limit(300).toArray(),
+            (await coll.mils()).find({}).limit(300).toArray(),
+            (await coll.adjustments()).find({}).limit(300).toArray(),
+          ]);
+          const payload = { products, customers, txns,
+            receipts: receipts.map(({ customer_signature: _s, ...r }) => r), invoices, docs,
+            sales: sales.map(({ customer_signature: _s, ...r }) => r), mils, adjustments };
+          return json({ ok: true, version: BUNDLE_VERSION, bootstrap_bytes: new TextEncoder().encode(JSON.stringify(payload)).length });
+        }
         return json({ ok: true, version: BUNDLE_VERSION, databases: SECTION_DBS, serials: await peekSerials() });
       }
       return json({ ok: true, version: BUNDLE_VERSION, databases: SECTION_DBS });
@@ -693,9 +710,16 @@ Deno.serve(async (req: Request) => {
           (await coll.mils()).find({}).sort({ created_at: -1 }).limit(300).toArray(),
           (await coll.adjustments()).find({}).sort({ created_at: -1 }).limit(300).toArray(),
         ]);
+        // Hand-drawn signatures are large base64 PNGs and were duplicated in
+        // both sale and receipt rows. Returning hundreds of them made the
+        // authenticated bootstrap exceed the Edge gateway response limit,
+        // which Cloudflare reported as HTTP 520. Lists only need metadata;
+        // generated PDFs retain signatures in their authoritative records.
+        const lightSales = sales.map(({ customer_signature: _signature, ...row }) => row);
+        const lightReceipts = receipts.map(({ customer_signature: _signature, ...row }) => row);
         return json({
           user: { uid: user.uid, email: user.email, name: user.name, role: user.role },
-          products, customers, transactions: txns, receipts, invoices, docs, sales, mils, adjustments,
+          products, customers, transactions: txns, receipts: lightReceipts, invoices, docs, sales: lightSales, mils, adjustments,
           settings: {
             vat_enabled: settings?.vat_enabled ?? false,
             vat_rate: settings?.vat_rate ?? 0.075,
