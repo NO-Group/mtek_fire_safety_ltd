@@ -122,11 +122,9 @@ class SectionTitle extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 12,
-            letterSpacing: 1.2,
-            fontWeight: FontWeight.w800,
-            color: Mtek.gray600,
+          style: TextStyle(
+            fontSize: 12, letterSpacing: 1.2, fontWeight: FontWeight.w800,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
         const Spacer(),
@@ -175,15 +173,15 @@ class StatCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(label,
-                      style: const TextStyle(
-                          color: Mtek.gray500, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
             const SizedBox(height: 14),
             Text(value,
-                style: const TextStyle(
-                    fontSize: 26, fontWeight: FontWeight.w800, color: Mtek.ink)),
+                style: TextStyle(
+                    fontSize: 26, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.onSurface)),
             if (hint != null) ...[
               const SizedBox(height: 5),
               Row(
@@ -196,7 +194,7 @@ class StatCard extends StatelessWidget {
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(hint!,
-                        style: const TextStyle(color: Mtek.gray500, fontSize: 11.5)),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11.5)),
                   ),
                 ],
               ),
@@ -228,9 +226,9 @@ class MetricPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Mtek.gray200),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -241,10 +239,10 @@ class MetricPill extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style: const TextStyle(fontSize: 10.5, color: Mtek.gray500)),
+                  style: TextStyle(fontSize: 10.5, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               Text(value,
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w800, color: Mtek.ink)),
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.onSurface)),
             ],
           ),
         ],
@@ -330,7 +328,7 @@ class AmountText extends StatelessWidget {
       fmt.naira(amount),
       style: TextStyle(
         fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-        color: color ?? Mtek.ink,
+        color: color ?? Theme.of(context).colorScheme.onSurface,
         fontSize: size,
       ),
     );
@@ -355,16 +353,16 @@ class EmptyHint extends StatelessWidget {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: Mtek.gray100,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
-                border: Border.all(color: Mtek.gray200),
+                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
               ),
-              child: Icon(icon, size: 28, color: Mtek.gray400),
+              child: Icon(icon, size: 28, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 14),
             Text(message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Mtek.gray500, fontSize: 13.5)),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13.5)),
           ],
         ),
       ),

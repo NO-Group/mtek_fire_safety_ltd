@@ -127,7 +127,7 @@ class _StaffScreenState extends State<StaffScreen> {
 
   Widget _detail(String label, String value) => Padding(
     padding: const EdgeInsets.only(bottom: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(width: 90, child: Text(label, style: const TextStyle(color: Mtek.gray500))),
+      SizedBox(width: 90, child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
       Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
     ]));
 
@@ -193,12 +193,12 @@ class _StaffScreenState extends State<StaffScreen> {
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
-                        child: Text('No staff records yet', style: TextStyle(color: Mtek.gray500)),
+                        child: Text('No staff records yet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ),
                     )
                   : ListView.separated(
                       itemCount: list.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         final s = list[i];
                         return ListTile(

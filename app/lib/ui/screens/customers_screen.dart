@@ -62,7 +62,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               clipBehavior: Clip.antiAlias,
               child: ListView.separated(
                 itemCount: list.length,
-                separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   final c = list[i];
                   return ListTile(
@@ -142,21 +142,21 @@ class _CustomersScreenState extends State<CustomersScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-            Text(c.isCorporate ? 'Corporate customer' : 'Individual customer', style: const TextStyle(color: Mtek.gray500, fontSize: 13)),
+            Text(c.isCorporate ? 'Corporate customer' : 'Individual customer', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
             const SizedBox(height: 16),
             _row('Phone', c.phone),
             _row('Email', c.email.isEmpty ? '—' : c.email),
             _row('Address', c.address.isEmpty ? '—' : c.address),
             _row('Credit balance', fmt.naira(c.creditBalance)),
             const SizedBox(height: 8),
-            Text('PURCHASE HISTORY (${history.length})', style: const TextStyle(fontSize: 11, letterSpacing: 1, color: Mtek.gray500, fontWeight: FontWeight.w700)),
+            Text('PURCHASE HISTORY (${history.length})', style: TextStyle(fontSize: 11, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            if (history.isEmpty) const Text('No purchases yet', style: TextStyle(color: Mtek.gray500)),
+            if (history.isEmpty) Text('No purchases yet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ...history.take(5).map((s) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
                     children: [
-                      SizedBox(width: 70, child: Text(fmt.fmtDateShort(s.date), style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
+                      SizedBox(width: 70, child: Text(fmt.fmtDateShort(s.date), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
                       Expanded(child: Text(s.items.map((i) => '${i.product.name} ×${i.qty}').join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
                       AmountText(s.total),
                     ],
@@ -202,7 +202,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(
           children: [
-            SizedBox(width: 110, child: Text(k, style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
+            SizedBox(width: 110, child: Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
             Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           ],
         ),

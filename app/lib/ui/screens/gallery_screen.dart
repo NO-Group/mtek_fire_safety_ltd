@@ -30,7 +30,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     for (final p in store.products) {
       for (var i = 0; i < p.imageUrls.length; i++) {
         out.add(_GalleryItem(p.imageUrls[i], p.name,
-          '${p.id} · ${p.category.name.toUpperCase()} · ${p.qtyOnHand} ${p.unit} · ${fmt.naira(p.sellingPrice)} · Image ${i + 1} of ${p.imageUrls.length}', 'Stock'));
+          '${p.id}${p.brand.isEmpty ? '' : ' · ${p.brand}'} · ${p.category.name.toUpperCase()} · ${p.qtyOnHand} ${p.unit} · ${fmt.naira(p.sellingPrice)} · Image ${i + 1} of ${p.imageUrls.length}', 'Stock'));
       }
     }
     for (final s in store.staff) {

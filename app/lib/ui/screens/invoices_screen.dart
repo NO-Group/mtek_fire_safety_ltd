@@ -46,7 +46,7 @@ class InvoicesScreen extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               child: ListView.separated(
                 itemCount: invoices.length + 1,
-                separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   if (i == invoices.length) return const LoadOlderTile('invoices');
                   final inv = invoices[i];

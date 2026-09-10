@@ -78,7 +78,7 @@ class _MilsScreenState extends State<MilsScreen> {
                   ? const EmptyHint('Nothing here — good news!')
                   : ListView.separated(
                       itemCount: logs.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         final l = logs[i];
                         final overdue = l.isOverdue(now);
@@ -154,8 +154,8 @@ class _MilsScreenState extends State<MilsScreen> {
   Widget _photosStrip(MaintenanceLog l) {
     final photos = AppStore.instance.milsPhotos[l.id] ?? const <String>[];
     if (photos.isEmpty) {
-      return const Text('No site photos yet — use Photos to attach real ones.',
-          style: TextStyle(fontSize: 11.5, color: Mtek.gray500));
+      return Text('No site photos yet — use Photos to attach real ones.',
+          style: TextStyle(fontSize: 11.5, color: Theme.of(context).colorScheme.onSurfaceVariant));
     }
     return SizedBox(
       height: 64,
@@ -182,7 +182,7 @@ class _MilsScreenState extends State<MilsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l.id, style: const TextStyle(color: Mtek.gray500, fontSize: 12)),
+            Text(l.id, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
             Text(l.equipment, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
             const SizedBox(height: 14),
             _row('Client', '${l.client.name} — ${l.location}'),
@@ -225,7 +225,7 @@ class _MilsScreenState extends State<MilsScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(width: 90, child: Text(k, style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
+            SizedBox(width: 90, child: Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
             Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           ],
         ),

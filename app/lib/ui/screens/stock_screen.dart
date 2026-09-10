@@ -12,7 +12,7 @@ import '../widgets.dart';
 
 /// STOCK — quantities, prices, low-stock alerts, adjustments (audit trail).
 /// Stock is NEVER pre-seeded: every product is entered through the app's own
-/// fields (Add product / Import TXT) and saved to the one shared server.
+/// fields (Add product) and saved to the one shared server.
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});
 
@@ -26,6 +26,7 @@ class _StockScreenState extends State<StockScreen> {
   /// stock is hard-coded or pre-seeded. Saved to the shared server.
   Future<void> _addProduct(BuildContext context) async {
     final name = TextEditingController();
+    final brand = TextEditingController();
     final cost = TextEditingController();
     final price = TextEditingController();
     final qty = TextEditingController();
@@ -51,6 +52,9 @@ class _StockScreenState extends State<StockScreen> {
               children: [
                 TextField(controller: name, autofocus: true,
                     decoration: const InputDecoration(labelText: 'Product name *')),
+                const SizedBox(height: 10),
+                TextField(controller: brand,
+                    decoration: const InputDecoration(labelText: 'Brand (optional)', prefixIcon: Icon(Icons.sell_outlined))),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<ProductCategory>(
                   value: category,
@@ -175,6 +179,7 @@ class _StockScreenState extends State<StockScreen> {
       await AppStore.instance.addProduct(Product(
         id: id,
         name: name.text.trim(),
+        brand: brand.text.trim(),
         category: category,
         costPrice: n(cost.text),
         sellingPrice: n(price.text),
@@ -214,29 +219,6 @@ class _StockScreenState extends State<StockScreen> {
     return values.isEmpty ? '' : ' · ${values.join(' · ')}';
   }
 
-  /// Optional bulk path: pick an edited TXT file, rows upsert over the
-  /// catalogue (existing IDs update, new IDs append) — no terminal needed.
-  Future<void> _importTxt(BuildContext context) async {
-    final text = await pickProductsTxt();
-    if (text == null || text.trim().isEmpty) return;
-    try {
-      final count = await AppStore.instance.importProductsTsv(text);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            backgroundColor: Mtek.success,
-            content: Text('$count product row(s) imported — catalogue updated.')));
-      }
-    } catch (e) {
-      debugPrint('Product import failed: $e');
-      if (context.mounted) {
-        final msg = e is Exception ? e.toString().replaceFirst('Exception: ', '') : '';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            backgroundColor: Mtek.danger,
-            content: Text(msg.isEmpty ? 'Could not import the products — please try again.' : msg)));
-      }
-    }
-  }
-
   String _query = '';
   String? _category;
 
@@ -248,6 +230,7 @@ class _StockScreenState extends State<StockScreen> {
     final list = store.products.where((p) {
       if (_category != null && p.category.name != _category) return false;
       return p.name.toLowerCase().contains(_query.toLowerCase()) ||
+          p.brand.toLowerCase().contains(_query.toLowerCase()) ||
           p.id.toLowerCase().contains(_query.toLowerCase());
     }).toList();
 
@@ -268,13 +251,6 @@ class _StockScreenState extends State<StockScreen> {
                   onPressed: () => _addProduct(context),
                   icon: const Icon(Icons.add_box),
                   label: const Text('Add product'),
-                ),
-              // optional bulk path for the owner's edited TXT file (CEO only)
-              if (AuthStore.instance.isCeo)
-                OutlinedButton.icon(
-                  onPressed: () => _importTxt(context),
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text('Import TXT'),
                 ),
             ],
           ),
@@ -311,7 +287,7 @@ class _StockScreenState extends State<StockScreen> {
                       child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: list.length,
-                separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   final p = list[i];
                   return _productRow(context, p);
@@ -354,7 +330,7 @@ class _StockScreenState extends State<StockScreen> {
       ],
     );
 
-    final details = '${p.id} · ${p.category.name.toUpperCase()} · '
+    final details = '${p.id}${p.brand.isEmpty ? '' : ' · ${p.brand}'} · ${p.category.name.toUpperCase()} · '
         '${p.qtyOnHand} ${p.unit} · cost ${fmt.naira(p.costPrice)}${_dimensionLabel(p)}';
 
     return LayoutBuilder(builder: (context, constraints) {
@@ -378,7 +354,7 @@ class _StockScreenState extends State<StockScreen> {
               if (AuthStore.instance.isManagement)
                 IconButton(
                   tooltip: 'Adjust stock',
-                  icon: const Icon(Icons.tune, color: Mtek.navy700),
+                  icon: const Icon(Icons.tune),
                   onPressed: () => _adjustDialog(context, p),
                 ),
               if (AuthStore.instance.isCeo) productMenu(),
@@ -396,7 +372,7 @@ class _StockScreenState extends State<StockScreen> {
           AmountText(p.sellingPrice),
           const SizedBox(width: 8),
           if (AuthStore.instance.isManagement)
-            IconButton(tooltip: 'Adjust stock', icon: const Icon(Icons.tune, color: Mtek.navy700),
+            IconButton(tooltip: 'Adjust stock', icon: const Icon(Icons.tune),
               onPressed: () => _adjustDialog(context, p)),
           if (AuthStore.instance.isCeo) productMenu(),
         ]),
@@ -458,12 +434,15 @@ class _StockScreenState extends State<StockScreen> {
 
   Future<void> _editProduct(BuildContext context, Product p) async {
     final name = TextEditingController(text: p.name);
+    final brand = TextEditingController(text: p.brand);
     final cost = TextEditingController(text: '${p.costPrice}');
     final price = TextEditingController(text: '${p.sellingPrice}');
     final ok = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
       title: const Text('Edit product'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: 'Product name *')),
+        const SizedBox(height: 10),
+        TextField(controller: brand, decoration: const InputDecoration(labelText: 'Brand (optional)')),
         const SizedBox(height: 10),
         TextField(controller: cost, keyboardType: TextInputType.number,
           decoration: const InputDecoration(labelText: 'Cost price (₦)')),
@@ -483,7 +462,7 @@ class _StockScreenState extends State<StockScreen> {
     }
     try {
       await AppStore.instance.updateProductDetails(p,
-        name: name.text, costPrice: int.tryParse(cost.text.replaceAll(',', '')) ?? 0,
+        name: name.text, brand: brand.text, costPrice: int.tryParse(cost.text.replaceAll(',', '')) ?? 0,
         sellingPrice: int.parse(price.text.replaceAll(',', '')));
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product updated in the cloud.')));
     } catch (error) {
@@ -525,7 +504,7 @@ class _StockScreenState extends State<StockScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Current: ${p.qtyOnHand} ${p.unit}', style: const TextStyle(color: Mtek.gray500)),
+              Text('Current: ${p.qtyOnHand} ${p.unit}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 12),
               TextField(
                 controller: qtyCtrl,

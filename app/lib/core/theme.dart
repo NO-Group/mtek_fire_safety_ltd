@@ -163,6 +163,57 @@ abstract final class MtekTheme {
         iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
           color: states.contains(WidgetState.selected) ? Colors.white : Mtek.gray300)),
       ),
+      popupMenuTheme: const PopupMenuThemeData(
+        color: Mtek.navy800,
+        surfaceTintColor: Colors.transparent,
+        textStyle: TextStyle(color: Colors.white),
+      ),
+      menuTheme: const MenuThemeData(style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(Mtek.navy800),
+        surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+      )),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Mtek.gray100,
+        contentTextStyle: const TextStyle(color: Mtek.gray900, fontSize: 13.5),
+        actionTextColor: Mtek.brand700,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Mtek.radiusSm)),
+      ),
+      textSelectionTheme: const TextSelectionThemeData(
+        cursorColor: Mtek.brand300,
+        selectionColor: Mtek.navy600,
+        selectionHandleColor: Mtek.brand300,
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? Mtek.brand400 : Colors.transparent),
+        checkColor: const WidgetStatePropertyAll(Colors.white),
+        side: const BorderSide(color: Mtek.gray300),
+      ),
+      radioTheme: RadioThemeData(fillColor: WidgetStateProperty.resolveWith((states) =>
+        states.contains(WidgetState.selected) ? Mtek.brand300 : Mtek.gray300)),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? Colors.white : Mtek.gray300),
+        trackColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? Mtek.brand600 : Mtek.navy600),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: Mtek.brand300, linearTrackColor: Mtek.navy600),
+      tabBarTheme: const TabBarThemeData(
+        labelColor: Colors.white, unselectedLabelColor: Mtek.gray300,
+        indicatorColor: Mtek.brand300,
+      ),
+      dataTableTheme: const DataTableThemeData(
+        headingTextStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        dataTextStyle: TextStyle(color: Mtek.gray100),
+        headingRowColor: WidgetStatePropertyAll(Mtek.navy800),
+        dividerThickness: 1,
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(color: Mtek.gray100, borderRadius: BorderRadius.circular(8)),
+        textStyle: const TextStyle(color: Mtek.gray900, fontSize: 12),
+      ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Mtek.navy850,
         surfaceTintColor: Colors.transparent,

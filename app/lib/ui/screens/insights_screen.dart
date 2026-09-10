@@ -178,7 +178,7 @@ class InsightsScreen extends StatelessWidget {
                                     const Spacer(),
                                     AmountText(e.value),
                                     const SizedBox(width: 8),
-                                    Text('${(pct * 100).toStringAsFixed(0)}%', style: const TextStyle(color: Mtek.gray500, fontSize: 12)),
+                                    Text('${(pct * 100).toStringAsFixed(0)}%', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                                   ],
                                 ),
                                 const SizedBox(height: 6),
@@ -292,8 +292,8 @@ class _TransactionSpeedDialState extends State<TransactionSpeedDial>
                 padding: const EdgeInsets.only(top: 10),
                 child: FilledButton.tonalIcon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Mtek.navy800,
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
                     elevation: 3,
                   ),
                   onPressed: () => _openGenerator(actions[i].$4),

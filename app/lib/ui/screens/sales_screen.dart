@@ -123,7 +123,7 @@ class _SalesScreenState extends State<SalesScreen> {
                 ? const EmptyHint('No in-stock products match this search')
                 : ListView.separated(
               itemCount: sellable.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+              separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, i) {
                 final p = sellable.elementAt(i);
                 final inCart = _cart[p.id]?.qty ?? 0;
@@ -474,8 +474,8 @@ class _SalesScreenState extends State<SalesScreen> {
               const Text("Customer's signature",
                   style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              const Text('Proof of purchase — printed on the receipt. You may skip.',
-                  style: TextStyle(fontSize: 11.5, color: Mtek.gray500)),
+              Text('Proof of purchase — printed on the receipt. You may skip.',
+                  style: TextStyle(fontSize: 11.5, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 12),
               SignaturePad(
                 onDone: (bytes) {

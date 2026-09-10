@@ -66,7 +66,7 @@ class ReceiptsScreen extends StatelessWidget {
                   ? const EmptyHint('No receipts yet — complete a sale first')
                   : ListView.separated(
                       itemCount: receipts.length + 1,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         if (i == receipts.length) return const LoadOlderTile('receipts');
                         final r = receipts[i];
@@ -148,7 +148,7 @@ class ReceiptsScreen extends StatelessWidget {
                             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                         Text('Kaduna, Nigeria · RC 1082534', maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: Mtek.gray500)),
+                            style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ],
                     ),
                   ),
@@ -198,7 +198,7 @@ class ReceiptsScreen extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               Text('Issued by: ${r.issuedBy} — thank you for your business.',
-                  style: const TextStyle(fontSize: 11, color: Mtek.gray500)),
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 18),
               LayoutBuilder(builder: (context, box) {
                 final narrow = box.maxWidth < 390;
@@ -306,7 +306,7 @@ class ReceiptsScreen extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 8),
         child: Row(
           children: [
-            SizedBox(width: 140, child: Text(k, style: const TextStyle(color: Mtek.gray500, fontSize: 12))),
+            SizedBox(width: 140, child: Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12))),
             Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           ],
         ),

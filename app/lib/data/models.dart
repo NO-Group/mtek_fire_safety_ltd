@@ -17,6 +17,7 @@ enum AdjustmentReason { restock, damage, correction, returnToSupplier }
 class Product {
   final String id;
   final String name;
+  final String brand;
   final ProductCategory category;
   final int costPrice;
   final int sellingPrice;
@@ -37,6 +38,7 @@ class Product {
   const Product({
     required this.id,
     required this.name,
+    this.brand = '',
     required this.category,
     required this.costPrice,
     required this.sellingPrice,
@@ -60,6 +62,7 @@ class Product {
   Product copyWith({int? qtyOnHand}) => Product(
         id: id,
         name: name,
+        brand: brand,
         category: category,
         costPrice: costPrice,
         sellingPrice: sellingPrice,

@@ -798,10 +798,10 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateProductDetails(Product original, {required String name,
+  Future<void> updateProductDetails(Product original, {required String name, required String brand,
       required int costPrice, required int sellingPrice}) async {
     final updated = Product(
-      id: original.id, name: name.trim(), category: original.category,
+      id: original.id, name: name.trim(), brand: brand.trim(), category: original.category,
       costPrice: costPrice, sellingPrice: sellingPrice,
       qtyOnHand: original.qtyOnHand, reorderLevel: original.reorderLevel,
       unit: original.unit, length: original.length, lengthUnit: original.lengthUnit,
@@ -827,7 +827,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> updateProductImages(Product original, List<String> imageUrls) async {
     final updated = Product(
-      id: original.id, name: original.name, category: original.category,
+      id: original.id, name: original.name, brand: original.brand, category: original.category,
       costPrice: original.costPrice, sellingPrice: original.sellingPrice,
       qtyOnHand: original.qtyOnHand, reorderLevel: original.reorderLevel,
       unit: original.unit, length: original.length, lengthUnit: original.lengthUnit,
@@ -1136,15 +1136,23 @@ class AppStore extends ChangeNotifier {
 
   Future<void> _markAllKnown() async {
     await _loadSyncState();
-    await _markKnown('customers', customers.map(customerToJson));
-    await _markKnown('products', products.map(productToJson));
-    await _markKnown('sales', sales.map(saleToJson));
-    await _markKnown('transactions', transactions.map(txnToJson));
-    await _markKnown('receipts', receipts.map(receiptToJson));
-    await _markKnown('invoices', invoices.map(invoiceToJson));
-    await _markKnown('documents', docHistory.map((d) => d.toJson()));
-    await _markKnown('mils_logs', milsLogs.map(milsLogToJson));
-    await _markKnown('stock_adjustments', adjustments.map(adjToJson));
+    var changed = false;
+    void add(String table, Iterable<Map<String, dynamic>> rows) {
+      for (final row in rows) {
+        final key = _keyFor(table, row);
+        if (key != null && _known.add(key)) changed = true;
+      }
+    }
+    add('customers', customers.map(customerToJson));
+    add('products', products.map(productToJson));
+    add('sales', sales.map(saleToJson));
+    add('transactions', transactions.map(txnToJson));
+    add('receipts', receipts.map(receiptToJson));
+    add('invoices', invoices.map(invoiceToJson));
+    add('documents', docHistory.map((d) => d.toJson()));
+    add('mils_logs', milsLogs.map(milsLogToJson));
+    add('stock_adjustments', adjustments.map(adjToJson));
+    if (changed) await _saveSyncState();
   }
 
   /// Flags rows as changed so the next flush re-sends them (products carry
@@ -1476,17 +1484,21 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> _persistAll() async {
-    await writeStore('products', products.map(productToJson).toList());
-    await writeStore('customers', customers.map(customerToJson).toList());
-    await writeStore('settings', settings.toJson());
-    await writeStore('serials', SerialService.instance.toJson());
-    await writeStore('sales', sales.map(saleToJson).toList());
-    await writeStore('adjustments', adjustments.map(adjToJson).toList());
-    await writeStore('mils_logs', milsLogs.map(milsLogToJson).toList());
-    await writeStore('transactions', transactions.map(txnToJson).toList());
-    await writeStore('receipts', receipts.map(receiptToJson).toList());
-    await writeStore('invoices', invoices.map(invoiceToJson).toList());
-    await writeStore('doc_history', docHistory.map((d) => d.toJson()).toList());
+    // Independent cache files are written concurrently. This removes the long
+    // serial disk-write tail from refresh without changing cloud authority.
+    await Future.wait([
+      writeStore('products', products.map(productToJson).toList()),
+      writeStore('customers', customers.map(customerToJson).toList()),
+      writeStore('settings', settings.toJson()),
+      writeStore('serials', SerialService.instance.toJson()),
+      writeStore('sales', sales.map(saleToJson).toList()),
+      writeStore('adjustments', adjustments.map(adjToJson).toList()),
+      writeStore('mils_logs', milsLogs.map(milsLogToJson).toList()),
+      writeStore('transactions', transactions.map(txnToJson).toList()),
+      writeStore('receipts', receipts.map(receiptToJson).toList()),
+      writeStore('invoices', invoices.map(invoiceToJson).toList()),
+      writeStore('doc_history', docHistory.map((d) => d.toJson()).toList()),
+    ]);
   }
 
   // ------------------------------------------------------------ analytics
@@ -1946,7 +1958,7 @@ class AppStore extends ChangeNotifier {
 // Lightweight JSON shims kept beside the store so models stay dependency-free.
 
 Map<String, dynamic> productToJson(Product p) => {
-      'id': p.id, 'name': p.name, 'category': p.category.name,
+      'id': p.id, 'name': p.name, 'brand': p.brand, 'category': p.category.name,
       'cost_price': p.costPrice, 'selling_price': p.sellingPrice,
       'qty_on_hand': p.qtyOnHand, 'reorder_level': p.reorderLevel,
       'unit': p.unit,
@@ -1964,7 +1976,7 @@ List<Product> parseProducts(dynamic raw) {
     final m = (e as Map).cast<String, dynamic>();
     return Product(
       id: '${m['id'] ?? m['ID'] ?? ''}',
-      name: '${m['name'] ?? m['NAME'] ?? ''}',
+      name: '${m['name'] ?? m['NAME'] ?? ''}', brand: '${m['brand'] ?? m['BRAND'] ?? ''}',
       category: ProductCategory.values.firstWhere(
         (c) => c.name == (m['category'] ?? ''), orElse: () => ProductCategory.fire),
       costPrice: _asInt(m['cost_price'] ?? m['COST PRICE (NGN)']),

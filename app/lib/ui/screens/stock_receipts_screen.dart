@@ -82,7 +82,7 @@ class _StockReceiptsScreenState extends State<StockReceiptsScreen> {
             ])
           ]))),
           TextButton.icon(onPressed: () => update(() => rows.add(_StockRow())), icon: const Icon(Icons.add), label: const Text('Add row')),
-          const Text('Net stock added after CEO approval = received − damaged − missing.', style: TextStyle(color: Mtek.gray500)),
+          Text('Net stock added after CEO approval = received − damaged − missing.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ]))), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Sign & submit'))])));
     if (accepted != true) { for (final r in rows) r.dispose(); return; }

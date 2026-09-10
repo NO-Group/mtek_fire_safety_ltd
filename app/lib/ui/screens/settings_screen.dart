@@ -68,28 +68,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: Text(user?.email ?? ''),
               trailing: StatusChip.neutral((user?.role ?? '').toUpperCase()),
             ),
-            const Divider(height: 1, color: Mtek.gray100),
+            const Divider(height: 1),
             ListTile(
-              leading: const Icon(Icons.lock_outline, color: Mtek.navy700),
+              leading: const Icon(Icons.lock_outline),
               title: const Text('Change password'),
               trailing: const Icon(Icons.chevron_right, color: Mtek.gray400),
               onTap: () => _changePassword(context),
             ),
             ListTile(
-              leading: const Icon(Icons.password_outlined, color: Mtek.navy700),
+              leading: const Icon(Icons.password_outlined),
               title: const Text('Change signature passcode'),
               trailing: const Icon(Icons.chevron_right, color: Mtek.gray400),
               onTap: () => _changePasscode(context),
             ),
             ListTile(
-              leading: const Icon(Icons.restore_outlined, color: Mtek.navy700),
+              leading: const Icon(Icons.restore_outlined),
               title: const Text('Recovery'),
               subtitle: const Text('Reset your password or recovery string'),
               trailing: const Icon(Icons.chevron_right, color: Mtek.gray400),
               onTap: () => Navigator.push(
                   context, MaterialPageRoute(builder: (_) => const RecoveryScreen())),
             ),
-            const Divider(height: 1, color: Mtek.gray100),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.logout, color: Mtek.danger),
               title: const Text('Sign out', style: TextStyle(color: Mtek.danger, fontWeight: FontWeight.w600)),
@@ -122,7 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const Divider(height: 1),
             ListTile(
-              leading: const Icon(Icons.done_all, color: Mtek.navy700),
+              leading: const Icon(Icons.done_all),
               title: const Text('Mark all notifications as read'),
               onTap: () async {
                 await AppStore.instance.markAllNotificationsRead();
@@ -292,7 +292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text(AppInfo.appName, style: TextStyle(fontWeight: FontWeight.w700)),
               subtitle: const Text('v${AppInfo.version} · ${AppInfo.publisher}'),
             ),
-            const Divider(height: 1, color: Mtek.gray100),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.email_outlined),
               title: const Text('Contact M-TEK support'),
@@ -322,7 +322,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
-                    secondary: const Icon(Icons.draw_outlined, color: Mtek.navy700),
+                    secondary: const Icon(Icons.draw_outlined),
                     title: const Text('Require signature passcode'),
                     subtitle: const Text(
                       'When disabled, staff can issue documents and complete protected transactions without the signature-code prompt.'),
@@ -339,10 +339,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                   const Divider(height: 24),
-                  const Text('DOCUMENT SERIALS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.gray500)),
+                  Text('DOCUMENT SERIALS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 4),
-                  const Text('Set each counter to the number of the last used page in the physical book — digital documents continue the sequence.',
-                      style: TextStyle(fontSize: 12, color: Mtek.gray500)),
+                  Text('Set each counter to the number of the last used page in the physical book — digital documents continue the sequence.',
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 10),
                   for (final entry in [
                     ('receipt', 'Payment Receipt', MtekForms.seedSerials['receipt']!),
@@ -363,10 +363,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('STOCK IMPORT (TXT)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.gray500)),
+                  Text('STOCK IMPORT (TXT)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 4),
-                  const Text('Paste the edited products_seed.txt contents (tab-separated) and import. Existing IDs are updated; new IDs are added.',
-                      style: TextStyle(fontSize: 12, color: Mtek.gray500)),
+                  Text('Paste the edited products_seed.txt contents (tab-separated) and import. Existing IDs are updated; new IDs are added.',
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _tsv,
@@ -666,14 +666,14 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Text('Account recovery',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Mtek.ink)),
+          Text('Account recovery',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 4),
           const Text(
             'Use the recovery string you chose at sign-up to reset a forgotten '
             'password — or reset the recovery string itself using your current '
             'password and signature passcode.',
-            style: TextStyle(color: Mtek.gray500)),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 16),
           _resetPasswordCard(email),
           const SizedBox(height: 14),
@@ -694,8 +694,8 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('RESET PASSWORD & PASSCODE',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.gray500)),
+            Text('RESET PASSWORD & PASSCODE',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 10),
             TextField(controller: emailC, decoration: const InputDecoration(labelText: 'Account email')),
             TextField(controller: recoveryC, decoration: const InputDecoration(labelText: 'Recovery string')),
@@ -726,8 +726,8 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('RESET RECOVERY STRING',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.gray500)),
+            Text('RESET RECOVERY STRING',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 10),
             TextField(controller: emailC, decoration: const InputDecoration(labelText: 'Account email')),
             TextField(controller: passC, obscureText: true, decoration: const InputDecoration(labelText: 'Current password')),

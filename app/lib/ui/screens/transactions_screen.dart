@@ -118,7 +118,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   ? const EmptyHint('No transactions match this filter')
                   : ListView.separated(
                       itemCount: txns.length + 1,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         if (i == txns.length) return const LoadOlderTile('transactions');
                         final t = txns[i];
@@ -247,7 +247,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(width: 110, child: Text(k, style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
+            SizedBox(width: 110, child: Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
             Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
           ],
         ),

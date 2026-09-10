@@ -175,7 +175,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
     // crushed layouts. Give the standalone route its own Scaffold + AppBar.
     if (Scaffold.maybeOf(context) != null) return body;
     return Scaffold(
-      backgroundColor: Mtek.gray50,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text('New ${_labels[_type] ?? 'document'}'),
       ),
@@ -274,7 +274,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
               const Text(
                 'Generation requires your Signature Passcode · PDF carries the corporate header, '
                 'watermark, your signature stamp and a verification QR.',
-                style: TextStyle(fontSize: 11, color: Mtek.gray500),
+                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -312,12 +312,12 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       child: Row(children: [
         // Flexible (not bare Text + Spacer) so a long label OR a long value
         // (e.g. "Amount in words") wraps instead of overflowing the row.
-        Flexible(child: Text(label, style: const TextStyle(color: Mtek.gray500, fontSize: 13))),
+        Flexible(child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
         const SizedBox(width: 10),
         Flexible(
           child: Text(value,
               textAlign: TextAlign.end,
-              style: TextStyle(fontSize: strong ? 17 : 14, fontWeight: FontWeight.w800, color: color ?? Mtek.ink)),
+              style: TextStyle(fontSize: strong ? 17 : 14, fontWeight: FontWeight.w800, color: color ?? Theme.of(context).colorScheme.onSurface)),
         ),
       ]),
     );
@@ -376,7 +376,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         leading: current.isEmpty
-            ? const Icon(Icons.draw, color: Mtek.navy700)
+            ? const Icon(Icons.draw)
             : AppImage(source: current, title: label,
                 details: 'Captured customer signature', width: 64, height: 44, fit: BoxFit.contain),
         title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
@@ -792,7 +792,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       child: ListTile(
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        title: Text(label, style: const TextStyle(fontSize: 11, color: Mtek.gray500)),
+        title: Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         subtitle: Text(fmt.fmtDate(value), style: const TextStyle(fontWeight: FontWeight.w700)),
         trailing: const Icon(Icons.calendar_month_outlined, size: 18),
         onTap: () async {
@@ -1419,7 +1419,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
                             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                         const SizedBox(height: 2),
                         Text('No: $serial · signed by $signerName',
-                            style: const TextStyle(color: Mtek.gray500, fontSize: 12.5)),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5)),
                       ],
                     ),
                   ),

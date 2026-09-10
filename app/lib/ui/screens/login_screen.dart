@@ -105,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const Text('M-TEK FIRE & SAFETY LTD',
             style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1, fontSize: 13, color: Mtek.navy800)),
         const SizedBox(height: 4),
-        Text(title, style: const TextStyle(color: Mtek.gray500, fontSize: 13)),
+        Text(title, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
         const SizedBox(height: 18),
       ],
     );
@@ -300,7 +300,7 @@ class _LoginScreenState extends State<LoginScreen> {
             decoration: BoxDecoration(color: Mtek.gray100, borderRadius: BorderRadius.circular(10)),
             child: Row(
               children: const [
-                Icon(Icons.info_outline, size: 16, color: Mtek.gray500),
+                Icon(Icons.info_outline, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -314,7 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
         else
           Row(
             children: [
-              const Text('Role', style: TextStyle(color: Mtek.gray500)),
+              Text('Role', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               const SizedBox(width: 12),
               ChoiceChip(label: const Text('Admin'), selected: _role == 'admin', onSelected: (_) => setState(() => _role = 'admin')),
               const SizedBox(width: 8),

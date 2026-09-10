@@ -91,7 +91,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
-                        child: Text('No notifications yet', style: TextStyle(color: Mtek.gray500)),
+                        child: Text('No notifications yet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ),
                     )
                   : RefreshIndicator(
@@ -99,7 +99,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       child: ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: list.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         final n = list[i];
                         final read = uid.isNotEmpty && n.isReadBy(uid);
@@ -204,12 +204,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               Text(n.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
               const SizedBox(height: 4),
               Text('Read by ${n.readBy.length} staff member${n.readBy.length == 1 ? '' : 's'}',
-                  style: const TextStyle(color: Mtek.gray500, fontSize: 12.5)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5)),
               const SizedBox(height: 10),
               if (n.readBy.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('Nobody has read this yet.', style: TextStyle(color: Mtek.gray500)),
+                  child: Text('Nobody has read this yet.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 )
               else
                 ...n.readBy.map((r) => ListTile(

@@ -47,7 +47,7 @@ class DeliveryNotesScreen extends StatelessWidget {
                   ? const EmptyHint('No delivery notes yet — issue one from "New delivery note" above')
                   : ListView.separated(
                       itemCount: rows.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         final d = rows[i];
                         return ListTile(
