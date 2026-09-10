@@ -296,51 +296,7 @@ class _StockScreenState extends State<StockScreen> {
                 separatorBuilder: (_, __) => const Divider(height: 1, color: Mtek.gray100),
                 itemBuilder: (context, i) {
                   final p = list[i];
-                  return ListTile(
-                    leading: p.imageUrls.isNotEmpty
-                      ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(
-                          p.imageUrls.first, width: 46, height: 46, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.inventory_2_outlined)))
-                      : CircleAvatar(
-                          backgroundColor: p.isOutOfStock ? Mtek.dangerTint : p.isLow ? Mtek.warnTint : Mtek.brandTint,
-                          child: Text('${p.qtyOnHand}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
-                            color: p.isOutOfStock ? Mtek.danger : p.isLow ? Mtek.warn : Mtek.brand600))),
-                    title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                    subtitle: Text(
-                        '${p.id} · ${p.category.name.toUpperCase()} · ${p.qtyOnHand} ${p.unit} · cost ${fmt.naira(p.costPrice)}${_dimensionLabel(p)}'),
-                    trailing: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AmountText(p.sellingPrice),
-                        const SizedBox(width: 12),
-                        // stock edits: CEO/Admin only (server-enforced too)
-                        if (AuthStore.instance.isManagement)
-                          IconButton(
-                            tooltip: 'Adjust stock',
-                            icon: const Icon(Icons.tune, color: Mtek.navy700),
-                            onPressed: () => _adjustDialog(context, p),
-                          ),
-                        if (AuthStore.instance.isCeo)
-                          PopupMenuButton<String>(
-                            tooltip: 'Product actions',
-                            onSelected: (action) {
-                              if (action == 'edit') _editProduct(context, p);
-                              if (action == 'delete') _deleteProduct(context, p);
-                            },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(value: 'edit', child: ListTile(
-                                dense: true, leading: Icon(Icons.edit_outlined), title: Text('Edit name and prices'))),
-                              PopupMenuItem(value: 'delete', child: ListTile(
-                                dense: true, leading: Icon(Icons.delete_outline, color: Mtek.danger),
-                                title: Text('Delete product', style: TextStyle(color: Mtek.danger)))),
-                            ],
-                          ),
-                      ],
-                    ),
-                    ),
-                  );
+                  return _productRow(context, p);
                 },
               ),
                   ),
@@ -349,6 +305,82 @@ class _StockScreenState extends State<StockScreen> {
         ],
       ),
     );
+  }
+
+  Widget _productRow(BuildContext context, Product p) {
+    final thumbnail = p.imageUrls.isNotEmpty
+        ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(
+            p.imageUrls.first, width: 52, height: 52, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox(
+              width: 52, height: 52, child: Icon(Icons.inventory_2_outlined))))
+        : CircleAvatar(
+            radius: 26,
+            backgroundColor: p.isOutOfStock ? Mtek.dangerTint : p.isLow ? Mtek.warnTint : Mtek.brandTint,
+            child: Text('${p.qtyOnHand}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
+              color: p.isOutOfStock ? Mtek.danger : p.isLow ? Mtek.warn : Mtek.brand600)));
+
+    Widget productMenu() => PopupMenuButton<String>(
+      tooltip: 'Product actions',
+      onSelected: (action) {
+        if (action == 'edit') _editProduct(context, p);
+        if (action == 'delete') _deleteProduct(context, p);
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'edit', child: ListTile(dense: true,
+          leading: Icon(Icons.edit_outlined), title: Text('Edit name and prices'))),
+        PopupMenuItem(value: 'delete', child: ListTile(dense: true,
+          leading: Icon(Icons.delete_outline, color: Mtek.danger),
+          title: Text('Delete product', style: TextStyle(color: Mtek.danger)))),
+      ],
+    );
+
+    final details = '${p.id} · ${p.category.name.toUpperCase()} · '
+        '${p.qtyOnHand} ${p.unit} · cost ${fmt.naira(p.costPrice)}${_dimensionLabel(p)}';
+
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < 620) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              thumbnail,
+              const SizedBox(width: 12),
+              Expanded(child: Text(p.name, maxLines: 3, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 16, height: 1.25, fontWeight: FontWeight.w700))),
+              if (AuthStore.instance.isCeo) productMenu(),
+            ]),
+            const SizedBox(height: 10),
+            Text(details, style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5, height: 1.4)),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: AmountText(p.sellingPrice)),
+              if (AuthStore.instance.isManagement)
+                IconButton(
+                  tooltip: 'Adjust stock',
+                  icon: const Icon(Icons.tune, color: Mtek.navy700),
+                  onPressed: () => _adjustDialog(context, p),
+                ),
+            ]),
+          ]),
+        );
+      }
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: thumbnail,
+        title: Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        subtitle: Text(details, maxLines: 2, overflow: TextOverflow.ellipsis),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          AmountText(p.sellingPrice),
+          const SizedBox(width: 8),
+          if (AuthStore.instance.isManagement)
+            IconButton(tooltip: 'Adjust stock', icon: const Icon(Icons.tune, color: Mtek.navy700),
+              onPressed: () => _adjustDialog(context, p)),
+          if (AuthStore.instance.isCeo) productMenu(),
+        ]),
+      );
+    });
   }
 
   Future<void> _editProduct(BuildContext context, Product p) async {
