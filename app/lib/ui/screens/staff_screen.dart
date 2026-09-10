@@ -76,8 +76,9 @@ class _StaffScreenState extends State<StaffScreen> {
       builder: (context) => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (_passport(s) != null) Center(child: ClipRRect(borderRadius: BorderRadius.circular(12),
-            child: Image.memory(_passport(s)!, width: 100, height: 120, fit: BoxFit.cover))),
+          if (_passport(s) != null) Center(child: AppImage(source: s.passportPhoto,
+            title: s.name, details: '${_staffId(s)} · ${s.role.toUpperCase()} · Passport photograph',
+            width: 100, height: 120)),
           if (_passport(s) != null) const SizedBox(height: 12),
           Text(s.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 14),

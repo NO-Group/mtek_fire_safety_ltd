@@ -165,7 +165,8 @@ class _MilsScreenState extends State<MilsScreen> {
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, i) => ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: MilsPhotoImage(dataUrl: photos[i], size: 64),
+          child: MilsPhotoImage(dataUrl: photos[i], size: 64, title: m.equipment,
+            details: '${m.id} · ${m.client.name} · ${m.location} · Site photograph ${i + 1}'),
         ),
       ),
     );

@@ -309,10 +309,9 @@ class _StockScreenState extends State<StockScreen> {
 
   Widget _productRow(BuildContext context, Product p) {
     final thumbnail = p.imageUrls.isNotEmpty
-        ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(
-            p.imageUrls.first, width: 52, height: 52, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const SizedBox(
-              width: 52, height: 52, child: Icon(Icons.inventory_2_outlined))))
+        ? AppImage(source: p.imageUrls.first, title: p.name,
+            details: '${p.id} · ${p.category.name.toUpperCase()} · ${p.qtyOnHand} ${p.unit} · ${fmt.naira(p.sellingPrice)}',
+            width: 64, height: 64)
         : CircleAvatar(
             radius: 26,
             backgroundColor: p.isOutOfStock ? Mtek.dangerTint : p.isLow ? Mtek.warnTint : Mtek.brandTint,
@@ -323,11 +322,14 @@ class _StockScreenState extends State<StockScreen> {
       tooltip: 'Product actions',
       onSelected: (action) {
         if (action == 'edit') _editProduct(context, p);
+        if (action == 'images') _manageImages(context, p);
         if (action == 'delete') _deleteProduct(context, p);
       },
       itemBuilder: (_) => const [
         PopupMenuItem(value: 'edit', child: ListTile(dense: true,
           leading: Icon(Icons.edit_outlined), title: Text('Edit name and prices'))),
+        PopupMenuItem(value: 'images', child: ListTile(dense: true,
+          leading: Icon(Icons.photo_library_outlined), title: Text('Manage images'))),
         PopupMenuItem(value: 'delete', child: ListTile(dense: true,
           leading: Icon(Icons.delete_outline, color: Mtek.danger),
           title: Text('Delete product', style: TextStyle(color: Mtek.danger)))),
@@ -338,16 +340,16 @@ class _StockScreenState extends State<StockScreen> {
         '${p.qtyOnHand} ${p.unit} · cost ${fmt.naira(p.costPrice)}${_dimensionLabel(p)}';
 
     return LayoutBuilder(builder: (context, constraints) {
-      if (constraints.maxWidth < 620) {
+      final phoneLayout = MediaQuery.sizeOf(context).shortestSide < 600 || constraints.maxWidth < 700;
+      if (phoneLayout) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               thumbnail,
               const SizedBox(width: 12),
-              Expanded(child: Text(p.name, maxLines: 3, overflow: TextOverflow.ellipsis,
+              Expanded(child: Text(p.name, maxLines: 4, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 16, height: 1.25, fontWeight: FontWeight.w700))),
-              if (AuthStore.instance.isCeo) productMenu(),
             ]),
             const SizedBox(height: 10),
             Text(details, style: TextStyle(
@@ -361,6 +363,7 @@ class _StockScreenState extends State<StockScreen> {
                   icon: const Icon(Icons.tune, color: Mtek.navy700),
                   onPressed: () => _adjustDialog(context, p),
                 ),
+              if (AuthStore.instance.isCeo) productMenu(),
             ]),
           ]),
         );
@@ -381,6 +384,58 @@ class _StockScreenState extends State<StockScreen> {
         ]),
       );
     });
+  }
+
+  Future<void> _manageImages(BuildContext context, Product p) async {
+    final images = List<String>.from(p.imageUrls);
+    final result = await showDialog<List<String>>(context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: Text('Images · ${p.name}'),
+        content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(images.isEmpty ? 'No product images yet.' : 'Tap an image for full view. Remove unwanted images below.'),
+            const SizedBox(height: 12),
+            Wrap(spacing: 10, runSpacing: 10, children: [
+              for (var i = 0; i < images.length; i++)
+                Stack(clipBehavior: Clip.none, children: [
+                  AppImage(source: images[i], title: p.name,
+                    details: '${p.id} · Product image ${i + 1} of ${images.length}', width: 112, height: 96),
+                  Positioned(right: -7, top: -7, child: IconButton(
+                    tooltip: 'Remove image', visualDensity: VisualDensity.compact,
+                    style: IconButton.styleFrom(backgroundColor: Mtek.danger, foregroundColor: Colors.white),
+                    onPressed: () => setDialogState(() => images.removeAt(i)),
+                    icon: const Icon(Icons.close, size: 17))),
+                ]),
+            ]),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: const Text('Add images'), onPressed: () async {
+                final picked = await pickMilsPhotos();
+                if (picked == null || !context.mounted) return;
+                try {
+                  final uploaded = await AppStore.instance.uploadProductImages(p.id, picked);
+                  setDialogState(() => images.addAll(uploaded));
+                } catch (error) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    backgroundColor: Mtek.danger,
+                    content: Text(error.toString().replaceFirst('Exception: ', ''))));
+                }
+              }),
+          ]))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, images), child: const Text('Save images')),
+        ],
+      )));
+    if (result == null || !context.mounted) return;
+    try {
+      await AppStore.instance.updateProductImages(p, result);
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product images updated in the cloud.')));
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: Mtek.danger, content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
   }
 
   Future<void> _editProduct(BuildContext context, Product p) async {

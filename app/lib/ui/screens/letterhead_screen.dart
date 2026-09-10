@@ -275,7 +275,8 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
           const Text('Inserted images', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Wrap(spacing: 10, runSpacing: 10, children: [for (var i = 0; i < _images.length; i++)
-            Stack(children: [Image.memory(base64Decode(_images[i].split(',').last), width: 130, height: 100, fit: BoxFit.cover),
+            Stack(children: [AppImage(source: _images[i], title: 'Letterhead attachment',
+              details: 'Letterhead image ${i + 1}', width: 130, height: 100),
               Positioned(right: 0, child: IconButton(style: IconButton.styleFrom(backgroundColor: Colors.white),
                 icon: const Icon(Icons.close), onPressed: () => setState(() { _images.removeAt(i); _scheduleSave(); })))])]),
         ]))),

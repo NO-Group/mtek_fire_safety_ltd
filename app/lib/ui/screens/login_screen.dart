@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../data/auth_store.dart';
 import '../../data/env.dart';
 import '../signature_pad.dart';
+import '../widgets.dart';
 
 /// Sign-in / create-account. Account creation REQUIRES a Signature
 /// Passcode (separate from the password) + optional drawn signature.
@@ -239,7 +240,9 @@ class _LoginScreenState extends State<LoginScreen> {
           onPressed: _pickPassportPhoto,
           icon: _passportPhoto == null
               ? const Icon(Icons.add_a_photo_outlined)
-              : ClipOval(child: Image.memory(base64Decode(_passportPhoto!.split(',').last), width: 34, height: 34, fit: BoxFit.cover)),
+              : AppImage(source: _passportPhoto!, title: 'Passport photograph',
+                  details: 'Selected staff registration passport photograph', width: 34, height: 34,
+                  borderRadius: BorderRadius.circular(20)),
           label: Text(_passportPhoto == null ? 'Add passport photograph *' : 'Passport photograph selected — change'),
         ),
         const SizedBox(height: 10),

@@ -465,33 +465,94 @@ Future<String?> pickProductsTxt() async {
   return null;
 }
 
+Widget _storedImage(String source, {BoxFit fit = BoxFit.contain}) {
+  if (source.startsWith('data:image/')) {
+    try {
+      return Image.memory(base64Decode(source.split(',').last), fit: fit,
+        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined));
+    } catch (_) {
+      return const Icon(Icons.broken_image_outlined);
+    }
+  }
+  return Image.network(source, fit: fit,
+    errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined));
+}
+
+/// A consistent, tappable business image. Full view supports pinch zoom and
+/// shows the description/details supplied by the owning record.
+class AppImage extends StatelessWidget {
+  final String source;
+  final String title;
+  final String details;
+  final double width;
+  final double height;
+  final BoxFit fit;
+  final BorderRadius borderRadius;
+
+  const AppImage({super.key, required this.source, required this.title,
+    this.details = '', required this.width, required this.height,
+    this.fit = BoxFit.cover, this.borderRadius = const BorderRadius.all(Radius.circular(10))});
+
+  @override
+  Widget build(BuildContext context) {
+    void open() {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) {
+        return Scaffold(
+          appBar: AppBar(title: Text(title)),
+          body: Column(children: [
+            Expanded(
+              child: Container(
+                color: Colors.black,
+                width: double.infinity,
+                child: InteractiveViewer(
+                  minScale: .5,
+                  maxScale: 5,
+                  child: Center(child: _storedImage(source)),
+                ),
+              ),
+            ),
+            if (details.isNotEmpty)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Text(details, style: const TextStyle(fontSize: 14, height: 1.4)),
+                  ),
+                ),
+              ),
+          ]),
+        );
+      }));
+    }
+
+    return Tooltip(
+      message: 'Open full view',
+      child: InkWell(
+        borderRadius: borderRadius,
+        onTap: open,
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: SizedBox(width: width, height: height, child: _storedImage(source, fit: fit)),
+        ),
+      ),
+    );
+  }
+}
+
 /// Decoded preview of a stored data-URL photo.
 class MilsPhotoImage extends StatelessWidget {
   final String dataUrl;
   final double size;
-  const MilsPhotoImage({super.key, required this.dataUrl, this.size = 64});
+  final String title;
+  final String details;
+  const MilsPhotoImage({super.key, required this.dataUrl, this.size = 64,
+    this.title = 'Site photograph', this.details = 'MILS site photograph'});
 
   @override
-  Widget build(BuildContext context) {
-    Uint8List? bytes;
-    try {
-      bytes = base64Decode(dataUrl.split(',').last);
-    } catch (_) {
-      bytes = null;
-    }
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Mtek.gray100,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: bytes == null
-          ? const Icon(Icons.broken_image_outlined, size: 18, color: Mtek.gray400)
-          : Image.memory(bytes, width: size, height: size, fit: BoxFit.cover),
-    );
-  }
+  Widget build(BuildContext context) => AppImage(source: dataUrl, title: title,
+    details: details, width: size, height: size);
 }
 
 

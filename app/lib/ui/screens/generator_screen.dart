@@ -377,7 +377,8 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       child: ListTile(
         leading: current.isEmpty
             ? const Icon(Icons.draw, color: Mtek.navy700)
-            : Image.memory(base64Decode(current.split(',').last), width: 64),
+            : AppImage(source: current, title: label,
+                details: 'Captured customer signature', width: 64, height: 44, fit: BoxFit.contain),
         title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
         subtitle: Text(current.isEmpty ? 'They sign here on the device — stored with the document'
                                         : 'Captured — tap to replace', style: const TextStyle(fontSize: 11)),

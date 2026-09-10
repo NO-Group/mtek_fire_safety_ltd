@@ -805,6 +805,31 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateProductImages(Product original, List<String> imageUrls) async {
+    final updated = Product(
+      id: original.id, name: original.name, category: original.category,
+      costPrice: original.costPrice, sellingPrice: original.sellingPrice,
+      qtyOnHand: original.qtyOnHand, reorderLevel: original.reorderLevel,
+      unit: original.unit, length: original.length, lengthUnit: original.lengthUnit,
+      width: original.width, widthUnit: original.widthUnit,
+      size: original.size, sizeUnit: original.sizeUnit,
+      imageUrls: List.unmodifiable(imageUrls), isService: original.isService,
+    );
+    if (_api == null || AuthStore.instance.accessToken == null) {
+      throw Exception('Cloud connection is required. Product images were not changed.');
+    }
+    final res = await _api!.post('/api/products/upsert', {
+      'products': [productToJson(updated)],
+    });
+    if (res == null || !res.ok) throw Exception(
+      (res?.json is Map ? (res!.json as Map)['error'] : null) ?? 'Image update failed');
+    final index = products.indexWhere((p) => p.id == original.id);
+    if (index >= 0) products[index] = updated;
+    await writeStore('products', products.map(productToJson).toList());
+    await _markKnown('products', [productToJson(updated)]);
+    notifyListeners();
+  }
+
   Future<void> deleteProduct(Product product) async {
     if (_api == null || AuthStore.instance.accessToken == null) {
       throw Exception('Cloud connection is required. Product was not deleted.');
