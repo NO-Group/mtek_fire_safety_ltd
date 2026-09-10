@@ -55,7 +55,16 @@ if command -v gh >/dev/null && [ -n "${GH_TOKEN:-}" ]; then
       "https://uploads.github.com/repos/$R/releases/$RID/assets?name=pdf-test.log" >/dev/null || true
   fi
 fi
-[ "$TEST_RC" -eq 0 ] || { echo "PDF render test FAILED (see pdf-test.log on the ci release)"; exit "$TEST_RC"; }
+if [ "$TEST_RC" -ne 0 ]; then
+  echo "PDF render test FAILED (see pdf-test.log on the ci release)"
+  # Keep compiler/test failures readable even when the Actions log CDN is
+  # unavailable: attach the final lines as a commit comment via GitHub's API.
+  if command -v gh >/dev/null && [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_SHA:-}" ]; then
+    TAIL=$(tail -c 12000 "${RUNNER_TEMP:-/tmp}/pdf-test.log")
+    gh api "repos/$R/commits/$GITHUB_SHA/comments" -f body="Build diagnostic:\n\n\`\`\`text\n$TAIL\n\`\`\`" >/dev/null 2>&1 || true
+  fi
+  exit "$TEST_RC"
+fi
 # Rasterise the rendered PDFs (page 1, 70 dpi) and commit them to docs/previews
 # so document layout can be reviewed without a device. Best-effort.
 if command -v pdftoppm >/dev/null || (sudo apt-get install -y -qq poppler-utils >/dev/null 2>&1); then
