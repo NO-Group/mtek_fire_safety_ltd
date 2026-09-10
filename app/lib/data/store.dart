@@ -380,7 +380,16 @@ class AppStore extends ChangeNotifier {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
       if (_refreshing || _uploading) return false;
-      return await refreshRemote(manual: true);
+      var ok = await refreshRemote(manual: true);
+      if (!ok && (lastSyncError?.contains('520') ?? false)) {
+        // HTTP 520 can be produced before the function executes when an old
+        // session JWT still contains legacy oversized Auth metadata. Refresh
+        // through the public body-based endpoint, adopt its repaired token,
+        // then retry the authoritative read once.
+        await AuthStore.instance.restoreSession();
+        ok = await refreshRemote(manual: true);
+      }
+      return ok;
     } finally {
       _manualSyncing = false;
     }
