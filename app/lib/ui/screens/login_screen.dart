@@ -299,7 +299,7 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(color: Mtek.gray100, borderRadius: BorderRadius.circular(10)),
             child: Row(
-              children: const [
+              children: [
                 Icon(Icons.info_outline, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 SizedBox(width: 8),
                 Expanded(

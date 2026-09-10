@@ -669,7 +669,7 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
           Text('Account recovery',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Use the recovery string you chose at sign-up to reset a forgotten '
             'password — or reset the recovery string itself using your current '
             'password and signature passcode.',

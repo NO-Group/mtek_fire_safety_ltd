@@ -88,7 +88,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             child: Card(
               clipBehavior: Clip.antiAlias,
               child: list.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
                         child: Text('No notifications yet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
@@ -207,7 +207,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5)),
               const SizedBox(height: 10),
               if (n.readBy.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text('Nobody has read this yet.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 )

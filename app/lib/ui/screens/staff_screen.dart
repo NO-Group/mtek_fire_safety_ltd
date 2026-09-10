@@ -190,7 +190,7 @@ class _StaffScreenState extends State<StaffScreen> {
             child: Card(
               clipBehavior: Clip.antiAlias,
               child: list.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
                         child: Text('No staff records yet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),

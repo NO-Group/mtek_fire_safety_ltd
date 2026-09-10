@@ -271,7 +271,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
                   icon: const Icon(Icons.note_add_outlined),
                   label: const Text('Start a new document')),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Generation requires your Signature Passcode · PDF carries the corporate header, '
                 'watermark, your signature stamp and a verification QR.',
                 style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),

@@ -139,7 +139,7 @@ class ReceiptsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -302,7 +302,7 @@ class ReceiptsScreen extends StatelessWidget {
     return 'MTK-REC-${serial.toString().padLeft(9, '0')}';
   }
 
-  Widget _row(String k, String v) => Padding(
+  Widget _row(BuildContext context, String k, String v) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Row(
           children: [
