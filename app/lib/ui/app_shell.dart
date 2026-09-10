@@ -225,6 +225,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   PreferredSizeWidget _appBar(Destination dest) {
+    final user = AuthStore.instance.current;
     final w = MediaQuery.of(context).size.width;
     return AppBar(
       flexibleSpace: Container(decoration: const BoxDecoration(gradient: Mtek.heroGradient)),
@@ -293,12 +294,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             );
           },
         ),
+        const SizedBox(width: 4),
+        _rolePill(user?.role ?? ''),
       ],
       leading: IconButton(
         tooltip: 'Menu',
         icon: const Icon(Icons.menu, color: Colors.white),
         onPressed: () => _scaffoldKey.currentState?.openDrawer(),
       ),
+    );
+  }
+
+  Widget _rolePill(String role) {
+    final (bg, fg) = switch (role) {
+      'ceo' => (Mtek.goldTint, Mtek.gold600),
+      'admin' => (Mtek.brandTint, Mtek.brand600),
+      _ => (Colors.white.withValues(alpha: .12), Colors.white),
+    };
+    return Container(
+      margin: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(role.toUpperCase(), style: TextStyle(
+        fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: fg)),
     );
   }
 
