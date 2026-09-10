@@ -67,7 +67,7 @@ List<Destination> destinationsFor(String? role) {
   if (role == 'ceo') return _ceoDestinations;
   if (role == 'admin') return _allDestinations;
   return const [
-    _sales, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications, _settings,
+    _sales, _transactions, _stock, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications, _settings,
   ];
 }
 
@@ -124,6 +124,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Timer? _notifyTimer;
   Timer? _dataTimer;
+  int _syncTicks = 0;
 
   List<Destination> get _visible => destinationsFor(AuthStore.instance.current?.role);
 
@@ -145,7 +146,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // only re-downloaded when the server reports something changed.
     unawaited(AppStore.instance.refreshRemote());
     _dataTimer = Timer.periodic(const Duration(seconds: 8), (_) {
-      unawaited(AppStore.instance.pollChanges());
+      _syncTicks++;
+      // Audit-stamp polling gives fast updates. A forced authoritative pull
+      // every 32 seconds also catches settings, role or legacy writes that
+      // did not produce an audit event, on every signed-in account.
+      if (_syncTicks % 4 == 0) {
+        unawaited(AppStore.instance.refreshRemote());
+      } else {
+        unawaited(AppStore.instance.pollChanges());
+      }
     });
     // Jump to a screen requested by a home-widget tap / launcher shortcut.
     WidgetBridge.requestedScreen.addListener(_applyRequestedScreen);
@@ -273,6 +282,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         ],
       ),
       actions: [
+        AnimatedBuilder(
+          animation: AppStore.instance,
+          builder: (context, _) {
+            final store = AppStore.instance;
+            final connected = AuthStore.instance.accessToken != null && store.lastServerSync != null;
+            return IconButton(
+              tooltip: connected
+                  ? 'Cloud synced ${store.lastServerSync!.toLocal()}'
+                  : 'Not currently cloud-synced — tap to retry',
+              onPressed: () async {
+                final ok = await store.refreshRemote();
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(ok ? 'Cloud data is up to date.' : 'Cloud sync failed. Check the connection and sign-in.')));
+              },
+              icon: Icon(connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                color: connected ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5)),
+            );
+          },
+        ),
         AnimatedBuilder(
           animation: AppStore.instance,
           builder: (context, _) {

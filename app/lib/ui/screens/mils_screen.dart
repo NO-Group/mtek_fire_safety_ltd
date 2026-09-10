@@ -65,7 +65,7 @@ class _MilsScreenState extends State<MilsScreen> {
                 ChoiceChip(
                   label: Text(f.$2),
                   selected: _filter == f.$1,
-                  selectedColor: Mtek.brandTint,
+                  selectedColor: Theme.of(context).brightness == Brightness.dark ? Mtek.navy600 : Mtek.brandTint,
                   onSelected: (_) => setState(() => _filter = f.$1),
                 ),
             ],

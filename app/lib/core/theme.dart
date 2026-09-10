@@ -104,6 +104,16 @@ abstract final class MtekTheme {
       brightness: Brightness.dark,
       colorScheme: scheme,
       scaffoldBackgroundColor: Mtek.navy950,
+      textTheme: mtekLightTheme().textTheme.apply(
+        bodyColor: const Color(0xFFF8FAFC),
+        displayColor: Colors.white,
+      ),
+      primaryTextTheme: mtekLightTheme().primaryTextTheme.apply(
+        bodyColor: Colors.white, displayColor: Colors.white),
+      iconTheme: const IconThemeData(color: Mtek.gray200),
+      listTileTheme: const ListTileThemeData(
+        textColor: Color(0xFFF8FAFC), iconColor: Mtek.gray200,
+        subtitleTextStyle: TextStyle(color: Mtek.gray300)),
       cardTheme: CardThemeData(
         elevation: 0,
         color: Mtek.navy850,
@@ -120,15 +130,38 @@ abstract final class MtekTheme {
       ),
       inputDecorationTheme: mtekLightTheme().inputDecorationTheme.copyWith(
         fillColor: Mtek.navy800,
-        labelStyle: const TextStyle(color: Mtek.gray300),
+        labelStyle: const TextStyle(color: Mtek.gray200),
+        hintStyle: const TextStyle(color: Mtek.gray400),
+        helperStyle: const TextStyle(color: Mtek.gray300),
+        prefixIconColor: Mtek.gray300,
+        suffixIconColor: Mtek.gray300,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(Mtek.radiusSm),
           borderSide: const BorderSide(color: Mtek.navy600),
         ),
       ),
+      chipTheme: mtekLightTheme().chipTheme.copyWith(
+        backgroundColor: Mtek.navy800,
+        selectedColor: Mtek.navy600,
+        side: const BorderSide(color: Mtek.navy600),
+        labelStyle: const TextStyle(color: Mtek.gray100),
+        secondaryLabelStyle: const TextStyle(color: Colors.white)),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white, side: const BorderSide(color: Mtek.gray400))),
+      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(
+        foregroundColor: Mtek.brand300)),
+      dropdownMenuTheme: const DropdownMenuThemeData(
+        textStyle: TextStyle(color: Colors.white),
+        menuStyle: MenuStyle(backgroundColor: WidgetStatePropertyAll(Mtek.navy800))),
       dividerTheme: const DividerThemeData(color: Mtek.navy600, thickness: 1, space: 1),
       navigationBarTheme: mtekLightTheme().navigationBarTheme.copyWith(
         backgroundColor: Mtek.navy900,
+        indicatorColor: Mtek.brand700,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+          color: states.contains(WidgetState.selected) ? Colors.white : Mtek.gray300,
+          fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500)),
+        iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
+          color: states.contains(WidgetState.selected) ? Colors.white : Mtek.gray300)),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Mtek.navy850,

@@ -161,7 +161,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
               ChoiceChip(
                 label: Text(p.$2),
                 selected: _period == p.$1,
-                selectedColor: Mtek.brandTint,
+                selectedColor: Theme.of(context).brightness == Brightness.dark ? Mtek.navy600 : Mtek.brandTint,
                 onSelected: (_) => setState(() => _period = p.$1),
               ),
           ],

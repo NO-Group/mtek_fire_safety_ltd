@@ -218,7 +218,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
                       avatar: Icon(ic, size: 15, color: _type == t ? Mtek.brand600 : Mtek.gray500),
                       label: Text(lb),
                       selected: _type == t,
-                      selectedColor: Mtek.brandTint,
+                      selectedColor: Theme.of(context).brightness == Brightness.dark ? Mtek.navy600 : Mtek.brandTint,
                       onSelected: (_) => setState(() => _type = t),
                     ),
                 ],
@@ -416,7 +416,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
             ChoiceChip(
               label: Text(m),
               selected: _receipt.method == m,
-              selectedColor: Mtek.brandTint,
+              selectedColor: Theme.of(context).brightness == Brightness.dark ? Mtek.navy600 : Mtek.brandTint,
               onSelected: (_) {
                 setState(() => _receipt.method = m);
                 _scheduleReceiptDraft();
@@ -448,7 +448,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
             ChoiceChip(
               label: Text(variant),
               selected: _invoice.variant == variant,
-              selectedColor: Mtek.brandTint,
+              selectedColor: Theme.of(context).brightness == Brightness.dark ? Mtek.navy600 : Mtek.brandTint,
               onSelected: (_) => setState(() => _invoice.variant = variant),
             ),
           FilterChip(
@@ -626,7 +626,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
             FilterChip(
               label: Text(c),
               selected: (_mils.componentQty[c] ?? 0) > 0,
-              selectedColor: Mtek.brandTint,
+              selectedColor: Theme.of(context).brightness == Brightness.dark ? Mtek.navy600 : Mtek.brandTint,
               onSelected: (on) => setState(() {
                 _mils.componentQty[c] = on ? 1 : 0;
                 if (!on) _mils.componentRate.remove(c);

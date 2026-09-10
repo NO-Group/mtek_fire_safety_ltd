@@ -247,6 +247,7 @@ class AppStore extends ChangeNotifier {
     _clearAll();
     final okRemote = await _loadRemote();
     if (okRemote) {
+      lastServerSync = DateTime.now();
       await _persistAll();
       await _markAllKnown();
     } else {

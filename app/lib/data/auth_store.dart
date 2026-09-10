@@ -263,17 +263,9 @@ class AuthStore extends ChangeNotifier {
       await AppStore.instance.reloadRemote();
       return null;
     }
-    // OFFLINE-FIRST: server unreachable / server-side failure → create the
-    // account ON THIS DEVICE so work can continue. It syncs nothing; the
-    // credentials live in the local directory (persisted in [users]).
-    final localErr = signUp(
-      name: name, email: mail, password: password,
-      signaturePasscode: signaturePasscode, role: 'sales',
-      passportPhoto: passportPhoto,
-    );
-    if (localErr != null) return localErr;
-    await _persistUsers();
-    return null;
+    // An account that exists on only one device cannot sync and must never
+    // be presented as a successful company account.
+    return 'Cloud account creation is unavailable — no account was created. Check your connection and try again.';
   }
 
   /// No-email, no-OTP password reset: the user proves ownership with the
@@ -424,15 +416,13 @@ class AuthStore extends ChangeNotifier {
     final mail = email.trim().toLowerCase();
     final res = await remote.authSignInRaw(mail, password);
     if (res == null) {
-      // Offline: accept a device-local account (created offline, or the
-      // cached identity of the last successful server sign-in).
-      final local = signIn(mail, password);
-      return local == null ? null : 'Network unreachable — check your connection';
+      // Never open a disconnected local account as though it were cloud
+      // signed-in. That hides the fact that this user's work cannot sync.
+      return 'Cloud sign-in is unavailable — check your connection and try again.';
     }
     final j = res.json;
     if (!res.ok) {
       final msg = (j is Map ? (j['error_description'] ?? j['error'] ?? j['msg']) : null);
-      if (signIn(mail, password) == null) return null; // local account matches
       return msg is String ? msg : 'Sign-in failed — please try again.';
     }
     if (j is! Map || j['access_token'] is! String || j['user'] is! Map) {

@@ -307,7 +307,7 @@ class _SalesScreenState extends State<SalesScreen> {
                   ChoiceChip(
                     label: Text(MethodIcon.label(m)),
                     selected: _method == m,
-                    selectedColor: Mtek.brandTint,
+                    selectedColor: Theme.of(context).brightness == Brightness.dark ? Mtek.navy600 : Mtek.brandTint,
                     onSelected: (_) => update(() => _method = m),
                   ),
               ],
