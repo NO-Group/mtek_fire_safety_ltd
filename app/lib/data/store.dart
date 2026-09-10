@@ -1472,12 +1472,13 @@ class AppStore extends ChangeNotifier {
     required String signedBy,
     String? customerSignature,
     String? passcode,
+    required String issueKey,
   }) async {
     final now = DateTime.now();
     // SERVER-AUTHENTICATED SALE: stock check, pricing (server prices),
-    // decrement, transaction + receipt happen in ONE Supabase RPC. The
-    // passcode is re-verified against the bcrypt hash server-side. If the backend
-    // is unreachable we fall back to the offline path and sync later.
+    // decrement, transaction + receipt happen in one authoritative cloud
+    // request for CEO, Admin and Sales alike. The passcode is re-verified
+    // server-side. No role receives a misleading local-success fallback.
     String? serverReceiptNo;
     String? serverInvoiceNo;
     String? serverSaleId;
@@ -1498,6 +1499,7 @@ class AppStore extends ChangeNotifier {
         'discount': discount,
         'customer_signature': customerSignature,
         'passcode': passcode ?? '',
+        'issue_key': issueKey,
       });
       if (res == null) {
         throw Exception('Cloud server is unreachable. Sale was not recorded; please retry.');

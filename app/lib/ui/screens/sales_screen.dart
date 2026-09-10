@@ -28,6 +28,7 @@ class _SalesScreenState extends State<SalesScreen> {
   PaymentMethod _method = PaymentMethod.cash;
   String _query = '';
   bool _completing = false;
+  String? _pendingSaleKey;
 
   @override
   void dispose() {
@@ -428,6 +429,7 @@ class _SalesScreenState extends State<SalesScreen> {
     // stored with the sale + receipt — proof of purchase on the PDF.
     final customerSig = await _captureCustomerSignature();
     final store = AppStore.instance;
+    _pendingSaleKey ??= 'sale-${AuthStore.instance.remoteSignInUid}-${DateTime.now().microsecondsSinceEpoch}';
     try {
       await store.completeSale(
         customer: _customer!,
@@ -436,6 +438,7 @@ class _SalesScreenState extends State<SalesScreen> {
         signedBy: signer.name,
         customerSignature: customerSig,
         passcode: AuthStore.instance.lastVerifiedPasscode,
+        issueKey: _pendingSaleKey!,
       );
     } catch (error) {
       if (mounted) {
@@ -447,7 +450,7 @@ class _SalesScreenState extends State<SalesScreen> {
       }
       return;
     }
-    setState(() { _cart.clear(); _completing = false; });
+    setState(() { _cart.clear(); _completing = false; _pendingSaleKey = null; });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       backgroundColor: Mtek.success,

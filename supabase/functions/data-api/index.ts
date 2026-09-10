@@ -317,6 +317,11 @@ async function ensureCore() {
       vat_enabled: false, vat_rate: 0.075, watermark: true,
       signature_gate_enabled: true,
     } }, { upsert: true }));
+  await (await coll.sales()).createIndex(
+    { signed_by: 1, issue_key: 1 },
+    { unique: true, name: 'one_sale_per_user_issue_key',
+      partialFilterExpression: { issue_key: { $type: 'string' } } },
+  );
 }
 async function nextSerial(type: string): Promise<number> {
   const out = await (await coll.serials()).findOneAndUpdate(
@@ -895,6 +900,18 @@ Deno.serve(async (req: Request) => {
       case 'POST /api/sales': {
         const b = await req.json();
         await verifyPasscode(user, String(b.passcode ?? ''));
+        const issueKey = String(b.issue_key ?? '').trim().slice(0, 180);
+        if (!issueKey) throw new HttpErr(400, 'Sale issue key required');
+        // Every role uses this same endpoint. A retry after a timeout returns
+        // the original cloud sale instead of decrementing stock or creating
+        // another transaction/receipt.
+        const existingSale = await (await coll.sales()).findOne({ issue_key: issueKey, signed_by: user.uid }) as Record<string, unknown> | null;
+        if (existingSale) return json({
+          ok: true, server_applied: true, duplicate: true,
+          sale_id: String(existingSale._id), total: Number(existingSale.total) || 0,
+          receipt_no: existingSale.receipt_no ?? null,
+          invoice_no: existingSale.invoice_no ?? null,
+        });
         const items = Array.isArray(b.items) ? b.items : [];
         if (!items.length) throw new HttpErr(400, 'Cart is empty');
         const method = ['cash', 'transfer', 'pos', 'credit'].includes(b.method) ? b.method : 'cash';
@@ -935,7 +952,7 @@ Deno.serve(async (req: Request) => {
         }
 
         const t = now();
-        const sale = { customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), method, discount, total, items: lines, signed_by: user.uid, signed_name: user.name, customer_signature: String(b.customer_signature ?? ''), created_at: t };
+        const sale = { issue_key: issueKey, customer_id: customerId, customer_name: customerName, customer_contact: String(b.customer_contact ?? ''), method, discount, total, items: lines, signed_by: user.uid, signed_name: user.name, customer_signature: String(b.customer_signature ?? ''), created_at: t };
         const saleOut = await ins(coll.sales(), sale);
         // Credit is an accounts-receivable event, not cash received. Keep it
         // in the unified ledger but do not issue a payment receipt or count it
@@ -953,6 +970,9 @@ Deno.serve(async (req: Request) => {
           invoiceNo = 'MTK-INV-' + pad9(await nextSerial('invoice'));
           await (await coll.invoices()).insertOne({ no: invoiceNo, customer_id: customerId, customer_name: customerName, status: 'sent', subtotal, vat: 0, total, amount_paid: 0, items: lines, issued_by: user.uid, created_at: t, updated_at: t });
         }
+        await (await coll.sales()).updateOne({ _id: saleOut.insertedId }, {
+          $set: { receipt_no: recNo, invoice_no: invoiceNo },
+        });
         const reference = invoiceNo ?? recNo ?? String(saleOut.insertedId);
         await audit('billing', method === 'credit' ? 'credit-sale' : 'sale', reference, user);
         await notify(
