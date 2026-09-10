@@ -31,5 +31,18 @@ class BiometricService {
   Future<void> saveSignaturePasscode(String value) => _storage.write(key: 'bio_signature', value: value);
   Future<String?> signaturePasscode() async =>
       await authenticate('Authorise your MFSL signature') ? _storage.read(key: 'bio_signature') : null;
-  Future<void> clear() => _storage.deleteAll();
+
+  /// Session tokens are credentials too. Keep them in the OS credential vault
+  /// even when biometric convenience is disabled.
+  Future<void> saveSession(String value) => _storage.write(key: 'auth_session', value: value);
+  Future<String?> session() => _storage.read(key: 'auth_session');
+  Future<void> clearSession() => _storage.delete(key: 'auth_session');
+
+  /// Clear only biometric convenience secrets; never sign the user out as a
+  /// side effect of disabling biometrics.
+  Future<void> clear() async {
+    await _storage.delete(key: 'bio_email');
+    await _storage.delete(key: 'bio_password');
+    await _storage.delete(key: 'bio_signature');
+  }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/biometric_service.dart';
 import 'api_client.dart';
 import 'env.dart';
 import 'local_store.dart';
@@ -495,12 +496,15 @@ class AuthStore extends ChangeNotifier {
     notifyListeners();
     unawaited(_persistUsers());
     if (refreshTok.isNotEmpty) {
-      await localWrite('session', jsonEncode({
-        'access_token': accessTok,
+      await BiometricService.instance.saveSession(jsonEncode({
         'refresh_token': refreshTok,
         'email': mail,
         'name': name,
         'role': role,
+      }));
+      // Keep no bearer credentials in the ordinary documents-directory cache.
+      await localWrite('session', jsonEncode({
+        'email': mail, 'name': name, 'role': role,
       }));
     }
   }
@@ -524,7 +528,12 @@ class AuthStore extends ChangeNotifier {
     await loadUsers();
     final api = AppStore.instance.api;
     if (!Env.authApiConfigured || api == null) return;
-    final raw = await localRead('session');
+    // New builds use the Android Keystore / Windows credential vault. Fall
+    // back once to the legacy JSON cache so upgrades preserve the session,
+    // then migrate it into secure storage and scrub its tokens below.
+    var raw = await BiometricService.instance.session();
+    final legacyRaw = await localRead('session');
+    raw ??= legacyRaw;
     if (raw == null || raw.isEmpty) return;
     Map<String, dynamic> saved;
     try {
@@ -534,6 +543,12 @@ class AuthStore extends ChangeNotifier {
     }
     final refreshTok = '${saved['refresh_token'] ?? ''}';
     if (refreshTok.isEmpty) return;
+    if (await BiometricService.instance.session() == null) {
+      await BiometricService.instance.saveSession(jsonEncode(saved));
+      await localWrite('session', jsonEncode({
+        'email': saved['email'], 'name': saved['name'], 'role': saved['role'],
+      }));
+    }
     final res = await api.postPublic('/api/auth/refresh', {'refresh_token': refreshTok});
     if (res == null) {
       // Offline at boot — sign back into the CACHED identity so the user
@@ -600,6 +615,7 @@ class AuthStore extends ChangeNotifier {
     AppStore.instance.remote?.accessToken = null;
     AppStore.instance.api?.accessToken = null;
     unawaited(localWrite('session', ''));
+    unawaited(BiometricService.instance.clearSession());
     notifyListeners();
   }
 
