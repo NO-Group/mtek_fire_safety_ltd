@@ -1,4 +1,8 @@
+import 'dart:convert';
 import 'dart:typed_data';
+
+import '../data/auth_store.dart';
+import '../data/store.dart';
 
 /// Export & dispatch pipeline (owner directive 2026-08-30):
 ///   PDF bytes → timestamped local cache file → native share sheet with the
@@ -20,11 +24,32 @@ class ShareOutcome {
 }
 
 /// Calls the platform implementation selected by the conditional export above.
+Future<bool> archivePdfToCloud({required Uint8List bytes, required String filename,
+    String description = ''}) async {
+  final api = AppStore.instance.api;
+  if (api == null || AuthStore.instance.accessToken == null) return false;
+  try {
+    final response = await api.post('/api/cloud-documents/upload', {
+      'filename': filename, 'mime_type': 'application/pdf',
+      'description': description, 'base64': base64Encode(bytes),
+    });
+    return response != null && response.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
 Future<ShareOutcome> dispatchPdf({
   required Uint8List bytes,
   required String filename,
-}) =>
-    dispatchPdfImpl(bytes: bytes, filename: filename);
+}) async {
+  final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename);
+  final outcome = await dispatchPdfImpl(bytes: bytes, filename: filename);
+  if (!cloudSaved && outcome.result != ShareResult.failed) {
+    return ShareOutcome(outcome.result, '${outcome.message} Cloud backup is pending; use Sync and try again.');
+  }
+  return outcome;
+}
 
 /// Saves the PDF to a user-accessible location WITHOUT opening the share
 /// sheet — the explicit "Download" action (owner request): Downloads folder
@@ -33,5 +58,11 @@ Future<ShareOutcome> dispatchPdf({
 Future<ShareOutcome> savePdf({
   required Uint8List bytes,
   required String filename,
-}) =>
-    savePdfImpl(bytes: bytes, filename: filename);
+}) async {
+  final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename);
+  final outcome = await savePdfImpl(bytes: bytes, filename: filename);
+  if (!cloudSaved && outcome.result != ShareResult.failed) {
+    return ShareOutcome(outcome.result, '${outcome.message} Cloud backup is pending; use Sync and try again.');
+  }
+  return outcome;
+}

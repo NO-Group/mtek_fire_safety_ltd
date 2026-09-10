@@ -52,7 +52,7 @@ const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
 const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-10-office1';
+const BUNDLE_VERSION = '2026-09-10-cloud-docs1';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -99,6 +99,7 @@ const coll = {
   vouchers: () => db(DB.billing).then(d => d.collection('payment_vouchers')),
   mils: () => db(DB.mils).then(d => d.collection('logs')),
   archive: () => db(DB.documents).then(d => d.collection('archive')),
+  cloudDocs: () => db(DB.documents).then(d => d.collection('cloud_files')),
   audit: () => db(DB.audit).then(d => d.collection('events')),
   notifications: () => db(DB.core).then(d => d.collection('notifications')),
 };
@@ -1218,6 +1219,65 @@ Deno.serve(async (req: Request) => {
         }
         await audit('core', 'settings', JSON.stringify({ ...set, reseed: b.reseed ?? null }), user);
         return json({ ok: true, settings: await st.findOne({ _id: 'settings' }), serials: await peekSerials() });
+      }
+
+      case 'GET /api/cloud-documents': {
+        const rows = await (await coll.cloudDocs()).find({}).sort({ created_at: -1 }).limit(1000).toArray();
+        return json({ documents: rows.map((r: Record<string, unknown>) => ({
+          id: String(r._id), filename: r.filename, mime_type: r.mime_type,
+          size: r.size, created_at: r.created_at, created_by_name: r.created_by_name,
+          description: r.description ?? '',
+        })) });
+      }
+      case 'POST /api/cloud-documents/upload': {
+        if (!SERVICE_ROLE) throw new HttpErr(503, 'Cloud document storage is temporarily unavailable');
+        const b = await req.json();
+        const filename = String(b.filename ?? 'document.pdf').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 160);
+        const mime = String(b.mime_type ?? 'application/pdf').slice(0, 80);
+        const encoded = String(b.base64 ?? '');
+        if (!encoded || encoded.length > 16_000_000) throw new HttpErr(400, 'Document is empty or exceeds the 12 MB cloud limit');
+        let bytes: Uint8Array;
+        try { bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0)); }
+        catch { throw new HttpErr(400, 'Document data is invalid'); }
+        if (!bytes.length || bytes.length > 12 * 1024 * 1024) throw new HttpErr(400, 'Document is empty or exceeds the 12 MB cloud limit');
+        const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+          .map(x => x.toString(16).padStart(2, '0')).join('');
+        const existing = await (await coll.cloudDocs()).findOne({ content_hash: digest });
+        if (existing) return json({ ok: true, duplicate: true, document: existing });
+        await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+          method: 'POST', headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'office-documents', name: 'office-documents', public: false, file_size_limit: 12582912 }),
+        });
+        const path = `${user.uid}/${digest}-${filename}`;
+        const uploaded = await fetch(`${SUPABASE_URL}/storage/v1/object/office-documents/${encodeURIComponent(path).replaceAll('%2F', '/')}`, {
+          method: 'POST', headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`,
+            'Content-Type': mime, 'x-upsert': 'false' }, body: bytes,
+        });
+        if (!uploaded.ok && uploaded.status !== 409) throw new HttpErr(502, 'Cloud document upload failed');
+        const record = { filename, mime_type: mime, size: bytes.length, storage_path: path,
+          content_hash: digest, description: String(b.description ?? '').slice(0, 500),
+          created_by: user.uid, created_by_name: user.name, created_at: now() };
+        const out = await ins(coll.cloudDocs(), record);
+        await audit('documents', 'cloud-upload', filename, user);
+        return json({ ok: true, document: { ...record, _id: out.insertedId } }, 201);
+      }
+      case 'POST /api/cloud-documents/download': {
+        const b = await req.json();
+        const id = String(b.id ?? '');
+        let doc = await (await coll.cloudDocs()).findOne({ _id: id }) as Record<string, unknown> | null;
+        if (!doc && /^[0-9a-f]{24}$/i.test(id)) doc = await (await coll.cloudDocs()).findOne({ _id: new ObjectId(id) }) as Record<string, unknown> | null;
+        if (!doc) throw new HttpErr(404, 'Cloud document not found');
+        const signed = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/office-documents/${encodeURIComponent(String(doc.storage_path)).replaceAll('%2F', '/')}`, {
+          method: 'POST', headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresIn: 300 }),
+        });
+        const payload = await signed.json().catch(() => ({} as Record<string, unknown>)) as Record<string, unknown>;
+        if (!signed.ok) throw new HttpErr(502, 'Could not prepare the cloud download');
+        const signedPath = String(payload.signedURL ?? payload.signedUrl ?? '');
+        const downloadUrl = signedPath.startsWith('http') ? signedPath
+          : signedPath.startsWith('/storage/v1/') ? `${SUPABASE_URL}${signedPath}`
+          : `${SUPABASE_URL}/storage/v1${signedPath.startsWith('/object/') ? signedPath : `/object/sign/office-documents/${signedPath}`}`;
+        return json({ url: downloadUrl, filename: doc.filename, mime_type: doc.mime_type });
       }
 
       case 'POST /api/docs/issue': {

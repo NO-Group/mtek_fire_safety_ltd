@@ -115,6 +115,31 @@ class _StockReceiptsScreenState extends State<StockReceiptsScreen> {
       pw.SizedBox(height: 24), pw.Text("Receiver's Signature: ${r['receiver_name'] ?? ''}"), pw.SizedBox(height: 16), pw.Text("Approval's Signature: ${r['approver_name'] ?? (r['status'] == 'approved' ? 'CEO' : 'Pending CEO approval')}")
     ])); return pdf.save();
   }
-  Future<void> _pdf(Map<String, dynamic> r) async { final b = await _buildPdf(r); await Printing.layoutPdf(onLayout: (_) async => b); }
+  Future<void> _pdf(Map<String, dynamic> r) async {
+    final bytes = await _buildPdf(r);
+    final serial = (r['serial'] as num? ?? 0).toInt().toString().padLeft(9, '0');
+    final filename = 'MFSL-Stock-Receipt-$serial.pdf';
+    await archivePdfToCloud(bytes: bytes, filename: filename,
+      description: 'Stock Receipt $serial · ${r['supplier'] ?? 'Supplier'}');
+    if (!mounted) return;
+    final action = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Stock Receipt PDF'),
+      content: const Text('This document is saved to the cloud. Choose what to do next.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, 'print'), child: const Text('Print')),
+        TextButton(onPressed: () => Navigator.pop(dialogContext, 'download'), child: const Text('Download')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, 'share'), child: const Text('Share')),
+      ],
+    ));
+    if (action == 'print') await Printing.layoutPdf(onLayout: (_) async => bytes);
+    if (action == 'download') {
+      final outcome = await savePdf(bytes: bytes, filename: filename);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(outcome.message)));
+    }
+    if (action == 'share') {
+      final outcome = await dispatchPdf(bytes: bytes, filename: filename);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(outcome.message)));
+    }
+  }
   void _snack(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
 }

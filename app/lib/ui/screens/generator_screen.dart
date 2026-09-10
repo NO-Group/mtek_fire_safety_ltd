@@ -1374,13 +1374,21 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
   /// Bottom sheet shown once a document PDF is built — the document was
   /// already recorded; this lets the user pick Share (share sheet) or
   /// Download (save the file) with one tap each.
-  void _showPdfReady({
+  Future<void> _showPdfReady({
     required Uint8List bytes,
     required String filename,
     required String docLabel,
     required int serial,
     required String signerName,
-  }) {
+  }) async {
+    final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename,
+      description: '$docLabel No. $serial · signed by $signerName');
+    if (!mounted) return;
+    if (!cloudSaved) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: Mtek.danger,
+        content: Text('PDF created, but cloud saving failed. Check the connection and retry.')));
+    }
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,

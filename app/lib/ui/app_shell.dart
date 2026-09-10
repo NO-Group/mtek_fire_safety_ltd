@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../core/widget_bridge.dart';
 import '../data/auth_store.dart';
 import '../data/store.dart';
+import 'screens/cloud_documents_screen.dart';
 import 'screens/customers_screen.dart';
 import 'screens/delivery_notes_screen.dart';
 import 'screens/gallery_screen.dart';
@@ -51,6 +52,7 @@ const _gallery = Destination('gallery', 'Gallery', Icons.photo_library_outlined,
 const _stockReceipts = Destination('stockreceipts', 'Stock Receipts', Icons.playlist_add_check_outlined, Icons.playlist_add_check, StockReceiptsScreen());
 const _summary = Destination('summary', 'Summary', Icons.summarize_outlined, Icons.summarize, SummaryScreen());
 const _docs = Destination('docs', 'Documents', Icons.draw_outlined, Icons.draw, GeneratorScreen());
+const _cloudDocs = Destination('clouddocs', 'Cloud Documents', Icons.cloud_outlined, Icons.cloud_done, CloudDocumentsScreen());
 const _notifications = Destination('notifications', 'Notifications', Icons.notifications_outlined, Icons.notifications, NotificationsScreen());
 const _staff = Destination('staff', 'Staff', Icons.badge_outlined, Icons.badge, StaffScreen());
 const _letterhead = Destination('letterhead', 'Letterhead', Icons.article_outlined, Icons.article, LetterheadScreen());
@@ -69,7 +71,7 @@ List<Destination> destinationsFor(String? role) {
   if (role == 'ceo') return _ceoDestinations;
   if (role == 'admin') return _allDestinations;
   return const [
-    _sales, _transactions, _stock, _gallery, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _notifications, _settings,
+    _sales, _transactions, _stock, _gallery, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _cloudDocs, _notifications, _settings,
   ];
 }
 
@@ -77,19 +79,19 @@ List<Destination> destinationsFor(String? role) {
 /// operational destinations. Admin cannot navigate to or render it.
 const _ceoDestinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _letterhead, _notifications, _staff, _settings,
+  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _cloudDocs, _letterhead, _notifications, _staff, _settings,
 ];
 
 /// The complete operational destination set (admin view).
 const _allDestinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _notifications, _staff, _settings,
+  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _cloudDocs, _notifications, _staff, _settings,
 ];
 
 /// Kept for backwards compatibility (admin view).
 const destinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _notifications, _staff, _settings,
+  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _cloudDocs, _notifications, _staff, _settings,
 ];
 
 Widget _freshScreen(String id) => switch (id) {
@@ -100,7 +102,7 @@ Widget _freshScreen(String id) => switch (id) {
   'deliverynotes' => DeliveryNotesScreen(), 'mils' => MilsScreen(),
   'sales' => SalesScreen(), 'stock' => StockScreen(), 'gallery' => GalleryScreen(),
   'stockreceipts' => StockReceiptsScreen(), 'summary' => SummaryScreen(),
-  'docs' => GeneratorScreen(), 'letterhead' => LetterheadScreen(),
+  'docs' => GeneratorScreen(), 'clouddocs' => CloudDocumentsScreen(), 'letterhead' => LetterheadScreen(),
   'notifications' => NotificationsScreen(), 'staff' => StaffScreen(),
   _ => SettingsScreen(),
 };

@@ -449,6 +449,8 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
 
   Future<void> _preview() async {
     final bytes = await _bytes(); if (bytes == null) return;
+    await archivePdfToCloud(bytes: bytes, filename: _filename(),
+      description: 'Official letter · ${_subject.text.trim()} · ${_recipient.text.trim()}');
     await Printing.layoutPdf(onLayout: (_) async => bytes);
   }
 
