@@ -103,10 +103,6 @@ Widget _freshScreen(String id) => switch (id) {
   _ => SettingsScreen(),
 };
 
-/// Primary destinations for the phone bottom bar; everything else lives
-/// behind "More" (opens the drawer).
-const _bottomBarIndexes = [0, 8, 9, 7]; // Insights, Sales, Stock, MILS
-
 /// Responsive shell — four tiers:
 ///   ≥1280px : NavigationRail with extended labels (desktop)
 ///   ≥1000px : compact NavigationRail (small desktop / tablet landscape)
@@ -411,21 +407,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Widget _bottomBar() {
-    final visibleBottom = AuthStore.instance.isManagement
-        ? _bottomBarIndexes.where((i) => i < _visible.length).toList()
-        : [for (var i = 0; i < _visible.length && i < 4; i++) i];
+    // The top-left burger already opens the complete navigation drawer, so
+    // the taskbar contains destinations only—never a duplicate "More" item.
+    final preferredIds = AuthStore.instance.isManagement
+        ? const ['insights', 'sales', 'transactions', 'stock']
+        : const ['sales', 'transactions', 'stock', 'customers'];
+    final visibleBottom = preferredIds
+        .map((id) => _visible.indexWhere((d) => d.id == id))
+        .where((i) => i >= 0)
+        .toList();
+    // When a drawer-only screen is active, show it in the final taskbar slot
+    // so NavigationBar always has a truthful selected destination.
+    if (!visibleBottom.contains(_index)) {
+      if (visibleBottom.length >= 4) visibleBottom.removeLast();
+      visibleBottom.add(_index);
+    }
     return NavigationBar(
       height: 68,
-      selectedIndex: visibleBottom.indexOf(_index) == -1
-          ? visibleBottom.length
-          : visibleBottom.indexOf(_index),
-      onDestinationSelected: (i) {
-        if (i < visibleBottom.length) {
-          setState(() => _index = visibleBottom[i]);
-        } else {
-          _scaffoldKey.currentState?.openDrawer();
-        }
-      },
+      selectedIndex: visibleBottom.indexOf(_index),
+      onDestinationSelected: (i) => setState(() => _index = visibleBottom[i]),
       destinations: [
         for (final idx in visibleBottom)
           NavigationDestination(
@@ -433,11 +433,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             selectedIcon: Icon(_visible[idx].selectedIcon),
             label: _visible[idx].label,
           ),
-        const NavigationDestination(
-          icon: Icon(Icons.menu),
-          selectedIcon: Icon(Icons.menu),
-          label: 'More',
-        ),
       ],
     );
   }

@@ -1480,8 +1480,12 @@ class AppStore extends ChangeNotifier {
     // is unreachable we fall back to the offline path and sync later.
     String? serverReceiptNo;
     String? serverInvoiceNo;
+    String? serverSaleId;
     var serverApplied = false;
-    if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
+    if (!Env.apiConfigured || _api == null || AuthStore.instance.accessToken == null) {
+      throw Exception('Cloud connection and sign-in are required. Sale was not recorded.');
+    }
+    {
       final res = await _api!.post('/api/sales', {
         'customerId': customer.id.length > 20 ? customer.id : null,
         'customer': customer.id.length > 20 ? null : {
@@ -1495,24 +1499,22 @@ class AppStore extends ChangeNotifier {
         'customer_signature': customerSignature,
         'passcode': passcode ?? '',
       });
-      if (res != null) {
-        if (!res.ok || res.json is! Map) {
-          // A reachable authoritative server refusal (stock race, bad
-          // passcode, invalid customer) must NEVER become an offline sale.
-          throw Exception((res.json is Map ? (res.json as Map)['error'] : null) ?? 'Sale rejected by server');
-        }
-        serverApplied = true;
-        final body = res.json as Map;
-        final rawReceipt = body['receipt_no'];
-        final rawInvoice = body['invoice_no'];
-        serverReceiptNo = rawReceipt == null ? null : '$rawReceipt';
-        serverInvoiceNo = rawInvoice == null ? null : '$rawInvoice';
+      if (res == null) {
+        throw Exception('Cloud server is unreachable. Sale was not recorded; please retry.');
       }
-      // null means transport unreachable: continue through the idempotent
-      // offline path and upload with /api/sync/import when connectivity returns.
+      if (!res.ok || res.json is! Map || (res.json as Map)['server_applied'] != true) {
+        throw Exception((res.json is Map ? (res.json as Map)['error'] : null) ?? 'Sale rejected by server');
+      }
+      serverApplied = true;
+      final body = res.json as Map;
+      serverSaleId = '${body['sale_id'] ?? ''}';
+      final rawReceipt = body['receipt_no'];
+      final rawInvoice = body['invoice_no'];
+      serverReceiptNo = rawReceipt == null ? null : '$rawReceipt';
+      serverInvoiceNo = rawInvoice == null ? null : '$rawInvoice';
     }
     final sale = Sale(
-      id: 'S${sales.length + 1}',
+      id: serverSaleId!.isEmpty ? 'S${sales.length + 1}' : serverSaleId,
       date: now,
       customer: customer,
       items: List.of(items),

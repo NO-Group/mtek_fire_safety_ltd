@@ -27,6 +27,7 @@ class _SalesScreenState extends State<SalesScreen> {
   Customer? _customer;
   PaymentMethod _method = PaymentMethod.cash;
   String _query = '';
+  bool _completing = false;
 
   @override
   void dispose() {
@@ -316,7 +317,7 @@ class _SalesScreenState extends State<SalesScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: (_cart.isEmpty || _customer == null)
+                onPressed: (_cart.isEmpty || _customer == null || _completing)
                     ? null
                     : () async {
                         await _complete();
@@ -412,9 +413,12 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   Future<void> _complete() async {
+    if (_completing) return;
+    setState(() => _completing = true);
     final signer = await confirmSignature(context);
     if (signer == null) {
       if (mounted) {
+        setState(() => _completing = false);
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Not signed — sale not issued.')));
       }
@@ -424,15 +428,26 @@ class _SalesScreenState extends State<SalesScreen> {
     // stored with the sale + receipt — proof of purchase on the PDF.
     final customerSig = await _captureCustomerSignature();
     final store = AppStore.instance;
-    await store.completeSale(
-      customer: _customer!,
-      items: _cart.values.toList(),
-      method: _method,
-      signedBy: signer.name,
-      customerSignature: customerSig,
-      passcode: AuthStore.instance.lastVerifiedPasscode,
-    );
-    setState(() => _cart.clear());
+    try {
+      await store.completeSale(
+        customer: _customer!,
+        items: _cart.values.toList(),
+        method: _method,
+        signedBy: signer.name,
+        customerSignature: customerSig,
+        passcode: AuthStore.instance.lastVerifiedPasscode,
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() => _completing = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: Mtek.danger,
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ));
+      }
+      return;
+    }
+    setState(() { _cart.clear(); _completing = false; });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       backgroundColor: Mtek.success,
