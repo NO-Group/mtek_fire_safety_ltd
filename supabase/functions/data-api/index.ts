@@ -172,6 +172,22 @@ async function hmacHex(message: string, key: string): Promise<string> {
 }
 
 const profileCache = new Map<string, { value: Profile; expires: number }>();
+
+/// Passport photos belong in MongoDB, never Supabase Auth metadata. Auth
+/// metadata is embedded in every JWT; a base64 passport photo made the
+/// Authorization header exceed the Edge gateway limit and produced HTTP 520.
+async function removePhotoFromAuthMetadata(user: Record<string, unknown>): Promise<boolean> {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  if (typeof metadata.passport_photo !== 'string' || !metadata.passport_photo) return false;
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${String(user.id ?? '')}`, {
+    method: 'PUT',
+    headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_metadata: { ...metadata, passport_photo: null } }),
+  });
+  if (!r.ok) throw new Error(`Could not repair oversized Auth metadata (${r.status})`);
+  return true;
+}
+
 async function auth(req: Request): Promise<Profile> {
   const jwt = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!jwt) throw new HttpErr(401, 'Missing bearer token');
@@ -387,11 +403,22 @@ Deno.serve(async (req: Request) => {
       } catch {
         return err(503, 'Auth service unreachable — try again shortly');
       }
-      const j = await gr.json().catch(() => ({} as Record<string, unknown>));
+      let j = await gr.json().catch(() => ({} as Record<string, unknown>));
       if (!gr.ok) {
         return err(401, String(j.error_description ?? j.msg ?? 'Wrong email or password'));
       }
-      const u = (j.user ?? {}) as Record<string, unknown>;
+      let u = (j.user ?? {}) as Record<string, unknown>;
+      // Repair accounts created by older builds, then obtain a fresh slim JWT.
+      if (await removePhotoFromAuthMetadata(u)) {
+        gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: String(b.email ?? ''), password: String(b.password ?? '') }),
+        });
+        j = await gr.json().catch(() => ({} as Record<string, unknown>));
+        if (!gr.ok) return err(401, 'Account metadata repaired; please sign in again');
+        u = (j.user ?? {}) as Record<string, unknown>;
+      }
       const token = String(j.access_token ?? '');
       let profile: Profile | null = null;
       try {
@@ -426,11 +453,22 @@ Deno.serve(async (req: Request) => {
       } catch {
         return err(503, 'Auth service unreachable — try again shortly');
       }
-      const j = await gr.json().catch(() => ({} as Record<string, unknown>));
+      let j = await gr.json().catch(() => ({} as Record<string, unknown>));
       if (!gr.ok) {
         return err(401, String(j.error_description ?? j.msg ?? 'Session expired — please sign in again'));
       }
-      const u = (j.user ?? {}) as Record<string, unknown>;
+      let u = (j.user ?? {}) as Record<string, unknown>;
+      if (await removePhotoFromAuthMetadata(u)) {
+        const nextRefresh = String(j.refresh_token ?? refreshToken);
+        gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: nextRefresh }),
+        });
+        j = await gr.json().catch(() => ({} as Record<string, unknown>));
+        if (!gr.ok) return err(401, 'Account metadata repaired; please sign in again');
+        u = (j.user ?? {}) as Record<string, unknown>;
+      }
       const token = String(j.access_token ?? '');
       let profile: Profile | null = null;
       try {
@@ -492,7 +530,7 @@ Deno.serve(async (req: Request) => {
         createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
           method: 'POST',
           headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, phone, phone_confirm: true, email_confirm: true, user_metadata: { full_name: name, name, phone, role: 'sales', passport_photo: passportPhoto } }),
+          body: JSON.stringify({ email, password, phone, phone_confirm: true, email_confirm: true, user_metadata: { full_name: name, name, phone, role: 'sales' } }),
         });
       } catch {
         return err(503, 'Auth service unreachable — try again shortly');
@@ -526,7 +564,7 @@ Deno.serve(async (req: Request) => {
             retryRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
               method: 'POST',
               headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, name, phone, role: 'sales', passport_photo: passportPhoto } }),
+              body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, name, phone, role: 'sales' } }),
             });
           } catch {
             return err(503, 'Auth service unreachable — try again shortly');
