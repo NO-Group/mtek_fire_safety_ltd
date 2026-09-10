@@ -38,29 +38,21 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE =
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
   Deno.env.get('SUPABASE_SECRET_KEY') ??
-  Deno.env.get('SUPABASE_ANON_KEY') ??
   '';
+const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 // The CEO identity is locked to this email (owner directive) and, optionally,
 // a specific Supabase Auth UID if MTEK_CEO_UID is set as a secret.
 const CEO_EMAIL = 'mtekfiresafetyltd@gmail.com';
 const CEO_PHONE = '+2348033498452';
 const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
-// The CEO signature passcode (owner directive 2026-09-02 — 093618).
-// HARDCODED ON PURPOSE: an old MTEK_CEO_SIG function secret previously
-// overrode the directive, so the CEO's passcode silently never matched.
-// To change the CEO passcode later: edit this constant AND bump
-// SIG_RESET_ID below, then redeploy (or rotate in-app via Settings →
-// Account → Signature passcode, which sticks — see the self-heal note).
-const CEO_SIG = '093618';
-// One-time passcode reset marker: whenever this value differs from the
-// profile's stored sig_reset, the CEO's stored signature hash is re-bound
-// to CEO_SIG exactly once (then the marker is written). Bump it to force a
-// new server-side reset; between bumps, in-app passcode changes STICK
-// (the previous unconditional self-heal silently reverted every change).
-const SIG_RESET_ID = '2026-09-02a';
+// Optional bootstrap value for a CEO profile that has never had a signature
+// passcode. It is held only in the Edge Function secret store and is never
+// shipped in source, an APK, an EXE, a response, or a log. Once the hash is
+// created, in-app passcode rotation is authoritative and is never overwritten.
+const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-07-sync1';
+const BUNDLE_VERSION = '2026-09-10-launch-audit1';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -200,7 +192,7 @@ async function auth(req: Request): Promise<Profile> {
   let user: { id: string; email?: string; user_metadata?: Record<string, unknown> };
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${jwt}` },
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${jwt}` },
     });
     if (!r.ok) throw new HttpErr(401, 'Invalid or expired token');
     user = await r.json();
@@ -224,30 +216,12 @@ async function auth(req: Request): Promise<Profile> {
       role: isCeo ? 'ceo' : 'sales', // the CEO identity is locked by hardcode
       sig_salt: salt,
       sig_hash: isCeo && CEO_SIG ? await hashPass(CEO_SIG, salt) : null,
-      sig_reset: SIG_RESET_ID,
       created_at: now(),
     };
     await profiles.insertOne(p as Record<string, unknown>);
   } else if (isCeo && p.role !== 'ceo') {
     await profiles.updateOne({ _id: user.id }, { $set: { role: 'ceo' } });
     p.role = 'ceo';
-  }
-  // Self-heal the CEO's SIGNATURE PASSCODE — but only ONCE per SIG_RESET_ID
-  // (owner directive 2026-09-02 → 093618). Gating on the marker means: a
-  // deploy with a bumped SIG_RESET_ID force-applies the new passcode even
-  // though an old hash is stored (the "new passcode not recognised" bug),
-  // while the CEO's own in-app passcode rotations (Settings → Account)
-  // stick — the old unconditional self-heal silently reverted those on the
-  // very next call. Also guarantees role='ceo'.
-  if (isCeo && CEO_SIG && (p as Record<string, unknown>).sig_reset !== SIG_RESET_ID) {
-    const salt = String(p.sig_salt ?? '').slice(0, 16) || crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-    const wantHash = await hashPass(CEO_SIG, salt);
-    await profiles.updateOne(
-      { _id: user.id },
-      { $set: { role: 'ceo', phone: CEO_PHONE, sig_salt: salt, sig_hash: wantHash, sig_reset: SIG_RESET_ID, email: String(user.email ?? '').toLowerCase() } });
-    p.role = 'ceo'; p.sig_salt = salt; p.sig_hash = wantHash;
-    p.email = String(user.email ?? '').toLowerCase();
-    (p as Record<string, unknown>).sig_reset = SIG_RESET_ID;
   }
   if (isCeo && String((p as Record<string, unknown>).phone ?? '') !== CEO_PHONE) {
     await profiles.updateOne({ _id: user.id }, { $set: { phone: CEO_PHONE } });
@@ -397,7 +371,7 @@ Deno.serve(async (req: Request) => {
       try {
         gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: String(b.email ?? ''), password: String(b.password ?? '') }),
         });
       } catch {
@@ -412,7 +386,7 @@ Deno.serve(async (req: Request) => {
       if (await removePhotoFromAuthMetadata(u)) {
         gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: String(b.email ?? ''), password: String(b.password ?? '') }),
         });
         j = await gr.json().catch(() => ({} as Record<string, unknown>));
@@ -447,7 +421,7 @@ Deno.serve(async (req: Request) => {
       try {
         gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: refreshToken }),
         });
       } catch {
@@ -462,7 +436,7 @@ Deno.serve(async (req: Request) => {
         const nextRefresh = String(j.refresh_token ?? refreshToken);
         gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: nextRefresh }),
         });
         j = await gr.json().catch(() => ({} as Record<string, unknown>));
@@ -501,6 +475,7 @@ Deno.serve(async (req: Request) => {
     // POST /api/auth/reset-password for a mail/OTP-free password reset
     // (owner directive 2026-09-01).
     if (route === 'POST /api/auth/signup') {
+      if (!SERVICE_ROLE) return err(503, 'Account registration is temporarily unavailable');
       const b = await req.json().catch(() => ({} as Record<string, unknown>));
       const name = String(b.name ?? '').trim().slice(0, 120);
       const email = String(b.email ?? '').trim().toLowerCase();
@@ -544,13 +519,19 @@ Deno.serve(async (req: Request) => {
           // failure: prove ownership with the supplied password, then finish
           // creating the missing profile instead of permanently blocking signup.
           const login = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-            method: 'POST', headers: { apikey: SERVICE_ROLE, 'Content-Type': 'application/json' },
+            method: 'POST', headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
           });
           const existing = await login.json().catch(() => ({} as Record<string, unknown>));
           if (!login.ok) return err(409, 'An account with that email already exists');
-          created = { id: (existing as Record<string, unknown>).user &&
-            ((existing as Record<string, unknown>).user as Record<string, unknown>).id };
+          const existingUid = String(((existing as Record<string, unknown>).user as Record<string, unknown> | undefined)?.id ?? '');
+          // Recovery is allowed only for a genuinely orphaned Auth user. Never
+          // overwrite an existing profile: doing so could demote an Admin and
+          // rotate their signature/recovery credentials through the signup UI.
+          if (!existingUid || await (await coll.profiles()).findOne({ _id: existingUid })) {
+            return err(409, 'An account with that email already exists');
+          }
+          created = { id: existingUid };
         } else if (createRes.status === 401 || createRes.status === 403) {
           return err(500, 'Server is not configured for self sign-up (SUPABASE_SERVICE_ROLE_KEY secret missing) — ask the CEO to check Supabase → Edge Functions → Secrets');
         }
@@ -605,7 +586,7 @@ Deno.serve(async (req: Request) => {
       try {
         signInRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
       } catch {
@@ -697,7 +678,7 @@ Deno.serve(async (req: Request) => {
       try {
         gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
           method: 'POST',
-          headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+          headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
       } catch {
@@ -789,7 +770,7 @@ Deno.serve(async (req: Request) => {
         try {
           gr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
             method: 'POST',
-            headers: { apikey: SERVICE_ROLE || (Deno.env.get('SUPABASE_ANON_KEY') ?? ''), 'Content-Type': 'application/json' },
+            headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: user.email, password: current }),
           });
         } catch {

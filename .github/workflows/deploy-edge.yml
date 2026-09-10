@@ -79,7 +79,8 @@ jobs:
       # route answer "Unknown API route" — this check makes that visible.
       - name: Verify live bundle version
         run: |
-          WANT='2026-09-07-sync1'
+          set -euo pipefail
+          WANT='2026-09-10-launch-audit1'
           BODY=""
           for i in $(seq 1 40); do
             CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health?deep=1&full=1&poll=${GITHUB_RUN_ID}-$i" || true)
@@ -92,8 +93,8 @@ jobs:
             sleep 6
           done
           echo "final /health: $BODY"
-          echo "$BODY" | grep -q '"ok":true' || echo "::error::/health never returned ok:true — last body: ${BODY:0:120}"
-          echo "$BODY" | grep -q "\"version\":\"$WANT\"" || echo "::error::live bundle version is NOT $WANT — last body: ${BODY:0:120}"
+          echo "$BODY" | grep -q '"ok":true' || { echo "::error::/health never returned ok:true — last body: ${BODY:0:120}"; exit 1; }
+          echo "$BODY" | grep -q "\"version\":\"$WANT\"" || { echo "::error::live bundle version is NOT $WANT — last body: ${BODY:0:120}"; exit 1; }
         env:
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       # TEMPORARY diagnostics: the Actions log host is unreachable from the
