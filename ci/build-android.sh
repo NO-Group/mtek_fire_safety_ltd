@@ -62,6 +62,8 @@ if [ "$TEST_RC" -ne 0 ]; then
   if command -v gh >/dev/null && [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_SHA:-}" ]; then
     TAIL=$(tail -c 12000 "${RUNNER_TEMP:-/tmp}/pdf-test.log")
     gh api "repos/$R/commits/$GITHUB_SHA/comments" -f body="Build diagnostic:\n\n\`\`\`text\n$TAIL\n\`\`\`" >/dev/null 2>&1 || true
+    printf 'BUILD FAILED at %s\n\n```text\n%s\n```\n' "$GITHUB_SHA" "$TAIL" > "${RUNNER_TEMP:-/tmp}/failed-build-notes.md"
+    gh release edit ci --notes-file "${RUNNER_TEMP:-/tmp}/failed-build-notes.md" >/dev/null 2>&1 || true
   fi
   exit "$TEST_RC"
 fi
