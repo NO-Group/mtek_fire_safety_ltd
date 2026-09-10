@@ -93,7 +93,17 @@ if [ -n "${MFSL_ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${MFSL_SIGNING_PASSWORD:-
 else
   echo "::warning::Production Android signing secrets are absent; using the debug identity."
 fi
-flutter build apk --release
+set +e
+flutter build apk --release > "${RUNNER_TEMP:-/tmp}/apk-build.log" 2>&1
+BUILD_RC=$?
+set -e
+tail -100 "${RUNNER_TEMP:-/tmp}/apk-build.log"
+if [ "$BUILD_RC" -ne 0 ]; then
+  TAIL=$(tail -c 14000 "${RUNNER_TEMP:-/tmp}/apk-build.log")
+  printf 'APK BUILD FAILED at %s\n\n```text\n%s\n```\n' "${GITHUB_SHA:-unknown}" "$TAIL" > "${RUNNER_TEMP:-/tmp}/failed-build-notes.md"
+  gh release edit ci --notes-file "${RUNNER_TEMP:-/tmp}/failed-build-notes.md" >/dev/null 2>&1 || true
+  exit "$BUILD_RC"
+fi
 
 APK="build/app/outputs/flutter-apk/app-release.apk"
 test -s "$APK"
