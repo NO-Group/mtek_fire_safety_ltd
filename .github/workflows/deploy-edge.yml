@@ -82,7 +82,7 @@ jobs:
           WANT='2026-09-07-sync1'
           BODY=""
           for i in $(seq 1 40); do
-            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health?poll=${GITHUB_RUN_ID}-$i" || true)
+            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' -A 'mtek-ci-check' "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/data-api/health?deep=1&poll=${GITHUB_RUN_ID}-$i" || true)
             BODY=$(cat /tmp/h.json 2>/dev/null || true)
             echo "try $i (HTTP $CODE): ${BODY:0:160}"
             case "$BODY" in

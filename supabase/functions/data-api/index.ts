@@ -317,11 +317,6 @@ async function ensureCore() {
       vat_enabled: false, vat_rate: 0.075, watermark: true,
       signature_gate_enabled: true,
     } }, { upsert: true }));
-  await (await coll.sales()).createIndex(
-    { signed_by: 1, issue_key: 1 },
-    { unique: true, name: 'one_sale_per_user_issue_key',
-      partialFilterExpression: { issue_key: { $type: 'string' } } },
-  );
 }
 async function nextSerial(type: string): Promise<number> {
   const out = await (await coll.serials()).findOneAndUpdate(
