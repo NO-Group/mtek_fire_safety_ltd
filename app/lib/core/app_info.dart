@@ -6,7 +6,7 @@
 /// `APP_VERSION` is not supplied the fallback tracks `pubspec.yaml`.
 abstract final class AppInfo {
   /// Product name shown to users.
-  static const appName = 'MFSL Inventory';
+  static const appName = 'MFSL Office';
 
   /// Publisher / vendor line (matches the Windows/MSIX publisher identity).
   static const publisher = 'N.O Group';

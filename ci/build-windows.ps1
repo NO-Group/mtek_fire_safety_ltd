@@ -1,5 +1,5 @@
 # ============================================================================
-# MFSL Inventory - Windows build + publish (GitHub Actions).
+# MFSL Office - Windows build + publish (GitHub Actions).
 #
 # ALL CI logic lives here in ci/ so that .github/workflows/build-mfsl.yml
 # never has to change: editing files under .github/workflows/ requires a
@@ -37,13 +37,13 @@ flutter pub get
 flutter build windows --release
 
 $OUT = "build\windows\x64\runner\Release"
-Copy-Item "$OUT\mtek_inventory.exe" "$OUT\MFSL Inventory.exe"
+Copy-Item "$OUT\mtek_inventory.exe" "$OUT\MFSL Office.exe"
 dart run msix:create
-Copy-Item "$OUT\MFSL-Inventory-Setup.msix" "$OUT\MFSL.Inventory.Setup.msix"
+Copy-Item "$OUT\MFSL-Office-Setup.msix" "$OUT\MFSL.Inventory.Setup.msix"
 
 # Portable zip - WE zip it ourselves; GitHub then serves it byte-for-byte
 # (unlike artifacts, GitHub never adds its own wrapper around release assets).
-$ZIP = Join-Path $env:RUNNER_TEMP "MFSL-Inventory-portable.zip"
+$ZIP = Join-Path $env:RUNNER_TEMP "MFSL-Office-portable.zip"
 if (Test-Path $ZIP) { Remove-Item $ZIP -Force }
 Compress-Archive -Path "$OUT\*" -DestinationPath $ZIP
 
@@ -61,7 +61,7 @@ These assets are RAW files - GitHub never re-zips release assets, so there is
 nothing to extract and no "password protected" errors. Ever.
 
 - ``MFSL.Inventory.Setup.msix`` - double-click to install (Windows).
-- ``MFSL-Inventory-portable.zip`` - portable folder; run ``MFSL Inventory.exe`` inside it.
+- ``MFSL-Office-portable.zip`` - portable folder; run ``MFSL Office.exe`` inside it.
 - ``MFSL.Inventory.apk`` - Android sideload (from the Android job).
 "@ | Set-Content -Path $notes -Encoding utf8
 
@@ -73,7 +73,7 @@ foreach ($i in 1..3) {
   gh release view $TAG *> $null
   if ($LASTEXITCODE -ne 0) {
     gh release create $TAG @target --prerelease `
-      --title "MFSL Inventory - auto builds (rolling)" `
+      --title "MFSL Office - auto builds (rolling)" `
       --notes-file $notes *> $null
   }
   gh release upload $TAG $MSIX $ZIP --clobber

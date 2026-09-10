@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <application
-        android:label="MFSL Inventory"
+        android:label="MFSL Office"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

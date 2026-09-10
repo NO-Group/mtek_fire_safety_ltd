@@ -938,6 +938,34 @@ Deno.serve(async (req: Request) => {
         return json({ urls }, 201);
       }
 
+      case 'POST /api/products/delete': {
+        requireRole(user, ['ceo'], 'delete products');
+        const b = await req.json();
+        const id = String(b.id ?? '').trim();
+        if (!id) throw new HttpErr(400, 'Product id required');
+        const result = await (await coll.products()).deleteOne({ _id: id });
+        if (!result.deletedCount) throw new HttpErr(404, 'Product not found');
+        await audit('inventory', 'delete-product', id, user);
+        await notify('product', 'Product deleted', `${user.name} removed product ${id} from the active catalogue`, id, user);
+        return json({ ok: true });
+      }
+
+      case 'POST /api/customers/delete': {
+        requireRole(user, ['ceo'], 'delete customers');
+        const b = await req.json();
+        const id = String(b.id ?? '').trim();
+        if (!id) throw new HttpErr(400, 'Customer id required');
+        const customerCollection = await coll.customers();
+        let result = await customerCollection.deleteOne({ _id: id });
+        if (!result.deletedCount && /^[0-9a-f]{24}$/i.test(id)) {
+          result = await customerCollection.deleteOne({ _id: new ObjectId(id) });
+        }
+        if (!result.deletedCount) throw new HttpErr(404, 'Customer not found');
+        await audit('customers', 'delete', id, user);
+        await notify('customer', 'Customer deleted', `${user.name} removed a customer from the active directory`, id, user);
+        return json({ ok: true });
+      }
+
       case 'POST /api/stock/adjust': {
         requireRole(user, ['ceo', 'admin'], 'edit stock');
         const b = await req.json();

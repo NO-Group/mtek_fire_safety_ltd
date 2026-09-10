@@ -146,7 +146,7 @@ class MtekApp extends StatelessWidget {
         PreferencesController.instance,
       ]),
       builder: (context, _) => MaterialApp(
-      title: 'MFSL Inventory',
+      title: 'MFSL Office',
       debugShowCheckedModeBanner: false,
       scrollBehavior: MtekScrollBehavior(),
       theme: _withPreferences(MtekTheme.light()),

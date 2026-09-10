@@ -20,8 +20,8 @@ if defined MILS_API_BASE set D=%D% --dart-define=MILS_API_BASE=!MILS_API_BASE!
 call flutter build windows --release !D!
 if errorlevel 1 (echo. & echo BUILD FAILED - read the red errors above. & pause & exit /b 1)
 set OUT=build\windows\x64\runner\Release
-copy /y "%OUT%\mtek_inventory.exe" "%OUT%\MFSL Inventory.exe" >nul
-powershell -NoProfile -Command "Compress-Archive -Path '%OUT%\*' -DestinationPath 'MFSL Inventory.zip' -Force"
+copy /y "%OUT%\mtek_inventory.exe" "%OUT%\MFSL Office.exe" >nul
+powershell -NoProfile -Command "Compress-Archive -Path '%OUT%\*' -DestinationPath 'MFSL Office.zip' -Force"
 
 echo.
 echo Building the Windows Installer (MSIX)... this makes a real Setup wizard
@@ -32,17 +32,17 @@ call dart run msix:create
 if errorlevel 1 (
   echo.
   echo MSIX packaging failed, but the plain EXE build above still succeeded.
-  echo You can still run the app from: app\%OUT%\MFSL Inventory.exe
+  echo You can still run the app from: app\%OUT%\MFSL Office.exe
   pause
   exit /b 0
 )
-copy /y "%OUT%\MFSL-Inventory-Setup.msix" "%OUT%\MFSL Inventory Setup.msix" >nul
+copy /y "%OUT%\MFSL-Office-Setup.msix" "%OUT%\MFSL Office Setup.msix" >nul
 
 echo.
 echo DONE.
-echo Installer (recommended, double-click to install): app\%OUT%\MFSL Inventory Setup.msix
+echo Installer (recommended, double-click to install): app\%OUT%\MFSL Office Setup.msix
 echo   Shows Publisher: N.O Group in the install wizard.
 echo Portable EXE (needs the whole folder next to it, not standalone):
-echo   app\%OUT%\MFSL Inventory.exe   (folder: app\%OUT%\)
-echo Zipped copy of that folder: app\MFSL Inventory.zip
+echo   app\%OUT%\MFSL Office.exe   (folder: app\%OUT%\)
+echo Zipped copy of that folder: app\MFSL Office.zip
 pause

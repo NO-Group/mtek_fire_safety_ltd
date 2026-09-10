@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# MFSL Inventory - Android build + publish (GitHub Actions / any Linux box).
+# MFSL Office - Android build + publish (GitHub Actions / any Linux box).
 #
 # ALL CI logic lives here in ci/ so that .github/workflows/build-mfsl.yml
 # never has to change: editing files under .github/workflows/ requires a
@@ -78,7 +78,7 @@ cp "$APK" "$STAGE"
 
 # --- 3. Publish to the rolling "ci" release (raw asset, no zip wrapper) -------
 TAG="ci"
-TITLE="MFSL Inventory - auto builds (rolling)"
+TITLE="MFSL Office - auto builds (rolling)"
 NOTES="$(mktemp)"
 SHA="${GITHUB_SHA:-local}"
 REF="${GITHUB_REF_NAME:-local}"
@@ -90,7 +90,7 @@ REF="${GITHUB_REF_NAME:-local}"
   echo ""
   echo "- \`MFSL.Inventory.apk\` - sideload onto Android (open this link on the phone)."
   echo "- \`MFSL.Inventory.Setup.msix\` - Windows installer (from the Windows job)."
-  echo "- \`MFSL-Inventory-portable.zip\` - portable Windows folder (from the Windows job)."
+  echo "- \`MFSL-Office-portable.zip\` - portable Windows folder (from the Windows job)."
 } >"$NOTES"
 
 # View-or-create, then upload with retries: the Windows job runs in parallel

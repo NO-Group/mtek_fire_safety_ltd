@@ -24,7 +24,7 @@ class BiometricService {
     await _storage.write(key: 'bio_password', value: password);
   }
   Future<(String, String)?> login() async {
-    if (!await authenticate('Sign in to MFSL Inventory')) return null;
+    if (!await authenticate('Sign in to MFSL Office')) return null;
     final e = await _storage.read(key: 'bio_email'), p = await _storage.read(key: 'bio_password');
     return e == null || p == null ? null : (e, p);
   }

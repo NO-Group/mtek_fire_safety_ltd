@@ -779,6 +779,56 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateProductDetails(Product original, {required String name,
+      required int costPrice, required int sellingPrice}) async {
+    final updated = Product(
+      id: original.id, name: name.trim(), category: original.category,
+      costPrice: costPrice, sellingPrice: sellingPrice,
+      qtyOnHand: original.qtyOnHand, reorderLevel: original.reorderLevel,
+      unit: original.unit, length: original.length, lengthUnit: original.lengthUnit,
+      width: original.width, widthUnit: original.widthUnit,
+      size: original.size, sizeUnit: original.sizeUnit,
+      imageUrls: original.imageUrls, isService: original.isService,
+    );
+    if (_api == null || AuthStore.instance.accessToken == null) {
+      throw Exception('Cloud connection is required. Product was not changed.');
+    }
+    final res = await _api!.post('/api/products/upsert', {
+      'products': [productToJson(updated)],
+    });
+    if (res == null || !res.ok) throw Exception(
+      (res?.json is Map ? (res!.json as Map)['error'] : null) ?? 'Product update failed');
+    final index = products.indexWhere((p) => p.id == original.id);
+    if (index >= 0) products[index] = updated;
+    await writeStore('products', products.map(productToJson).toList());
+    await _markKnown('products', [productToJson(updated)]);
+    notifyListeners();
+  }
+
+  Future<void> deleteProduct(Product product) async {
+    if (_api == null || AuthStore.instance.accessToken == null) {
+      throw Exception('Cloud connection is required. Product was not deleted.');
+    }
+    final res = await _api!.post('/api/products/delete', {'id': product.id});
+    if (res == null || !res.ok) throw Exception(
+      (res?.json is Map ? (res!.json as Map)['error'] : null) ?? 'Product deletion failed');
+    products.removeWhere((p) => p.id == product.id);
+    await writeStore('products', products.map(productToJson).toList());
+    notifyListeners();
+  }
+
+  Future<void> deleteCustomer(Customer customer) async {
+    if (_api == null || AuthStore.instance.accessToken == null) {
+      throw Exception('Cloud connection is required. Customer was not deleted.');
+    }
+    final res = await _api!.post('/api/customers/delete', {'id': customer.id});
+    if (res == null || !res.ok) throw Exception(
+      (res?.json is Map ? (res!.json as Map)['error'] : null) ?? 'Customer deletion failed');
+    customers.removeWhere((c) => c.id == customer.id);
+    await writeStore('customers', customers.map(customerToJson).toList());
+    notifyListeners();
+  }
+
   Future<List<String>> uploadProductImages(String productId, List<String> dataUrls) async {
     if (dataUrls.isEmpty) return const [];
     if (_api == null || AuthStore.instance.accessToken == null) {

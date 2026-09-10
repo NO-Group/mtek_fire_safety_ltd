@@ -106,7 +106,7 @@ jobs:
             echo "deploy run: $GITHUB_RUN_ID  at: $(date -u '+%Y-%m-%d %H:%M:%SZ')  ref: $GITHUB_REF_NAME  sha: $GITHUB_SHA"
             { echo '--- sql.json ---'; cat /tmp/sql.json 2>/dev/null; echo; cat /tmp/delete.log 2>/dev/null; echo '--- deploy.log ---'; tail -c 24000 /tmp/deploy.log 2>/dev/null; } || echo "(log missing)"
           } > last-edge-deploy.log
-          gh release view ci >/dev/null 2>&1 || gh release create ci --prerelease -t "MFSL Inventory - auto builds (rolling)" -n ci
+          gh release view ci >/dev/null 2>&1 || gh release create ci --prerelease -t "MFSL Office - auto builds (rolling)" -n ci
           gh release upload ci last-edge-deploy.log --clobber
         env:
           GH_TOKEN: ${{ github.token }}

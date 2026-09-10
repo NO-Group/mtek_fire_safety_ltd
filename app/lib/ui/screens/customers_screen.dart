@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/format.dart' as fmt;
 import '../../core/phone.dart';
 import '../../core/theme.dart';
+import '../../data/auth_store.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
 import '../widgets.dart';
@@ -161,10 +162,40 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     ],
                   ),
                 )),
+            if (AuthStore.instance.isCeo) ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(foregroundColor: Mtek.danger),
+                onPressed: () => _deleteCustomer(context, c),
+                icon: const Icon(Icons.delete_outline), label: const Text('Delete customer')),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _deleteCustomer(BuildContext sheetContext, Customer customer) async {
+    final confirmed = await showDialog<bool>(context: sheetContext, builder: (dialogContext) => AlertDialog(
+      title: const Text('Delete customer?'),
+      content: Text('Remove ${customer.name} from the active customer directory? Existing receipts and sales history will remain.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Mtek.danger),
+          onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+      ],
+    ));
+    if (confirmed != true || !sheetContext.mounted) return;
+    try {
+      await AppStore.instance.deleteCustomer(customer);
+      if (sheetContext.mounted) {
+        Navigator.pop(sheetContext);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Customer deleted.')));
+      }
+    } catch (error) {
+      if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(
+        backgroundColor: Mtek.danger, content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
   }
 
   Widget _row(String k, String v) => Padding(

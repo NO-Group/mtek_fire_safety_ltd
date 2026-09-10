@@ -322,6 +322,21 @@ class _StockScreenState extends State<StockScreen> {
                             icon: const Icon(Icons.tune, color: Mtek.navy700),
                             onPressed: () => _adjustDialog(context, p),
                           ),
+                        if (AuthStore.instance.isCeo)
+                          PopupMenuButton<String>(
+                            tooltip: 'Product actions',
+                            onSelected: (action) {
+                              if (action == 'edit') _editProduct(context, p);
+                              if (action == 'delete') _deleteProduct(context, p);
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(value: 'edit', child: ListTile(
+                                dense: true, leading: Icon(Icons.edit_outlined), title: Text('Edit name and prices'))),
+                              PopupMenuItem(value: 'delete', child: ListTile(
+                                dense: true, leading: Icon(Icons.delete_outline, color: Mtek.danger),
+                                title: Text('Delete product', style: TextStyle(color: Mtek.danger)))),
+                            ],
+                          ),
                       ],
                     ),
                     ),
@@ -334,6 +349,62 @@ class _StockScreenState extends State<StockScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _editProduct(BuildContext context, Product p) async {
+    final name = TextEditingController(text: p.name);
+    final cost = TextEditingController(text: '${p.costPrice}');
+    final price = TextEditingController(text: '${p.sellingPrice}');
+    final ok = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Edit product'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: 'Product name *')),
+        const SizedBox(height: 10),
+        TextField(controller: cost, keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Cost price (₦)')),
+        const SizedBox(height: 10),
+        TextField(controller: price, keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Selling price (₦) *')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Save changes')),
+      ],
+    ));
+    if (ok != true || !context.mounted) return;
+    if (name.text.trim().isEmpty || int.tryParse(price.text.replaceAll(',', '')) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a product name and valid selling price.')));
+      return;
+    }
+    try {
+      await AppStore.instance.updateProductDetails(p,
+        name: name.text, costPrice: int.tryParse(cost.text.replaceAll(',', '')) ?? 0,
+        sellingPrice: int.parse(price.text.replaceAll(',', '')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product updated in the cloud.')));
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: Mtek.danger, content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
+  Future<void> _deleteProduct(BuildContext context, Product p) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Delete product?'),
+      content: Text('Remove ${p.name} from the active stock catalogue? Existing sales history will be preserved.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Mtek.danger),
+          onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+      ],
+    ));
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await AppStore.instance.deleteProduct(p);
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product deleted.')));
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: Mtek.danger, content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
   }
 
   void _adjustDialog(BuildContext context, Product p) {

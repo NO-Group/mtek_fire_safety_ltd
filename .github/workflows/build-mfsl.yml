@@ -1,4 +1,4 @@
-## MFSL Inventory - cloud build (APK + Windows installer)
+## MFSL Office - cloud build (APK + Windows installer)
 ##
 ## This file is intentionally MINIMAL and should never need editing again:
 ## ALL build logic lives in ci/build-android.sh and ci/build-windows.ps1
@@ -10,7 +10,7 @@
 ##   A rolling pre-release tagged "ci" on the Releases page with RAW assets:
 ##     - MFSL.Inventory.apk
 ##     - MFSL.Inventory.Setup.msix
-##     - MFSL-Inventory-portable.zip (portable Release folder, zipped by us)
+##     - MFSL-Office-portable.zip (portable Release folder, zipped by us)
 ##   GitHub NEVER re-zips or encrypts release assets (unlike Actions
 ##   artifacts), so downloads are exactly these files - nothing to extract.
 ##   (Dot names: GitHub replaces spaces in release asset names with dots.)
@@ -18,7 +18,7 @@
 ## Runs: manually (Actions tab), or automatically on pushes to main or to the
 ## working branch that touch app/, ci/ or this file.
 
-name: Build MFSL Inventory (APK + EXE)
+name: Build MFSL Office (APK + EXE)
 
 on:
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
       - name: Attach APK to this run (Artifacts box)
         uses: actions/upload-artifact@v4
         with:
-          name: MFSL-Inventory-Android-APK
+          name: MFSL-Office-Android-APK
           path: app/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
@@ -62,8 +62,8 @@ jobs:
       - name: Attach Windows installer + portable zip to this run (Artifacts box)
         uses: actions/upload-artifact@v4
         with:
-          name: MFSL-Inventory-Windows
+          name: MFSL-Office-Windows
           path: |
             app/build/windows/x64/runner/Release/MFSL.Inventory.Setup.msix
-            ${{ runner.temp }}/MFSL-Inventory-portable.zip
+            ${{ runner.temp }}/MFSL-Office-portable.zip
           if-no-files-found: error

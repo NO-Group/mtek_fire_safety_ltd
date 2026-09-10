@@ -457,7 +457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _testNotification() async {
     final delivered = await NotificationService.instance.show(
       key: 'settings-test-${DateTime.now().millisecondsSinceEpoch}',
-      title: 'MFSL Inventory alerts are working',
+      title: 'MFSL Office alerts are working',
       body: 'This device will receive the business alerts selected in Settings.',
       kind: 'general',
     );

@@ -23,7 +23,7 @@ class NotificationService {
     try {
       const android = AndroidInitializationSettings('@mipmap/ic_launcher');
       final windows = WindowsInitializationSettings(
-        appName: 'MFSL Inventory',
+        appName: 'MFSL Office',
         appUserModelId: 'NOGroup.MFSL.Inventory',
         guid: 'c51c7c21-36f2-4a15-83fb-b74b643f49e7',
       );
