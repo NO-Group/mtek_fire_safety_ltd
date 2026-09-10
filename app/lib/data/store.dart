@@ -242,8 +242,9 @@ class AppStore extends ChangeNotifier {
   Future<void> reloadRemote() async {
     if (!Env.apiConfigured || _api == null) return;
     _api!.accessToken = AuthStore.instance.accessToken;
-    // never discard local records the server has not received yet
-    if (!await _uploadOfflineData()) return;
+    // On account change, never upload the previous user's device cache under
+    // the newly authenticated identity. Start with the shared cloud dataset;
+    // ordinary in-session refreshes handle that user's own pending queue.
     _clearAll();
     final okRemote = await _loadRemote();
     if (okRemote) {
@@ -363,7 +364,9 @@ class AppStore extends ChangeNotifier {
     _refreshing = true;
     try {
       _api!.accessToken = AuthStore.instance.accessToken;
-      if (!await _uploadOfflineData()) return false;
+      // Reads and writes are independent: a rejected legacy queue row must
+      // not prevent fresh CEO/Admin/Sales changes from being downloaded.
+      await _uploadOfflineData();
       exhaustedHistory.clear();
       // load into the live lists but keep a snapshot to roll back on failure
       final snap = (

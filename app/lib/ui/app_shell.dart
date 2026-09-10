@@ -120,7 +120,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Timer? _notifyTimer;
   Timer? _dataTimer;
-  int _syncTicks = 0;
 
   List<Destination> get _visible => destinationsFor(AuthStore.instance.current?.role);
 
@@ -142,15 +141,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // only re-downloaded when the server reports something changed.
     unawaited(AppStore.instance.refreshRemote());
     _dataTimer = Timer.periodic(const Duration(seconds: 8), (_) {
-      _syncTicks++;
-      // Audit-stamp polling gives fast updates. A forced authoritative pull
-      // every 32 seconds also catches settings, role or legacy writes that
-      // did not produce an audit event, on every signed-in account.
-      if (_syncTicks % 4 == 0) {
-        unawaited(AppStore.instance.refreshRemote());
-      } else {
-        unawaited(AppStore.instance.pollChanges());
-      }
+      // Always pull the authoritative shared dataset. Relying on an audit
+      // change stamp allowed an account with a stale/rejected local queue to
+      // miss changes made by the CEO or another member of staff.
+      unawaited(AppStore.instance.refreshRemote());
     });
     // Jump to a screen requested by a home-widget tap / launcher shortcut.
     WidgetBridge.requestedScreen.addListener(_applyRequestedScreen);
@@ -216,7 +210,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     return Scaffold(
       key: _scaffoldKey,
       appBar: _appBar(dest),
-      drawer: useRail ? null : _drawer(context),
+      drawer: _drawer(context),
       // Every page re-renders whenever the store changes (local edit OR a
       // background refresh from the server), not just the notification badge.
       body: AnimatedBuilder(
@@ -281,25 +275,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         AnimatedBuilder(
           animation: AppStore.instance,
           builder: (context, _) {
-            final store = AppStore.instance;
-            final connected = AuthStore.instance.accessToken != null && store.lastServerSync != null;
-            return IconButton(
-              tooltip: connected
-                  ? 'Cloud synced ${store.lastServerSync!.toLocal()}'
-                  : 'Not currently cloud-synced — tap to retry',
-              onPressed: () async {
-                final ok = await store.refreshRemote();
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(ok ? 'Cloud data is up to date.' : 'Cloud sync failed. Check the connection and sign-in.')));
-              },
-              icon: Icon(connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
-                color: connected ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5)),
-            );
-          },
-        ),
-        AnimatedBuilder(
-          animation: AppStore.instance,
-          builder: (context, _) {
             final unread = AppStore.instance.unreadNotificationCount;
             return Padding(
               padding: const EdgeInsets.only(right: 2),
@@ -321,26 +296,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         ),
         const SizedBox(width: 4),
         _rolePill(user?.role ?? ''),
-        const SizedBox(width: 4),
-        IconButton(
-          tooltip: 'Sign out',
-          icon: const Icon(Icons.logout, color: Colors.white),
-          onPressed: () => AuthStore.instance.signOut(),
-        ),
       ],
-      leading: useRailTertiary()
-          ? null
-          : IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-            ),
+      leading: IconButton(
+        tooltip: 'Menu',
+        icon: const Icon(Icons.menu, color: Colors.white),
+        onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+      ),
     );
-  }
-
-  bool useRailTertiary() {
-    // Matches the rail body condition; the AppBar hides its own menu button
-    // when the rail is already providing navigation.
-    return MediaQuery.of(context).size.width >= 1000;
   }
 
   Widget _rolePill(String role) {
@@ -483,6 +445,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         ),
         for (final d in _visible)
           NavigationDrawerDestination(icon: Icon(d.icon), label: Text(d.label)),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+          child: Divider(),
+        ),
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('Sign out'),
+          onTap: () {
+            Navigator.pop(context);
+            AuthStore.instance.signOut();
+          },
+        ),
       ],
     );
   }
