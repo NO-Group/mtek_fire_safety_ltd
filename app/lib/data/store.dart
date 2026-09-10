@@ -131,7 +131,16 @@ class AppStore extends ChangeNotifier {
     if (api == null) return false;
     try {
       final res = await api.get('/api/bootstrap');
-      if (res == null || !res.ok || res.json is! Map) return false; // offline / not signed in
+      if (res == null) {
+        lastSyncError = 'Cloud server did not respond';
+        return false;
+      }
+      if (!res.ok || res.json is! Map) {
+        lastSyncError = res.json is Map
+            ? '${(res.json as Map)['error'] ?? 'Cloud rejected the data request'}'
+            : 'Invalid cloud response (${res.status})';
+        return false;
+      }
       final data = (res.json as Map).cast<String, dynamic>();
       final u = data['user'];
       if (u is Map) {
@@ -228,11 +237,12 @@ class AppStore extends ChangeNotifier {
           if (log != null) milsLogs.add(log);
         }
       }
-      // A successful bootstrap IS the live dataset, even when the catalogue
-      // is still empty on the server (fresh cluster) — the device's own
-      // records were uploaded just before this call.
+      // A successful bootstrap IS the live dataset, even when empty.
+      lastSyncError = null;
       return true;
-    } catch (_) {
+    } catch (error) {
+      lastSyncError = 'Cloud data could not be read: $error';
+      debugPrint('cloud bootstrap failed: $error');
       return false;
     }
   }
@@ -265,7 +275,9 @@ class AppStore extends ChangeNotifier {
   /// on every other device within seconds. Pending offline records are
   /// uploaded first; if the server is unreachable the current data is kept.
   bool _refreshing = false;
+  bool _manualSyncing = false;
   DateTime? lastServerSync;
+  String? lastSyncError;
   String _changeStamp = '';
 
   /// Cheap poll: asks the server for its latest change stamp and only pulls
@@ -358,9 +370,25 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<bool> refreshRemote() async {
+  /// User-requested sync waits for any background cycle instead of falsely
+  /// reporting failure merely because the eight-second timer is active.
+  Future<bool> syncNow() async {
+    if (_manualSyncing) return false;
+    _manualSyncing = true;
+    try {
+      for (var i = 0; i < 100 && (_refreshing || _uploading); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      if (_refreshing || _uploading) return false;
+      return await refreshRemote(manual: true);
+    } finally {
+      _manualSyncing = false;
+    }
+  }
+
+  Future<bool> refreshRemote({bool manual = false}) async {
     if (!Env.apiConfigured || _api == null || AuthStore.instance.accessToken == null) return false;
-    if (_refreshing || _uploading) return false;
+    if ((_manualSyncing && !manual) || _refreshing || _uploading) return false;
     _refreshing = true;
     try {
       _api!.accessToken = AuthStore.instance.accessToken;

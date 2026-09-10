@@ -9,7 +9,6 @@ import '../../core/preferences_controller.dart';
 import '../../core/theme.dart';
 import '../../core/theme_controller.dart';
 import '../../data/auth_store.dart';
-import '../../data/env.dart';
 import '../../data/store.dart';
 import '../../documents/forms_spec.dart';
 import '../../documents/serial_service.dart';
@@ -36,14 +35,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _tsv = TextEditingController();
   String _importMsg = '';
-  bool? _online; // null = still checking
   bool _syncing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ping();
-  }
 
   @override
   void dispose() {
@@ -139,16 +131,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SnackBar(content: Text('All notifications marked as read.')));
                 }
               },
-            ),
-            const Divider(height: 1, color: Mtek.gray100),
-            ListTile(
-              leading: const Icon(Icons.refresh, color: Mtek.navy700),
-              title: const Text('Refresh data from server'),
-              subtitle: const Text('Re-download your latest records and notifications'),
-              trailing: _syncing
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : null,
-              onTap: _syncing ? null : _syncNow,
             ),
           ]),
         ),
@@ -258,7 +240,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: Text(store.lastServerSync == null
                   ? 'No live sync completed this session'
                   : 'Last synced ${_relativeTime(store.lastServerSync!)}'),
-              subtitle: Text('${store.products.length} products · ${store.customers.length} customers · '
+              subtitle: Text(store.lastSyncError ??
+                  '${store.products.length} products · ${store.customers.length} customers · '
                   '${store.sales.length} sales · ${store.transactions.length} transactions'),
               trailing: IconButton(
                 tooltip: 'Synchronise now',
@@ -272,11 +255,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Business records on this device'),
               subtitle: Text('${store.invoices.length} invoices · ${store.receipts.length} receipts · '
                   '${store.milsLogs.length} MILS jobs · ${store.docHistory.length} issued documents'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.security_outlined),
-              title: const Text('Offline protection'),
-              subtitle: const Text('Pending records use idempotent keys and upload before remote data replaces the cache'),
             ),
           ]),
         ),
@@ -315,29 +293,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: const Text('v${AppInfo.version} · ${AppInfo.publisher}'),
             ),
             const Divider(height: 1, color: Mtek.gray100),
-            ListTile(
-              leading: _online == null
-                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Icon(
-                      _online == true ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
-                      color: _online == true ? Mtek.success : Mtek.gray500),
-              title: Text(_online == null
-                  ? 'Checking server…'
-                  : (_online == true
-                      ? (Env.offlineDataMode ? 'Sign-in server connected' : 'Server connected')
-                      : 'Server unreachable')),
-              subtitle: Text(Env.offlineDataMode
-                  ? 'Offline-first mode: all records are stored on this device. Only sign-in uses the server.'
-                  : (_online == true
-                      ? 'Your account is synced with the live server.'
-                      : 'Working offline — changes will sync when reconnected.')),
-              trailing: IconButton(
-                tooltip: 'Check again',
-                icon: const Icon(Icons.refresh, size: 20, color: Mtek.gray500),
-                onPressed: _ping,
-              ),
-            ),
-            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.email_outlined),
               title: const Text('Contact M-TEK support'),
@@ -489,15 +444,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _syncing = true);
     var refreshed = false;
     try {
-      await AppStore.instance.flushSyncQueue();
-      refreshed = await AppStore.instance.refreshRemote();
+      refreshed = await AppStore.instance.syncNow();
       await AppStore.instance.refreshNotifications();
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
     _snack(refreshed
         ? 'Synchronisation complete — this device has the latest server records.'
-        : 'Server unavailable — local records remain protected and will retry automatically.');
+        : 'Synchronisation failed — no cloud success was recorded. Check your connection or sign in again.');
   }
 
   Future<void> _testNotification() async {
@@ -540,20 +494,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
 
   // ---- server status ----
-  Future<void> _ping() async {
-    setState(() => _online = null);
-    final api = AppStore.instance.api;
-    var ok = false;
-    if (Env.authApiConfigured && api != null) {
-      // ANY HTTP response — even a 4xx/5xx — proves the server is reachable
-      // (the request round-tripped). "Unreachable" is reserved for a true
-      // transport failure (offline / timeout), where httpJson returns null.
-      final res = await api.get('/health');
-      ok = res != null;
-    }
-    if (mounted) setState(() => _online = ok);
-  }
-
   // ---- change password / passcode dialogs ----
   Future<void> _changePassword(BuildContext context) async {
     final current = TextEditingController();
