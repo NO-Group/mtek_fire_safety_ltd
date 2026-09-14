@@ -52,7 +52,7 @@ const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
 const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-15-office-docs1';
+const BUNDLE_VERSION = '2026-09-15-office-docs2';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
