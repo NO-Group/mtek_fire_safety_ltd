@@ -99,11 +99,15 @@ class InvoiceDocState {
   String customerSignature = ''; // data URL — customer assent on the device
   List<LedgerRow> rows = [LedgerRow()];
   double advancePayment = 0;
+  double discount = 0;
   bool vatEnabled = true;
+  double vatRate = MtekForms.invoiceVatRate;
+  String paymentTerms = '', notes = '', paymentInstructions = '';
 
   double get subtotal => rows.fold(0, (s, r) => s + r.amount);
-  double get vat => vatEnabled ? subtotal * MtekForms.invoiceVatRate : 0;
-  double get grandTotal => subtotal + vat;
+  double get total => (subtotal - discount).clamp(0, double.infinity);
+  double get vat => vatEnabled ? total * vatRate : 0;
+  double get grandTotal => total + vat;
   double get balance => grandTotal - advancePayment;
   bool get valid =>
       name.trim().isNotEmpty && rows.any((r) => r.description.trim().isNotEmpty && r.amount > 0);
@@ -131,6 +135,8 @@ class MilsDocState {
   bool vatEnabled = true;
   double vatRate = MtekForms.invoiceVatRate;
   double advancePayment = 0;
+  double discount = 0;
+  String paymentTerms = '', notes = '', paymentInstructions = '';
 
   double get subtotal {
     double s = 0;
@@ -143,8 +149,9 @@ class MilsDocState {
     return s;
   }
 
-  double get vat => vatEnabled ? subtotal * vatRate : 0;
-  double get grandTotal => subtotal + vat;
+  double get total => (subtotal - discount).clamp(0, double.infinity);
+  double get vat => vatEnabled ? total * vatRate : 0;
+  double get grandTotal => total + vat;
   double get balance => grandTotal - advancePayment;
   bool get hasWork =>
       weightQty.values.any((q) => q > 0) || componentQty.values.any((q) => q > 0);

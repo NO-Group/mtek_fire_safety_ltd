@@ -388,14 +388,20 @@ pw.MultiPage _invoicePage(
         pw.SizedBox(
           width: 240,
           child: pw.Column(children: [
-            if (v.vatEnabled) _summaryRow('7.5% VAT', v.vat),
-            _summaryRow('TOTAL', v.grandTotal, bold: true),
+            if (v.discount > 0) _summaryRow('Subtotal', v.subtotal),
+            if (v.discount > 0) _summaryRow('Discount', -v.discount),
+            _summaryRow('TOTAL (before VAT)', v.total, bold: true),
+            if (v.vatEnabled) _summaryRow('${(v.vatRate * 100).toStringAsFixed(2)}% VAT', v.vat),
+            _summaryRow('GRAND TOTAL', v.grandTotal, bold: true),
             pw.SizedBox(height: 4),
           ]),
         ),
       ]),
       pw.SizedBox(height: 6),
       ruledField('Amount in words:', value: v.amountInWords, fontSize: 8.5),
+      if (v.paymentTerms.trim().isNotEmpty) ruledField('Payment terms:', value: v.paymentTerms, fontSize: 8.2),
+      if (v.paymentInstructions.trim().isNotEmpty) ruledField('Payment instructions:', value: v.paymentInstructions, fontSize: 8.2, maxLines: 2),
+      if (v.notes.trim().isNotEmpty) ruledField('Notes:', value: v.notes, fontSize: 8.2, maxLines: 3),
       pw.SizedBox(height: 4),
       pw.Row(children: [
         pw.Expanded(
@@ -574,8 +580,14 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
         pw.SizedBox(
           width: 200,
           child: pw.Column(children: [
+            if (m.discount > 0) _summaryBox('Subtotal', m.subtotal),
+            if (m.discount > 0) pw.SizedBox(height: 5),
+            if (m.discount > 0) _summaryBox('Discount', -m.discount),
+            if (m.discount > 0) pw.SizedBox(height: 5),
+            _summaryBox('TOTAL (before VAT)', m.total, bold: true),
+            pw.SizedBox(height: 5),
             if (m.vatEnabled) ...[
-              _summaryBox('7.5% VAT', m.vat),
+              _summaryBox('${(m.vatRate * 100).toStringAsFixed(2)}% VAT', m.vat),
               pw.SizedBox(height: 5),
             ],
             _summaryBox('Grand Total', m.grandTotal, bold: true),
@@ -586,7 +598,11 @@ pw.MultiPage _milsPage(pw.ImageProvider logo, pw.ImageProvider? signature,
           ]),
         ),
       ]),
-      pw.SizedBox(height: 10),
+      pw.SizedBox(height: 8),
+      if (m.paymentTerms.trim().isNotEmpty) ruledField('Payment terms:', value: m.paymentTerms, fontSize: 8.2),
+      if (m.paymentInstructions.trim().isNotEmpty) ruledField('Payment instructions:', value: m.paymentInstructions, fontSize: 8.2, maxLines: 2),
+      if (m.notes.trim().isNotEmpty) ruledField('Service notes:', value: m.notes, fontSize: 8.2, maxLines: 3),
+      pw.SizedBox(height: 6),
 
       if (customerSig != null)
         pw.Padding(

@@ -293,12 +293,14 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
     String? hint,
     ValueChanged<String>? onChanged,
     bool enabled = true,
+    int maxLines = 1,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: controller,
         keyboardType: keyboard,
+        maxLines: maxLines,
         enabled: enabled,
         decoration: InputDecoration(labelText: label, hintText: hint),
         onChanged: onChanged,
@@ -435,7 +437,8 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
 
   final _iName = TextEditingController(), _iAddr = TextEditingController(), _iPhone = TextEditingController(), _iEmail = TextEditingController(),
       _iMils = TextEditingController(), _iRec = TextEditingController(), _iLpo = TextEditingController(),
-      _iAdvance = TextEditingController();
+      _iAdvance = TextEditingController(), _iDiscount = TextEditingController(), _iVatRate = TextEditingController(text: '7.5'),
+      _iTerms = TextEditingController(), _iNotes = TextEditingController(), _iPayment = TextEditingController();
 
   List<Widget> _invoiceForm() {
     return [
@@ -483,18 +486,28 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
         label: const Text('Add row'),
       ),
       const SizedBox(height: 8),
+      _field(_iDiscount, 'Discount (₦, optional)', keyboard: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (v) => setState(() => _invoice.discount = double.tryParse(v) ?? 0)),
       SwitchListTile.adaptive(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Apply 7.5% VAT to this document'),
+        title: Text('Apply ${(_invoice.vatRate * 100).toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '')}% VAT'),
         value: _invoice.vatEnabled,
         onChanged: (value) => setState(() => _invoice.vatEnabled = value),
       ),
-      _summaryTile('Subtotal', fmt.naira(_invoice.subtotal)),
-      if (_invoice.vatEnabled) _summaryTile('7.5% VAT', fmt.naira(_invoice.vat)),
+      if (_invoice.vatEnabled) _field(_iVatRate, 'VAT rate (%)',
+        keyboard: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (v) => setState(() => _invoice.vatRate = (double.tryParse(v) ?? 0) / 100)),
+      _summaryTile('SUBTOTAL', fmt.naira(_invoice.subtotal)),
+      if (_invoice.discount > 0) _summaryTile('Discount', '-${fmt.naira(_invoice.discount)}'),
+      _summaryTile('TOTAL (before VAT)', fmt.naira(_invoice.total), strong: true),
+      if (_invoice.vatEnabled) _summaryTile('${(_invoice.vatRate * 100).toStringAsFixed(2)}% VAT', fmt.naira(_invoice.vat)),
       _summaryTile('GRAND TOTAL', fmt.naira(_invoice.grandTotal), strong: true, color: Mtek.brand700),
       _field(_iAdvance, 'Advance Payment (₦)', keyboard: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (v) => setState(() => _invoice.advancePayment = double.tryParse(v) ?? 0)),
       _summaryTile('Balance Payment', fmt.naira(_invoice.balance), strong: true, color: Mtek.danger),
+      _field(_iTerms, 'Payment terms (optional)', onChanged: (v) => _invoice.paymentTerms = v),
+      _field(_iPayment, 'Payment / bank instructions (optional)', maxLines: 2, onChanged: (v) => _invoice.paymentInstructions = v),
+      _field(_iNotes, 'Notes (optional)', maxLines: 3, onChanged: (v) => _invoice.notes = v),
       _summaryTile('Amount in words', _invoice.amountInWords),
     ];
   }
@@ -596,7 +609,8 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
 
   final _mName = TextEditingController(), _mAddr = TextEditingController(), _mPhone = TextEditingController(), _mEmail = TextEditingController(),
       _mInvoiceNo = TextEditingController(), _mReceiptNo = TextEditingController(), _mLpo = TextEditingController(),
-      _mAdvance = TextEditingController();
+      _mAdvance = TextEditingController(), _mDiscount = TextEditingController(), _mVatRate = TextEditingController(text: '7.5'),
+      _mTerms = TextEditingController(), _mNotes = TextEditingController(), _mPayment = TextEditingController();
 
   List<Widget> _milsForm() {
     return [
@@ -643,19 +657,29 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       _field(_mPhone, 'Phone with country code (or use Email below)', keyboard: TextInputType.phone, onChanged: (v) => _mils.phone = v),
       _field(_mEmail, 'Email (optional if phone given)', keyboard: TextInputType.emailAddress, onChanged: (v) => _mils.customerEmail = v),
       const SizedBox(height: 6),
+      _field(_mDiscount, 'Discount (₦, optional)', keyboard: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (v) => setState(() => _mils.discount = double.tryParse(v) ?? 0)),
       SwitchListTile.adaptive(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Apply 7.5% VAT to this document'),
+        title: Text('Apply ${(_mils.vatRate * 100).toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '')}% VAT'),
         value: _mils.vatEnabled,
         onChanged: (value) => setState(() => _mils.vatEnabled = value),
       ),
-      _summaryTile('Subtotal', fmt.naira(_mils.subtotal)),
-      if (_mils.vatEnabled) _summaryTile('7.5% VAT', fmt.naira(_mils.vat)),
+      if (_mils.vatEnabled) _field(_mVatRate, 'VAT rate (%)',
+        keyboard: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (v) => setState(() => _mils.vatRate = (double.tryParse(v) ?? 0) / 100)),
+      _summaryTile('SUBTOTAL', fmt.naira(_mils.subtotal)),
+      if (_mils.discount > 0) _summaryTile('Discount', '-${fmt.naira(_mils.discount)}'),
+      _summaryTile('TOTAL (before VAT)', fmt.naira(_mils.total), strong: true),
+      if (_mils.vatEnabled) _summaryTile('${(_mils.vatRate * 100).toStringAsFixed(2)}% VAT', fmt.naira(_mils.vat)),
       _summaryTile('GRAND TOTAL', fmt.naira(_mils.grandTotal), strong: true, color: Mtek.brand700),
       _field(_mAdvance, 'Advance Payment (₦) — min 50% required by policy',
           keyboard: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (v) => _mils.advancePayment = double.tryParse(v) ?? 0),
       _summaryTile('Balance Total', fmt.naira(_mils.balance), strong: true, color: Mtek.danger),
+      _field(_mTerms, 'Payment terms (optional)', onChanged: (v) => _mils.paymentTerms = v),
+      _field(_mPayment, 'Payment / bank instructions (optional)', maxLines: 2, onChanged: (v) => _mils.paymentInstructions = v),
+      _field(_mNotes, 'Service notes (optional)', maxLines: 3, onChanged: (v) => _mils.notes = v),
       _summaryTile('Bill in words', _mils.amountInWords),
     ];
   }
