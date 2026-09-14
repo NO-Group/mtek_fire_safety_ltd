@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/format.dart' as fmt;
 import '../../core/phone.dart';
@@ -270,6 +272,12 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
                 TextButton.icon(onPressed: _startNewDocument,
                   icon: const Icon(Icons.note_add_outlined),
                   label: const Text('Start a new document')),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _generating ? null : _accountDetailsPdf,
+                icon: const Icon(Icons.account_balance_outlined),
+                label: const Text('Share bank account details PDF'),
+              ),
               const SizedBox(height: 8),
               Text(
                 'Generation requires your Signature Passcode · PDF carries the corporate header, '
@@ -1473,6 +1481,94 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       ),
     );
   }
+
+  Future<void> _accountDetailsPdf() async {
+    setState(() => _generating = true);
+    try {
+      await MtekPdfFonts.load();
+      final logoData = await rootBundle.load('assets/branding/logo.png');
+      final logo = pw.MemoryImage(logoData.buffer.asUint8List());
+      const accountName = 'M-Tek Fire & Safety Ltd';
+      const accountNumber = '0094862176';
+      const banker = 'Union Bank Plc';
+      const qrContent = 'M-Tek Fire & Safety Ltd | Union Bank Plc | Account Number: 0094862176';
+      final pdf = pw.Document();
+      pdf.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        theme: pw.ThemeData.withFont(base: MtekPdfFonts.base, bold: MtekPdfFonts.bold),
+        build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+          corporateHeader(logo),
+          pw.SizedBox(height: 34),
+          pw.Text('OFFICIAL BANK ACCOUNT DETAILS', textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(fontSize: 19, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
+          pw.SizedBox(height: 8),
+          pw.Text('Use the details below when making payments to M-Tek Fire & Safety Ltd.',
+            textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+          pw.SizedBox(height: 28),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(22),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              border: pw.Border.all(color: PdfColors.blueGrey700, width: .8),
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8))),
+            child: pw.Column(children: [
+              _bankPdfRow('ACCOUNT NAME', accountName),
+              pw.Divider(color: PdfColors.grey400),
+              _bankPdfRow('ACCOUNT NUMBER', accountNumber, important: true),
+              pw.Divider(color: PdfColors.grey400),
+              _bankPdfRow('BANKER', banker),
+            ]),
+          ),
+          pw.SizedBox(height: 26),
+          pw.Center(child: pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: qrContent, width: 105, height: 105)),
+          pw.SizedBox(height: 7),
+          pw.Text('Scan to view the account details', textAlign: pw.TextAlign.center,
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          pw.Spacer(),
+          pw.Container(padding: const pw.EdgeInsets.all(10), color: PdfColors.amber50,
+            child: pw.Text('Payment safety: confirm any requested change of bank details through an official M-Tek contact before transferring funds.',
+              textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.brown900))),
+        ]),
+      ));
+      final bytes = await pdf.save();
+      const filename = 'M-Tek-Official-Bank-Account-Details.pdf';
+      final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename,
+        description: 'Official Union Bank account details · Account 0094862176');
+      if (!mounted) return;
+      final action = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(
+        title: const Text('Bank account details PDF'),
+        content: Text(cloudSaved
+          ? 'The PDF is saved to Cloud Documents. You can now download or share it.'
+          : 'The PDF is ready, but cloud saving failed. You can still download or share it.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, 'download'), child: const Text('Download')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, 'share'), child: const Text('Share')),
+        ],
+      ));
+      if (action == 'download') await _downloadPdf(bytes, filename);
+      if (action == 'share') await _sharePdf(bytes, filename);
+    } catch (error) {
+      debugPrint('Account details PDF failed: $error');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: Mtek.danger, content: Text('Could not create the account details PDF. Please try again.')));
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+  pw.Widget _bankPdfRow(String label, String value, {bool important = false}) => pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(vertical: 12),
+    child: pw.Row(children: [
+      pw.SizedBox(width: 125, child: pw.Text(label,
+        style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey700))),
+      pw.Expanded(child: pw.Text(value,
+        style: pw.TextStyle(fontSize: important ? 19 : 13,
+          letterSpacing: important ? 1.4 : 0,
+          fontWeight: pw.FontWeight.bold, color: important ? PdfColors.red900 : PdfColors.black))),
+    ]),
+  );
 
   Future<void> _sharePdf(Uint8List bytes, String filename) async {
     if (!mounted) return;
