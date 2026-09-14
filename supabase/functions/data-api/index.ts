@@ -52,7 +52,7 @@ const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
 const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-10-theme-brand1';
+const BUNDLE_VERSION = '2026-09-15-office-docs1';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -100,6 +100,7 @@ const coll = {
   mils: () => db(DB.mils).then(d => d.collection('logs')),
   archive: () => db(DB.documents).then(d => d.collection('archive')),
   cloudDocs: () => db(DB.documents).then(d => d.collection('cloud_files')),
+  officeDocs: () => db(DB.documents).then(d => d.collection('office_documents')),
   audit: () => db(DB.audit).then(d => d.collection('events')),
   notifications: () => db(DB.core).then(d => d.collection('notifications')),
 };
@@ -1219,6 +1220,60 @@ Deno.serve(async (req: Request) => {
         }
         await audit('core', 'settings', JSON.stringify({ ...set, reseed: b.reseed ?? null }), user);
         return json({ ok: true, settings: await st.findOne({ _id: 'settings' }), serials: await peekSerials() });
+      }
+
+      case 'GET /api/office-documents': {
+        const rows = await (await coll.officeDocs()).find({ deleted_at: { $exists: false } })
+          .sort({ updated_at: -1 }).limit(500).toArray();
+        return json({ documents: rows.map((r: Record<string, unknown>) => ({
+          id: String(r._id), title: r.title, blocks: r.blocks, owner: r.owner,
+          owner_name: r.owner_name, created_at: r.created_at, updated_at: r.updated_at,
+          revision: r.revision ?? 1,
+        })) });
+      }
+      case 'POST /api/office-documents/save': {
+        const b = await req.json();
+        const id = String(b.id ?? crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+        const title = String(b.title ?? '').trim().slice(0, 160);
+        const blocks = Array.isArray(b.blocks) ? b.blocks.slice(0, 300) : [];
+        if (!id || !title) throw new HttpErr(400, 'Document title is required');
+        const encodedSize = new TextEncoder().encode(JSON.stringify(blocks)).length;
+        if (encodedSize > 2_000_000) throw new HttpErr(400, 'Editable document exceeds the 2 MB limit');
+        const collection = await coll.officeDocs();
+        const existing = await collection.findOne({ _id: id }) as Record<string, unknown> | null;
+        if (existing && existing.owner !== user.uid && !['ceo', 'admin'].includes(user.role)) {
+          throw new HttpErr(403, 'Only the owner or management can edit this document');
+        }
+        const timestamp = now();
+        const revision = Number(existing?.revision ?? 0) + 1;
+        if (existing) {
+          const snapshot = { revision: existing.revision ?? 1, title: existing.title,
+            blocks: existing.blocks, saved_at: existing.updated_at, saved_by: user.uid };
+          await collection.updateOne({ _id: id }, {
+            $set: { title, blocks, updated_at: timestamp, updated_by: user.uid,
+              updated_by_name: user.name, revision },
+            $push: { versions: { $each: [snapshot], $slice: -20 } },
+          });
+        } else {
+          await collection.insertOne({ _id: id, title, blocks, owner: user.uid,
+            owner_name: user.name, created_at: timestamp, updated_at: timestamp,
+            updated_by: user.uid, updated_by_name: user.name, revision: 1, versions: [] });
+        }
+        await audit('documents', existing ? 'edit-office-document' : 'create-office-document', title, user);
+        return json({ ok: true, id, revision, updated_at: timestamp }, existing ? 200 : 201);
+      }
+      case 'POST /api/office-documents/delete': {
+        const b = await req.json();
+        const id = String(b.id ?? '');
+        const collection = await coll.officeDocs();
+        const existing = await collection.findOne({ _id: id }) as Record<string, unknown> | null;
+        if (!existing) throw new HttpErr(404, 'Document not found');
+        if (existing.owner !== user.uid && !['ceo', 'admin'].includes(user.role)) {
+          throw new HttpErr(403, 'Only the owner or management can delete this document');
+        }
+        await collection.updateOne({ _id: id }, { $set: { deleted_at: now(), deleted_by: user.uid } });
+        await audit('documents', 'delete-office-document', String(existing.title ?? id), user);
+        return json({ ok: true });
       }
 
       case 'GET /api/cloud-documents': {

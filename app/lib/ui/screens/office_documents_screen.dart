@@ -1,0 +1,202 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+
+import '../../core/theme.dart';
+import '../../data/store.dart';
+import '../../documents/pdf_shared.dart';
+import '../../documents/share_service.dart';
+import '../widgets.dart';
+
+class _DocBlock {
+  String type;
+  final TextEditingController text;
+  String image;
+  _DocBlock(this.type, [String value = '', this.image = '']) : text = TextEditingController(text: value);
+  factory _DocBlock.fromJson(Map data) => _DocBlock('${data['type'] ?? 'paragraph'}', '${data['text'] ?? ''}', '${data['image'] ?? ''}');
+  Map<String, dynamic> toJson() => {'type': type, 'text': text.text, if (image.isNotEmpty) 'image': image};
+  void dispose() => text.dispose();
+}
+
+/// Word-style structured editor: cloud autosave, headings, lists, quotes,
+/// simple tables, images, versioned server records and PDF export/share.
+class OfficeDocumentsScreen extends StatefulWidget {
+  const OfficeDocumentsScreen({super.key});
+  @override State<OfficeDocumentsScreen> createState() => _OfficeDocumentsScreenState();
+}
+
+class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
+  final title = TextEditingController();
+  final blocks = <_DocBlock>[];
+  List<Map<String, dynamic>> documents = [];
+  String? documentId;
+  int revision = 0;
+  bool loading = true, saving = false;
+  Timer? autosave;
+
+  @override
+  void initState() { super.initState(); _load(); }
+  @override
+  void dispose() { autosave?.cancel(); title.dispose(); for (final b in blocks) { b.dispose(); } super.dispose(); }
+
+  Future<void> _load() async {
+    setState(() => loading = true);
+    final response = await AppStore.instance.api?.get('/api/office-documents');
+    if (response != null && response.ok && response.json is Map) {
+      final rows = (response.json as Map)['documents'];
+      documents = [for (final r in rows is List ? rows : const []) if (r is Map) r.cast<String, dynamic>()];
+    }
+    if (mounted) setState(() => loading = false);
+  }
+
+  void _new() {
+    autosave?.cancel();
+    for (final b in blocks) { b.dispose(); }
+    setState(() {
+      documentId = 'doc-${DateTime.now().microsecondsSinceEpoch}'; revision = 0;
+      title.text = 'Untitled document'; blocks..clear()..add(_DocBlock('heading', 'Document title'))..add(_DocBlock('paragraph'));
+    });
+  }
+
+  void _open(Map<String, dynamic> doc) {
+    autosave?.cancel(); for (final b in blocks) { b.dispose(); }
+    setState(() {
+      documentId = '${doc['id']}'; title.text = '${doc['title'] ?? 'Untitled document'}';
+      revision = (doc['revision'] as num? ?? 1).toInt(); blocks.clear();
+      for (final raw in doc['blocks'] is List ? doc['blocks'] as List : const []) {
+        if (raw is Map) blocks.add(_DocBlock.fromJson(raw));
+      }
+      if (blocks.isEmpty) blocks.add(_DocBlock('paragraph'));
+    });
+  }
+
+  void _changed([String? _]) {
+    if (documentId == null) return;
+    autosave?.cancel(); autosave = Timer(const Duration(milliseconds: 1200), () => _save(silent: true));
+  }
+
+  Future<bool> _save({bool silent = false}) async {
+    if (documentId == null || title.text.trim().isEmpty || saving) return false;
+    setState(() => saving = true);
+    final response = await AppStore.instance.api?.post('/api/office-documents/save', {
+      'id': documentId, 'title': title.text.trim(), 'blocks': blocks.map((b) => b.toJson()).toList(),
+    });
+    final ok = response != null && response.ok;
+    if (ok && response.json is Map) revision = ((response.json as Map)['revision'] as num? ?? revision).toInt();
+    if (mounted) {
+      setState(() => saving = false);
+      if (!silent) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: ok ? Mtek.success : Mtek.danger,
+        content: Text(ok ? 'Editable document saved to the cloud.' : 'Cloud save failed. Your editor remains open.')));
+    }
+    if (ok) unawaited(_load());
+    return ok;
+  }
+
+  void _add(String type) {
+    setState(() => blocks.add(_DocBlock(type, type == 'table' ? 'Heading 1 | Heading 2\nValue 1 | Value 2' : '')));
+    _changed();
+  }
+
+  Future<void> _addImage() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    final file = result?.files.single;
+    if (file?.bytes == null) return;
+    final ext = (file!.extension ?? 'jpg').toLowerCase();
+    final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+    setState(() => blocks.add(_DocBlock('image', file.name, 'data:$mime;base64,${base64Encode(file.bytes!)}')));
+    _changed();
+  }
+
+  Future<Uint8List> _pdf() async {
+    await MtekPdfFonts.load();
+    final logoData = await rootBundle.load('assets/branding/logo.png');
+    final logo = pw.MemoryImage(logoData.buffer.asUint8List());
+    final pdf = pw.Document();
+    pdf.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4, margin: const pw.EdgeInsets.all(36),
+      theme: pw.ThemeData.withFont(base: MtekPdfFonts.base, bold: MtekPdfFonts.bold),
+      header: (_) => corporateHeader(logo),
+      footer: (ctx) => pw.Align(alignment: pw.Alignment.centerRight,
+        child: pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600))),
+      build: (_) => [pw.SizedBox(height: 18), for (var i = 0; i < blocks.length; i++) ..._pdfBlock(blocks[i], i)],
+    ));
+    return pdf.save();
+  }
+
+  List<pw.Widget> _pdfBlock(_DocBlock block, int index) {
+    final text = block.text.text.trim();
+    switch (block.type) {
+      case 'heading': return [pw.Header(level: 1, text: text), pw.SizedBox(height: 4)];
+      case 'subheading': return [pw.Header(level: 2, text: text), pw.SizedBox(height: 3)];
+      case 'bullet': return [pw.Bullet(text: text), pw.SizedBox(height: 2)];
+      case 'numbered': return [pw.Bullet(text: '${index + 1}. $text', bulletSize: 0), pw.SizedBox(height: 2)];
+      case 'quote': return [pw.Container(padding: const pw.EdgeInsets.all(8), decoration: const pw.BoxDecoration(border: pw.Border(left: pw.BorderSide(color: PdfColors.red700, width: 3))), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))), pw.SizedBox(height: 5)];
+      case 'table':
+        final rows = [for (final line in block.text.text.split('\n')) line.split('|').map((x) => x.trim()).toList()];
+        return [if (rows.isNotEmpty) pw.TableHelper.fromTextArray(data: rows, headerCount: 1,
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+          headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold)), pw.SizedBox(height: 7)];
+      case 'image':
+        try { return [pw.Center(child: pw.Image(pw.MemoryImage(base64Decode(block.image.split(',').last)), height: 220, fit: pw.BoxFit.contain)), if (text.isNotEmpty) pw.Center(child: pw.Text(text, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700))), pw.SizedBox(height: 8)]; } catch (_) { return []; }
+      default: return [if (text.isNotEmpty) pw.Paragraph(text: text, style: const pw.TextStyle(fontSize: 10.5, lineSpacing: 2)), pw.SizedBox(height: 3)];
+    }
+  }
+
+  Future<void> _export(bool share) async {
+    if (!await _save()) return;
+    final bytes = await _pdf();
+    final filename = '${title.text.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}.pdf';
+    final outcome = share ? await dispatchPdf(bytes: bytes, filename: filename) : await savePdf(bytes: bytes, filename: filename);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(outcome.message)));
+  }
+
+  Future<void> _delete(Map<String, dynamic> doc) async {
+    final yes = await showDialog<bool>(context: context, builder: (c) => AlertDialog(title: const Text('Delete document?'), content: Text('Remove “${doc['title']}” from the active office workspace?'), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete'))]));
+    if (yes != true) return;
+    final response = await AppStore.instance.api?.post('/api/office-documents/delete', {'id': '${doc['id']}'});
+    if (response != null && response.ok) { if (documentId == doc['id']) setState(() => documentId = null); await _load(); }
+  }
+
+  @override
+  Widget build(BuildContext context) => documentId == null ? _library() : _editor();
+
+  Widget _library() => Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+    PageHeader(title: 'Office Documents', subtitle: 'Create structured documents with cloud autosave and PDF export', icon: Icons.description_outlined,
+      actions: [FilledButton.icon(onPressed: _new, icon: const Icon(Icons.add), label: const Text('New document')), IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh))]),
+    const SizedBox(height: 12),
+    Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : documents.isEmpty ? const EmptyHint('No editable office documents yet') : Card(child: ListView.separated(itemCount: documents.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) { final d = documents[i]; return ListTile(leading: const Icon(Icons.article_outlined), title: Text('${d['title']}'), subtitle: Text('Revision ${d['revision'] ?? 1} · ${d['owner_name'] ?? ''} · ${d['updated_at'] ?? ''}', maxLines: 2), onTap: () => _open(d), trailing: IconButton(tooltip: 'Delete', onPressed: () => _delete(d), icon: const Icon(Icons.delete_outline))); }))),
+  ]));
+
+  Widget _editor() => Column(children: [
+    Material(color: Theme.of(context).colorScheme.surfaceContainer, child: SafeArea(bottom: false, child: Padding(padding: const EdgeInsets.all(10), child: Column(children: [
+      Row(children: [IconButton(tooltip: 'Back to library', onPressed: () { autosave?.cancel(); _save(silent: true); setState(() => documentId = null); }, icon: const Icon(Icons.arrow_back)), Expanded(child: TextField(controller: title, onChanged: _changed, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700), decoration: const InputDecoration(hintText: 'Document title', border: InputBorder.none))), if (saving) const Padding(padding: EdgeInsets.all(8), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))), Text('Rev $revision')]),
+      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+        _tool(Icons.title, 'Heading', () => _add('heading')), _tool(Icons.short_text, 'Paragraph', () => _add('paragraph')),
+        _tool(Icons.format_list_bulleted, 'Bullet', () => _add('bullet')), _tool(Icons.format_list_numbered, 'Numbered', () => _add('numbered')),
+        _tool(Icons.format_quote, 'Quote', () => _add('quote')), _tool(Icons.table_chart_outlined, 'Table', () => _add('table')),
+        _tool(Icons.image_outlined, 'Image', _addImage), _tool(Icons.cloud_upload_outlined, 'Save', _save),
+        _tool(Icons.download_outlined, 'PDF', () => _export(false)), _tool(Icons.share_outlined, 'Share', () => _export(true)),
+      ])),
+    ])))),
+    Expanded(child: ListView.builder(padding: const EdgeInsets.fromLTRB(18, 18, 18, 50), itemCount: blocks.length, itemBuilder: (_, i) => _blockEditor(i))),
+  ]);
+
+  Widget _tool(IconData icon, String label, VoidCallback action) => Padding(padding: const EdgeInsets.only(right: 5), child: TextButton.icon(onPressed: action, icon: Icon(icon, size: 17), label: Text(label)));
+
+  Widget _blockEditor(int index) {
+    final b = blocks[index];
+    final style = switch (b.type) { 'heading' => const TextStyle(fontSize: 25, fontWeight: FontWeight.w800), 'subheading' => const TextStyle(fontSize: 19, fontWeight: FontWeight.w700), 'quote' => const TextStyle(fontSize: 15, fontStyle: FontStyle.italic), _ => const TextStyle(fontSize: 15, height: 1.45) };
+    return Card(margin: const EdgeInsets.only(bottom: 8), child: Padding(padding: const EdgeInsets.fromLTRB(12, 5, 4, 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(padding: const EdgeInsets.only(top: 13), child: Icon(b.type == 'bullet' ? Icons.circle : b.type == 'numbered' ? Icons.format_list_numbered : b.type == 'table' ? Icons.table_chart : b.type == 'image' ? Icons.image : Icons.drag_indicator, size: b.type == 'bullet' ? 8 : 18)),
+      const SizedBox(width: 9),
+      Expanded(child: b.type == 'image' ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [AppImage(source: b.image, title: b.text.text.isEmpty ? 'Document image' : b.text.text, width: 180, height: 130), TextField(controller: b.text, onChanged: _changed, decoration: const InputDecoration(labelText: 'Image caption'))]) : TextField(controller: b.text, onChanged: _changed, maxLines: null, style: style, decoration: InputDecoration(border: InputBorder.none, hintText: b.type == 'table' ? 'Separate columns with | and rows with a new line' : 'Type here…'))),
+      IconButton(tooltip: 'Remove block', onPressed: () { setState(() { blocks.removeAt(index).dispose(); }); _changed(); }, icon: const Icon(Icons.close, size: 18)),
+    ])));
+  }
+}
