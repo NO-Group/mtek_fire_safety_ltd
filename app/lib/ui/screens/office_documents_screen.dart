@@ -18,9 +18,16 @@ class _DocBlock {
   String type;
   final TextEditingController text;
   String image;
-  _DocBlock(this.type, [String value = '', this.image = '']) : text = TextEditingController(text: value);
-  factory _DocBlock.fromJson(Map data) => _DocBlock('${data['type'] ?? 'paragraph'}', '${data['text'] ?? ''}', '${data['image'] ?? ''}');
-  Map<String, dynamic> toJson() => {'type': type, 'text': text.text, if (image.isNotEmpty) 'image': image};
+  bool bold, italic, underline;
+  String align;
+  _DocBlock(this.type, [String value = '', this.image = '', this.bold = false,
+    this.italic = false, this.underline = false, this.align = 'left']) : text = TextEditingController(text: value);
+  factory _DocBlock.fromJson(Map data) => _DocBlock('${data['type'] ?? 'paragraph'}',
+    '${data['text'] ?? ''}', '${data['image'] ?? ''}', data['bold'] == true,
+    data['italic'] == true, data['underline'] == true, '${data['align'] ?? 'left'}');
+  Map<String, dynamic> toJson() => {'type': type, 'text': text.text,
+    'bold': bold, 'italic': italic, 'underline': underline, 'align': align,
+    if (image.isNotEmpty) 'image': image};
   void dispose() => text.dispose();
 }
 
@@ -86,14 +93,19 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
     setState(() => saving = true);
     final response = await AppStore.instance.api?.post('/api/office-documents/save', {
       'id': documentId, 'title': title.text.trim(), 'blocks': blocks.map((b) => b.toJson()).toList(),
+      'base_revision': revision,
     });
     final ok = response != null && response.ok;
     if (ok && response.json is Map) revision = ((response.json as Map)['revision'] as num? ?? revision).toInt();
     if (mounted) {
       setState(() => saving = false);
-      if (!silent) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor: ok ? Mtek.success : Mtek.danger,
-        content: Text(ok ? 'Editable document saved to the cloud.' : 'Cloud save failed. Your editor remains open.')));
+      if (!silent || !ok) {
+        final serverError = response?.json is Map ? '${(response!.json as Map)['error'] ?? ''}' : '';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: ok ? Mtek.success : Mtek.danger,
+          content: Text(ok ? 'Editable document saved to the cloud.'
+            : (serverError.isEmpty ? 'Cloud save failed. Your editor remains open.' : serverError))));
+      }
     }
     if (ok) unawaited(_load());
     return ok;
@@ -131,9 +143,19 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
 
   List<pw.Widget> _pdfBlock(_DocBlock block, int index) {
     final text = block.text.text.trim();
+    final alignment = switch (block.align) {
+      'center' => pw.TextAlign.center, 'right' => pw.TextAlign.right,
+      'justify' => pw.TextAlign.justify, _ => pw.TextAlign.left,
+    };
+    pw.TextStyle styled(double size, {pw.FontWeight? weight}) => pw.TextStyle(
+      fontSize: size, fontWeight: block.bold ? pw.FontWeight.bold : weight,
+      fontStyle: block.italic ? pw.FontStyle.italic : pw.FontStyle.normal,
+      decoration: block.underline ? pw.TextDecoration.underline : pw.TextDecoration.none,
+      lineSpacing: 2,
+    );
     switch (block.type) {
-      case 'heading': return [pw.Header(level: 1, text: text), pw.SizedBox(height: 4)];
-      case 'subheading': return [pw.Header(level: 2, text: text), pw.SizedBox(height: 3)];
+      case 'heading': return [pw.Text(text, textAlign: alignment, style: styled(24, weight: pw.FontWeight.bold)), pw.SizedBox(height: 8)];
+      case 'subheading': return [pw.Text(text, textAlign: alignment, style: styled(17, weight: pw.FontWeight.bold)), pw.SizedBox(height: 6)];
       case 'bullet': return [pw.Bullet(text: text), pw.SizedBox(height: 2)];
       case 'numbered': return [pw.Bullet(text: '${index + 1}. $text', bulletSize: 0), pw.SizedBox(height: 2)];
       case 'quote': return [pw.Container(padding: const pw.EdgeInsets.all(8), decoration: const pw.BoxDecoration(border: pw.Border(left: pw.BorderSide(color: PdfColors.red700, width: 3))), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))), pw.SizedBox(height: 5)];
@@ -144,7 +166,7 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
           headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold)), pw.SizedBox(height: 7)];
       case 'image':
         try { return [pw.Center(child: pw.Image(pw.MemoryImage(base64Decode(block.image.split(',').last)), height: 220, fit: pw.BoxFit.contain)), if (text.isNotEmpty) pw.Center(child: pw.Text(text, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700))), pw.SizedBox(height: 8)]; } catch (_) { return []; }
-      default: return [if (text.isNotEmpty) pw.Paragraph(text: text, style: const pw.TextStyle(fontSize: 10.5, lineSpacing: 2)), pw.SizedBox(height: 3)];
+      default: return [if (text.isNotEmpty) pw.Text(text, textAlign: alignment, style: styled(10.5)), pw.SizedBox(height: 5)];
     }
   }
 
@@ -154,6 +176,39 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
     final filename = '${title.text.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}.pdf';
     final outcome = share ? await dispatchPdf(bytes: bytes, filename: filename) : await savePdf(bytes: bytes, filename: filename);
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(outcome.message)));
+  }
+
+  Future<void> _history(Map<String, dynamic> doc) async {
+    final versions = (doc['versions'] as List? ?? const []).cast<Map>();
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: Text('Version history · ${doc['title']}'),
+      content: SizedBox(width: 480, child: versions.isEmpty
+        ? const Text('No earlier versions are available yet.')
+        : ListView.builder(shrinkWrap: true, itemCount: versions.length, itemBuilder: (_, i) {
+            final version = versions[versions.length - i - 1];
+            return ListTile(
+              leading: const Icon(Icons.history),
+              title: Text('Revision ${version['revision']}'),
+              subtitle: Text('${version['saved_at'] ?? ''} · ${version['saved_by_name'] ?? 'Unknown editor'}'),
+              trailing: TextButton(onPressed: () async {
+                final response = await AppStore.instance.api?.post('/api/office-documents/restore', {
+                  'id': '${doc['id']}', 'revision': version['revision'],
+                });
+                if (!mounted) return;
+                if (response != null && response.ok) {
+                  Navigator.pop(dialogContext);
+                  await _load();
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Version restored as a new revision.')));
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not restore that version.')));
+                }
+              }, child: const Text('Restore')),
+            );
+          })),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+    ));
   }
 
   Future<void> _delete(Map<String, dynamic> doc) async {
@@ -170,7 +225,7 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
     PageHeader(title: 'Office Documents', subtitle: 'Create structured documents with cloud autosave and PDF export', icon: Icons.description_outlined,
       actions: [FilledButton.icon(onPressed: _new, icon: const Icon(Icons.add), label: const Text('New document')), IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh))]),
     const SizedBox(height: 12),
-    Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : documents.isEmpty ? const EmptyHint('No editable office documents yet') : Card(child: ListView.separated(itemCount: documents.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) { final d = documents[i]; return ListTile(leading: const Icon(Icons.article_outlined), title: Text('${d['title']}'), subtitle: Text('Revision ${d['revision'] ?? 1} · ${d['owner_name'] ?? ''} · ${d['updated_at'] ?? ''}', maxLines: 2), onTap: () => _open(d), trailing: IconButton(tooltip: 'Delete', onPressed: () => _delete(d), icon: const Icon(Icons.delete_outline))); }))),
+    Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : documents.isEmpty ? const EmptyHint('No editable office documents yet') : Card(child: ListView.separated(itemCount: documents.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) { final d = documents[i]; return ListTile(leading: const Icon(Icons.article_outlined), title: Text('${d['title']}'), subtitle: Text('Revision ${d['revision'] ?? 1} · ${d['owner_name'] ?? ''} · ${d['updated_at'] ?? ''}', maxLines: 2), onTap: () => _open(d), trailing: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(tooltip: 'Version history', onPressed: () => _history(d), icon: const Icon(Icons.history)), IconButton(tooltip: 'Delete', onPressed: () => _delete(d), icon: const Icon(Icons.delete_outline))])); }))),
   ]));
 
   Widget _editor() => Column(children: [
@@ -191,12 +246,86 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
 
   Widget _blockEditor(int index) {
     final b = blocks[index];
-    final style = switch (b.type) { 'heading' => const TextStyle(fontSize: 25, fontWeight: FontWeight.w800), 'subheading' => const TextStyle(fontSize: 19, fontWeight: FontWeight.w700), 'quote' => const TextStyle(fontSize: 15, fontStyle: FontStyle.italic), _ => const TextStyle(fontSize: 15, height: 1.45) };
-    return Card(margin: const EdgeInsets.only(bottom: 8), child: Padding(padding: const EdgeInsets.fromLTRB(12, 5, 4, 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(padding: const EdgeInsets.only(top: 13), child: Icon(b.type == 'bullet' ? Icons.circle : b.type == 'numbered' ? Icons.format_list_numbered : b.type == 'table' ? Icons.table_chart : b.type == 'image' ? Icons.image : Icons.drag_indicator, size: b.type == 'bullet' ? 8 : 18)),
-      const SizedBox(width: 9),
-      Expanded(child: b.type == 'image' ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [AppImage(source: b.image, title: b.text.text.isEmpty ? 'Document image' : b.text.text, width: 180, height: 130), TextField(controller: b.text, onChanged: _changed, decoration: const InputDecoration(labelText: 'Image caption'))]) : TextField(controller: b.text, onChanged: _changed, maxLines: null, style: style, decoration: InputDecoration(border: InputBorder.none, hintText: b.type == 'table' ? 'Separate columns with | and rows with a new line' : 'Type here…'))),
-      IconButton(tooltip: 'Remove block', onPressed: () { setState(() { blocks.removeAt(index).dispose(); }); _changed(); }, icon: const Icon(Icons.close, size: 18)),
-    ])));
+    final style = TextStyle(
+      fontSize: b.type == 'heading' ? 25 : b.type == 'subheading' ? 19 : 15,
+      fontWeight: (b.bold || b.type == 'heading' || b.type == 'subheading') ? FontWeight.w700 : FontWeight.normal,
+      fontStyle: b.italic ? FontStyle.italic : FontStyle.normal,
+      decoration: b.underline ? TextDecoration.underline : TextDecoration.none,
+      height: 1.45,
+    );
+    final alignment = switch (b.align) {
+      'center' => TextAlign.center, 'right' => TextAlign.right,
+      'justify' => TextAlign.justify, _ => TextAlign.left,
+    };
+    void change(VoidCallback update) { setState(update); _changed(); }
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+        child: Column(children: [
+          SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+            SizedBox(width: 130, child: DropdownButton<String>(
+              value: b.type,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              items: const {
+                'paragraph': 'Paragraph', 'heading': 'Heading', 'subheading': 'Subheading',
+                'bullet': 'Bullet', 'numbered': 'Numbered', 'quote': 'Quote',
+                'table': 'Table', 'image': 'Image',
+              }.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
+              onChanged: b.type == 'image' ? null : (value) => change(() => b.type = value ?? b.type),
+            )),
+            IconButton(tooltip: 'Bold', isSelected: b.bold,
+              onPressed: () => change(() => b.bold = !b.bold), icon: const Icon(Icons.format_bold)),
+            IconButton(tooltip: 'Italic', isSelected: b.italic,
+              onPressed: () => change(() => b.italic = !b.italic), icon: const Icon(Icons.format_italic)),
+            IconButton(tooltip: 'Underline', isSelected: b.underline,
+              onPressed: () => change(() => b.underline = !b.underline), icon: const Icon(Icons.format_underlined)),
+            PopupMenuButton<String>(tooltip: 'Alignment', icon: const Icon(Icons.format_align_left),
+              onSelected: (value) => change(() => b.align = value),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'left', child: Text('Align left')),
+                PopupMenuItem(value: 'center', child: Text('Align centre')),
+                PopupMenuItem(value: 'right', child: Text('Align right')),
+                PopupMenuItem(value: 'justify', child: Text('Justify')),
+              ]),
+            IconButton(tooltip: 'Move up', onPressed: index == 0 ? null : () => change(() {
+              final item = blocks.removeAt(index); blocks.insert(index - 1, item);
+            }), icon: const Icon(Icons.arrow_upward, size: 18)),
+            IconButton(tooltip: 'Move down', onPressed: index == blocks.length - 1 ? null : () => change(() {
+              final item = blocks.removeAt(index); blocks.insert(index + 1, item);
+            }), icon: const Icon(Icons.arrow_downward, size: 18)),
+            IconButton(tooltip: 'Duplicate', onPressed: () => change(() {
+              blocks.insert(index + 1, _DocBlock.fromJson(b.toJson()));
+            }), icon: const Icon(Icons.copy_outlined, size: 18)),
+            IconButton(tooltip: 'Remove block', onPressed: () => change(() {
+              blocks.removeAt(index).dispose();
+            }), icon: const Icon(Icons.close, size: 18)),
+          ])),
+          const Divider(),
+          if (b.type == 'image')
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              AppImage(source: b.image, title: b.text.text.isEmpty ? 'Document image' : b.text.text,
+                width: 220, height: 150),
+              TextField(controller: b.text, onChanged: _changed,
+                decoration: const InputDecoration(labelText: 'Image caption')),
+            ])
+          else
+            TextField(
+              controller: b.text,
+              onChanged: _changed,
+              maxLines: null,
+              textAlign: alignment,
+              style: style,
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                hintText: b.type == 'table'
+                  ? 'Separate columns with | and rows with a new line'
+                  : 'Type here…',
+              ),
+            ),
+        ]),
+      ),
+    );
   }
 }

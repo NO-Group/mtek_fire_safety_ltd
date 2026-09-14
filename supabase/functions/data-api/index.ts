@@ -1229,6 +1229,9 @@ Deno.serve(async (req: Request) => {
           id: String(r._id), title: r.title, blocks: r.blocks, owner: r.owner,
           owner_name: r.owner_name, created_at: r.created_at, updated_at: r.updated_at,
           revision: r.revision ?? 1,
+          versions: Array.isArray(r.versions) ? (r.versions as Array<Record<string, unknown>>).map(v => ({
+            revision: v.revision, saved_at: v.saved_at, saved_by_name: v.saved_by_name ?? '',
+          })) : [],
         })) });
       }
       case 'POST /api/office-documents/save': {
@@ -1244,11 +1247,21 @@ Deno.serve(async (req: Request) => {
         if (existing && existing.owner !== user.uid && !['ceo', 'admin'].includes(user.role)) {
           throw new HttpErr(403, 'Only the owner or management can edit this document');
         }
+        const currentRevision = Number(existing?.revision ?? 0);
+        const baseRevision = Number(b.base_revision ?? currentRevision);
+        if (existing && baseRevision !== currentRevision) {
+          throw new HttpErr(409, 'This document changed on another device. Reopen it before editing further.');
+        }
+        if (existing && existing.title === title && JSON.stringify(existing.blocks ?? []) === JSON.stringify(blocks)) {
+          return json({ ok: true, unchanged: true, id, revision: currentRevision, updated_at: existing.updated_at });
+        }
         const timestamp = now();
-        const revision = Number(existing?.revision ?? 0) + 1;
+        const revision = currentRevision + 1;
         if (existing) {
           const snapshot = { revision: existing.revision ?? 1, title: existing.title,
-            blocks: existing.blocks, saved_at: existing.updated_at, saved_by: user.uid };
+            blocks: existing.blocks, saved_at: existing.updated_at,
+            saved_by: existing.updated_by ?? existing.owner,
+            saved_by_name: existing.updated_by_name ?? existing.owner_name };
           await collection.updateOne({ _id: id }, {
             $set: { title, blocks, updated_at: timestamp, updated_by: user.uid,
               updated_by_name: user.name, revision },
@@ -1261,6 +1274,32 @@ Deno.serve(async (req: Request) => {
         }
         await audit('documents', existing ? 'edit-office-document' : 'create-office-document', title, user);
         return json({ ok: true, id, revision, updated_at: timestamp }, existing ? 200 : 201);
+      }
+      case 'POST /api/office-documents/restore': {
+        const b = await req.json();
+        const id = String(b.id ?? '');
+        const wanted = Number(b.revision);
+        const collection = await coll.officeDocs();
+        const existing = await collection.findOne({ _id: id }) as Record<string, unknown> | null;
+        if (!existing) throw new HttpErr(404, 'Document not found');
+        if (existing.owner !== user.uid && !['ceo', 'admin'].includes(user.role)) {
+          throw new HttpErr(403, 'Only the owner or management can restore this document');
+        }
+        const versions = Array.isArray(existing.versions) ? existing.versions as Array<Record<string, unknown>> : [];
+        const version = versions.find(v => Number(v.revision) === wanted);
+        if (!version) throw new HttpErr(404, 'That document version is no longer available');
+        const timestamp = now();
+        const currentRevision = Number(existing.revision ?? 1);
+        const snapshot = { revision: currentRevision, title: existing.title, blocks: existing.blocks,
+          saved_at: existing.updated_at, saved_by: existing.updated_by ?? existing.owner,
+          saved_by_name: existing.updated_by_name ?? existing.owner_name };
+        await collection.updateOne({ _id: id }, {
+          $set: { title: version.title, blocks: version.blocks, updated_at: timestamp,
+            updated_by: user.uid, updated_by_name: user.name, revision: currentRevision + 1 },
+          $push: { versions: { $each: [snapshot], $slice: -20 } },
+        });
+        await audit('documents', 'restore-office-document', `${existing.title} revision ${wanted}`, user);
+        return json({ ok: true, revision: currentRevision + 1 });
       }
       case 'POST /api/office-documents/delete': {
         const b = await req.json();
