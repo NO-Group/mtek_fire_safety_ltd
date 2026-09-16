@@ -1413,14 +1413,10 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
     required int serial,
     required String signerName,
   }) async {
-    final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename,
-      description: '$docLabel No. $serial · signed by $signerName');
     if (!mounted) return;
-    if (!cloudSaved) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        backgroundColor: Mtek.danger,
-        content: Text('PDF created, but cloud saving failed. Check the connection and retry.')));
-    }
+    // Never make the user wait for cloud archiving before showing the ready
+    // actions. On a slow/offline Android connection that looked as if the
+    // Generate button did nothing, even though the PDF had already finished.
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1480,6 +1476,19 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
         ),
       ),
     );
+    unawaited(() async {
+      try {
+        final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename,
+          description: '$docLabel No. $serial · signed by $signerName');
+        if (!cloudSaved && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: Mtek.danger,
+            content: Text('PDF created, but cloud saving failed. You can still download or share it.')));
+        }
+      } catch (error) {
+        debugPrint('Background document archive failed: $error');
+      }
+    }());
   }
 
   Future<void> _accountDetailsPdf() async {
