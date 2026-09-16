@@ -1542,14 +1542,12 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       ));
       final bytes = await pdf.save();
       const filename = 'M-Tek-Official-Bank-Account-Details.pdf';
-      final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename,
+      archivePdfInBackground(bytes: bytes, filename: filename,
         description: 'Official Union Bank account details · Account 0094862176');
       if (!mounted) return;
       final action = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(
         title: const Text('Bank account details PDF'),
-        content: Text(cloudSaved
-          ? 'The PDF is saved to Cloud Documents. You can now download or share it.'
-          : 'The PDF is ready, but cloud saving failed. You can still download or share it.'),
+        content: const Text('The PDF is ready. Cloud backup continues in the background.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
           TextButton(onPressed: () => Navigator.pop(dialogContext, 'download'), child: const Text('Download')),

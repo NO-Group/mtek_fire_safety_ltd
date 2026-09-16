@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -39,14 +40,23 @@ Future<bool> archivePdfToCloud({required Uint8List bytes, required String filena
   }
 }
 
+/// Starts cloud backup without delaying a print, download, share sheet, or
+/// ready dialog. Network availability must never make a local PDF action look
+/// unresponsive.
+void archivePdfInBackground({required Uint8List bytes, required String filename,
+    String description = ''}) {
+  unawaited(() async {
+    await archivePdfToCloud(bytes: bytes, filename: filename, description: description);
+  }());
+}
+
 Future<ShareOutcome> dispatchPdf({
   required Uint8List bytes,
   required String filename,
 }) async {
-  final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename);
   final outcome = await dispatchPdfImpl(bytes: bytes, filename: filename);
-  if (!cloudSaved && outcome.result != ShareResult.failed) {
-    return ShareOutcome(outcome.result, '${outcome.message} Cloud backup is pending; use Sync and try again.');
+  if (outcome.result != ShareResult.failed) {
+    archivePdfInBackground(bytes: bytes, filename: filename);
   }
   return outcome;
 }
@@ -59,10 +69,9 @@ Future<ShareOutcome> savePdf({
   required Uint8List bytes,
   required String filename,
 }) async {
-  final cloudSaved = await archivePdfToCloud(bytes: bytes, filename: filename);
   final outcome = await savePdfImpl(bytes: bytes, filename: filename);
-  if (!cloudSaved && outcome.result != ShareResult.failed) {
-    return ShareOutcome(outcome.result, '${outcome.message} Cloud backup is pending; use Sync and try again.');
+  if (outcome.result != ShareResult.failed) {
+    archivePdfInBackground(bytes: bytes, filename: filename);
   }
   return outcome;
 }

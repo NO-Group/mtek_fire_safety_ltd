@@ -119,12 +119,12 @@ class _StockReceiptsScreenState extends State<StockReceiptsScreen> {
     final bytes = await _buildPdf(r);
     final serial = (r['serial'] as num? ?? 0).toInt().toString().padLeft(9, '0');
     final filename = 'MFSL-Stock-Receipt-$serial.pdf';
-    await archivePdfToCloud(bytes: bytes, filename: filename,
+    archivePdfInBackground(bytes: bytes, filename: filename,
       description: 'Stock Receipt $serial · ${r['supplier'] ?? 'Supplier'}');
     if (!mounted) return;
     final action = await showDialog<String>(context: context, builder: (dialogContext) => AlertDialog(
       title: const Text('Stock Receipt PDF'),
-      content: const Text('This document is saved to the cloud. Choose what to do next.'),
+      content: const Text('The PDF is ready. Cloud backup continues in the background.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dialogContext, 'print'), child: const Text('Print')),
         TextButton(onPressed: () => Navigator.pop(dialogContext, 'download'), child: const Text('Download')),

@@ -256,7 +256,7 @@ class ReceiptsScreen extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final bytes = await _receiptBytes(context, r);
-      await archivePdfToCloud(bytes: bytes,
+      archivePdfInBackground(bytes: bytes,
         filename: '${r.number.toLowerCase().replaceAll('_', '-')}.pdf',
         description: 'Receipt ${r.number} · ${r.customer.name}');
       await Printing.layoutPdf(onLayout: (_) async => bytes);
