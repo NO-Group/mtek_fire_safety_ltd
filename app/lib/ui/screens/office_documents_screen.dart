@@ -40,17 +40,19 @@ class OfficeDocumentsScreen extends StatefulWidget {
 
 class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
   final title = TextEditingController();
+  final search = TextEditingController();
   final blocks = <_DocBlock>[];
   List<Map<String, dynamic>> documents = [];
   String? documentId;
   int revision = 0;
   bool loading = true, saving = false;
+  String saveState = 'Saved';
   Timer? autosave;
 
   @override
   void initState() { super.initState(); _load(); }
   @override
-  void dispose() { autosave?.cancel(); title.dispose(); for (final b in blocks) { b.dispose(); } super.dispose(); }
+  void dispose() { autosave?.cancel(); title.dispose(); search.dispose(); for (final b in blocks) { b.dispose(); } super.dispose(); }
 
   Future<void> _load() async {
     setState(() => loading = true);
@@ -71,6 +73,40 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
     });
   }
 
+  void _template(String kind) {
+    _new();
+    for (final b in blocks) { b.dispose(); }
+    blocks.clear();
+    if (kind == 'memo') {
+      title.text = 'Internal Memo';
+      blocks.addAll([_DocBlock('heading', 'INTERNAL MEMORANDUM', '', true, false, false, 'center'),
+        _DocBlock('table', 'TO | \nFROM | \nDATE | \nSUBJECT | '), _DocBlock('paragraph', 'Purpose and background'),
+        _DocBlock('subheading', 'Action required'), _DocBlock('bullet', '')]);
+    } else if (kind == 'report') {
+      title.text = 'Business Report';
+      blocks.addAll([_DocBlock('heading', 'REPORT TITLE', '', true, false, false, 'center'),
+        _DocBlock('subheading', 'Executive summary'), _DocBlock('paragraph', ''),
+        _DocBlock('subheading', 'Findings'), _DocBlock('bullet', ''),
+        _DocBlock('subheading', 'Recommendations'), _DocBlock('numbered', '')]);
+    } else {
+      title.text = 'Meeting Minutes';
+      blocks.addAll([_DocBlock('heading', 'MEETING MINUTES', '', true, false, false, 'center'),
+        _DocBlock('table', 'Date | \nVenue | \nChairperson | '), _DocBlock('subheading', 'Attendance'),
+        _DocBlock('bullet', ''), _DocBlock('subheading', 'Agenda and decisions'), _DocBlock('numbered', ''),
+        _DocBlock('subheading', 'Action items'), _DocBlock('table', 'Action | Owner | Due date\n | | ')]);
+    }
+    saveState = 'Not saved';
+    setState(() {});
+  }
+
+  Future<void> _duplicate(Map<String, dynamic> doc) async {
+    final newId = 'doc-${DateTime.now().microsecondsSinceEpoch}';
+    final response = await AppStore.instance.api?.post('/api/office-documents/save', {
+      'id': newId, 'title': 'Copy of ${doc['title']}', 'blocks': doc['blocks'] ?? const [], 'base_revision': 0,
+    });
+    if (response != null && response.ok) await _load();
+  }
+
   void _open(Map<String, dynamic> doc) {
     autosave?.cancel(); for (final b in blocks) { b.dispose(); }
     setState(() {
@@ -85,12 +121,13 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
 
   void _changed([String? _]) {
     if (documentId == null) return;
+    if (mounted) setState(() => saveState = 'Not saved');
     autosave?.cancel(); autosave = Timer(const Duration(milliseconds: 1200), () => _save(silent: true));
   }
 
   Future<bool> _save({bool silent = false}) async {
     if (documentId == null || title.text.trim().isEmpty || saving) return false;
-    setState(() => saving = true);
+    setState(() { saving = true; saveState = 'Saving…'; });
     final response = await AppStore.instance.api?.post('/api/office-documents/save', {
       'id': documentId, 'title': title.text.trim(), 'blocks': blocks.map((b) => b.toJson()).toList(),
       'base_revision': revision,
@@ -98,7 +135,7 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
     final ok = response != null && response.ok;
     if (ok && response.json is Map) revision = ((response.json as Map)['revision'] as num? ?? revision).toInt();
     if (mounted) {
-      setState(() => saving = false);
+      setState(() { saving = false; saveState = ok ? 'Saved' : 'Save failed'; });
       if (!silent || !ok) {
         final serverError = response?.json is Map ? '${(response!.json as Map)['error'] ?? ''}' : '';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -221,16 +258,28 @@ class _OfficeDocumentsScreenState extends State<OfficeDocumentsScreen> {
   @override
   Widget build(BuildContext context) => documentId == null ? _library() : _editor();
 
-  Widget _library() => Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-    PageHeader(title: 'Office Documents', subtitle: 'Create structured documents with cloud autosave and PDF export', icon: Icons.description_outlined,
-      actions: [FilledButton.icon(onPressed: _new, icon: const Icon(Icons.add), label: const Text('New document')), IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh))]),
-    const SizedBox(height: 12),
-    Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : documents.isEmpty ? const EmptyHint('No editable office documents yet') : Card(child: ListView.separated(itemCount: documents.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) { final d = documents[i]; return ListTile(leading: const Icon(Icons.article_outlined), title: Text('${d['title']}'), subtitle: Text('Revision ${d['revision'] ?? 1} · ${d['owner_name'] ?? ''} · ${d['updated_at'] ?? ''}', maxLines: 2), onTap: () => _open(d), trailing: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(tooltip: 'Version history', onPressed: () => _history(d), icon: const Icon(Icons.history)), IconButton(tooltip: 'Delete', onPressed: () => _delete(d), icon: const Icon(Icons.delete_outline))])); }))),
-  ]));
+  Widget _library() {
+    final q = search.text.trim().toLowerCase();
+    final shown = q.isEmpty ? documents : documents.where((d) {
+      final body = (d['blocks'] as List? ?? const []).map((x) => x is Map ? '${x['text'] ?? ''}' : '').join(' ');
+      return '${d['title'] ?? ''} $body'.toLowerCase().contains(q);
+    }).toList();
+    return Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      PageHeader(title: 'Office Documents', subtitle: 'Create structured documents with cloud autosave and PDF export', icon: Icons.description_outlined,
+        actions: [PopupMenuButton<String>(tooltip: 'New from template', onSelected: (v) => v == 'blank' ? _new() : _template(v), icon: const Icon(Icons.add), itemBuilder: (_) => const [
+          PopupMenuItem(value: 'blank', child: Text('Blank document')), PopupMenuItem(value: 'memo', child: Text('Internal memo')),
+          PopupMenuItem(value: 'report', child: Text('Business report')), PopupMenuItem(value: 'minutes', child: Text('Meeting minutes'))]),
+          IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh))]),
+      const SizedBox(height: 10),
+      TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search titles and document content', suffixIcon: Icon(Icons.manage_search))),
+      const SizedBox(height: 12),
+      Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : shown.isEmpty ? const EmptyHint('No matching editable documents') : Card(child: ListView.separated(itemCount: shown.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) { final d = shown[i]; return ListTile(leading: const Icon(Icons.article_outlined), title: Text('${d['title']}'), subtitle: Text('Revision ${d['revision'] ?? 1} · ${d['owner_name'] ?? ''} · ${d['updated_at'] ?? ''}', maxLines: 2), onTap: () => _open(d), trailing: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(tooltip: 'Duplicate', onPressed: () => _duplicate(d), icon: const Icon(Icons.copy_outlined)), IconButton(tooltip: 'Version history', onPressed: () => _history(d), icon: const Icon(Icons.history)), IconButton(tooltip: 'Delete', onPressed: () => _delete(d), icon: const Icon(Icons.delete_outline))])); }))),
+    ]));
+  }
 
   Widget _editor() => Column(children: [
     Material(color: Theme.of(context).colorScheme.surfaceContainer, child: SafeArea(bottom: false, child: Padding(padding: const EdgeInsets.all(10), child: Column(children: [
-      Row(children: [IconButton(tooltip: 'Back to library', onPressed: () { autosave?.cancel(); _save(silent: true); setState(() => documentId = null); }, icon: const Icon(Icons.arrow_back)), Expanded(child: TextField(controller: title, onChanged: _changed, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700), decoration: const InputDecoration(hintText: 'Document title', border: InputBorder.none))), if (saving) const Padding(padding: EdgeInsets.all(8), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))), Text('Rev $revision')]),
+      Row(children: [IconButton(tooltip: 'Back to library', onPressed: () { autosave?.cancel(); _save(silent: true); setState(() => documentId = null); }, icon: const Icon(Icons.arrow_back)), Expanded(child: TextField(controller: title, onChanged: _changed, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700), decoration: const InputDecoration(hintText: 'Document title', border: InputBorder.none))), if (saving) const Padding(padding: EdgeInsets.all(8), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))), Text('$saveState · Rev $revision')]),
       SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
         _tool(Icons.title, 'Heading', () => _add('heading')), _tool(Icons.short_text, 'Paragraph', () => _add('paragraph')),
         _tool(Icons.format_list_bulleted, 'Bullet', () => _add('bullet')), _tool(Icons.format_list_numbered, 'Numbered', () => _add('numbered')),

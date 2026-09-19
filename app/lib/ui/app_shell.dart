@@ -17,6 +17,8 @@ import 'screens/letterhead_screen.dart';
 import 'screens/mils_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/office_documents_screen.dart';
+import 'screens/office_sheets_screen.dart';
+import 'screens/office_slides_screen.dart';
 import 'screens/payment_vouchers_screen.dart';
 import 'screens/receipts_screen.dart';
 import 'screens/sales_screen.dart';
@@ -55,6 +57,8 @@ const _summary = Destination('summary', 'Summary', Icons.summarize_outlined, Ico
 const _docs = Destination('docs', 'Documents', Icons.draw_outlined, Icons.draw, GeneratorScreen());
 const _cloudDocs = Destination('clouddocs', 'Cloud Documents', Icons.cloud_outlined, Icons.cloud_done, CloudDocumentsScreen());
 const _officeDocs = Destination('officedocs', 'Office Documents', Icons.description_outlined, Icons.description, OfficeDocumentsScreen());
+const _officeSheets = Destination('officesheets', 'Office Sheets', Icons.grid_on_outlined, Icons.grid_on, OfficeSheetsScreen());
+const _officeSlides = Destination('officeslides', 'Office Slides', Icons.slideshow_outlined, Icons.slideshow, OfficeSlidesScreen());
 const _notifications = Destination('notifications', 'Notifications', Icons.notifications_outlined, Icons.notifications, NotificationsScreen());
 const _staff = Destination('staff', 'Staff', Icons.badge_outlined, Icons.badge, StaffScreen());
 const _letterhead = Destination('letterhead', 'Letterhead', Icons.article_outlined, Icons.article, LetterheadScreen());
@@ -73,7 +77,7 @@ List<Destination> destinationsFor(String? role) {
   if (role == 'ceo') return _ceoDestinations;
   if (role == 'admin') return _allDestinations;
   return const [
-    _sales, _transactions, _stock, _gallery, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _officeDocs, _cloudDocs, _notifications, _settings,
+    _sales, _transactions, _stock, _gallery, _customers, _receipts, _invoices, _waybills, _deliveryNotes, _docs, _officeDocs, _officeSheets, _officeSlides, _cloudDocs, _notifications, _settings,
   ];
 }
 
@@ -81,19 +85,19 @@ List<Destination> destinationsFor(String? role) {
 /// operational destinations. Admin cannot navigate to or render it.
 const _ceoDestinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _officeDocs, _cloudDocs, _letterhead, _notifications, _staff, _settings,
+  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _officeDocs, _officeSheets, _officeSlides, _cloudDocs, _letterhead, _notifications, _staff, _settings,
 ];
 
 /// The complete operational destination set (admin view).
 const _allDestinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _officeDocs, _cloudDocs, _notifications, _staff, _settings,
+  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _officeDocs, _officeSheets, _officeSlides, _cloudDocs, _notifications, _staff, _settings,
 ];
 
 /// Kept for backwards compatibility (admin view).
 const destinations = <Destination>[
   _insights, _transactions, _customers, _receipts, _vouchers, _invoices, _waybills, _deliveryNotes,
-  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _officeDocs, _cloudDocs, _notifications, _staff, _settings,
+  _mils, _sales, _stock, _gallery, _stockReceipts, _summary, _docs, _officeDocs, _officeSheets, _officeSlides, _cloudDocs, _notifications, _staff, _settings,
 ];
 
 Widget _freshScreen(String id) => switch (id) {
@@ -104,7 +108,8 @@ Widget _freshScreen(String id) => switch (id) {
   'deliverynotes' => DeliveryNotesScreen(), 'mils' => MilsScreen(),
   'sales' => SalesScreen(), 'stock' => StockScreen(), 'gallery' => GalleryScreen(),
   'stockreceipts' => StockReceiptsScreen(), 'summary' => SummaryScreen(),
-  'docs' => GeneratorScreen(), 'officedocs' => OfficeDocumentsScreen(), 'clouddocs' => CloudDocumentsScreen(), 'letterhead' => LetterheadScreen(),
+  'docs' => GeneratorScreen(), 'officedocs' => OfficeDocumentsScreen(),
+  'officesheets' => OfficeSheetsScreen(), 'officeslides' => OfficeSlidesScreen(), 'clouddocs' => CloudDocumentsScreen(), 'letterhead' => LetterheadScreen(),
   'notifications' => NotificationsScreen(), 'staff' => StaffScreen(),
   _ => SettingsScreen(),
 };

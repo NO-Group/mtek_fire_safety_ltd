@@ -46,7 +46,7 @@ const CEO_PHONE = '+2348033498452';
 const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-19-auth-cleanup';
+const BUNDLE_VERSION = '2026-09-19-office-suite1';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -95,6 +95,7 @@ const coll = {
   archive: () => db(DB.documents).then(d => d.collection('archive')),
   cloudDocs: () => db(DB.documents).then(d => d.collection('cloud_files')),
   officeDocs: () => db(DB.documents).then(d => d.collection('office_documents')),
+  officeFiles: () => db(DB.documents).then(d => d.collection('office_files')),
   audit: () => db(DB.audit).then(d => d.collection('events')),
   notifications: () => db(DB.core).then(d => d.collection('notifications')),
 };
@@ -1106,6 +1107,59 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true, settings: await st.findOne({ _id: 'settings' }), serials: await peekSerials() });
       }
 
+      case 'GET /api/office-files': {
+        const kind = String(url.searchParams.get('kind') ?? '');
+        if (!['sheet', 'slide'].includes(kind)) throw new HttpErr(400, 'Invalid office file type');
+        const rows = await (await coll.officeFiles()).find({ kind, deleted_at: { $exists: false } })
+          .sort({ updated_at: -1 }).limit(200).toArray();
+        return json({ files: rows.map((r: Record<string, unknown>) => ({
+          id: String(r._id), kind: r.kind, title: r.title, content: r.content,
+          owner: r.owner, owner_name: r.owner_name, revision: r.revision ?? 1,
+          created_at: r.created_at, updated_at: r.updated_at,
+        })) });
+      }
+      case 'POST /api/office-files/save': {
+        const b = await req.json();
+        const kind = String(b.kind ?? '');
+        if (!['sheet', 'slide'].includes(kind)) throw new HttpErr(400, 'Invalid office file type');
+        const id = String(b.id ?? crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+        const title = String(b.title ?? '').trim().slice(0, 180);
+        if (!title) throw new HttpErr(400, 'A title is required');
+        const content = b.content;
+        const encoded = new TextEncoder().encode(JSON.stringify(content));
+        if (encoded.length > 2_000_000) throw new HttpErr(413, 'Office file is too large');
+        const collection = await coll.officeFiles();
+        const existing = await collection.findOne({ _id: id }) as Record<string, unknown> | null;
+        if (existing && existing.owner !== user.uid && !['ceo', 'admin'].includes(user.role))
+          throw new HttpErr(403, 'Only the owner or management can edit this file');
+        const baseRevision = Number(b.base_revision ?? 0);
+        const currentRevision = Number(existing?.revision ?? 0);
+        if (existing && baseRevision !== currentRevision)
+          throw new HttpErr(409, 'This file changed on another device. Reload it before saving.');
+        const timestamp = now();
+        const unchanged = existing && existing.title === title && JSON.stringify(existing.content) === JSON.stringify(content);
+        if (unchanged) return json({ ok: true, id, revision: currentRevision, unchanged: true });
+        await collection.updateOne({ _id: id }, { $set: {
+          kind, title, content, owner: existing?.owner ?? user.uid,
+          owner_name: existing?.owner_name ?? user.name, updated_by: user.uid,
+          updated_by_name: user.name, updated_at: timestamp,
+          created_at: existing?.created_at ?? timestamp, revision: currentRevision + 1,
+        } }, { upsert: true });
+        await audit('documents', `save-office-${kind}`, title, user);
+        return json({ ok: true, id, revision: currentRevision + 1 });
+      }
+      case 'POST /api/office-files/delete': {
+        const b = await req.json();
+        const id = String(b.id ?? '');
+        const collection = await coll.officeFiles();
+        const existing = await collection.findOne({ _id: id }) as Record<string, unknown> | null;
+        if (!existing) throw new HttpErr(404, 'Office file not found');
+        if (existing.owner !== user.uid && !['ceo', 'admin'].includes(user.role))
+          throw new HttpErr(403, 'Only the owner or management can delete this file');
+        await collection.updateOne({ _id: id }, { $set: { deleted_at: now(), deleted_by: user.uid } });
+        await audit('documents', 'delete-office-file', String(existing.title ?? id), user);
+        return json({ ok: true });
+      }
       case 'GET /api/office-documents': {
         const rows = await (await coll.officeDocs()).find({ deleted_at: { $exists: false } })
           .sort({ updated_at: -1 }).limit(500).toArray();
