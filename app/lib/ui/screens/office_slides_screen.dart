@@ -24,10 +24,10 @@ class _Slide {
 
 class OfficeSlidesScreen extends StatefulWidget { const OfficeSlidesScreen({super.key}); @override State<OfficeSlidesScreen> createState()=>_OfficeSlidesScreenState(); }
 class _OfficeSlidesScreenState extends State<OfficeSlidesScreen>{
-  final title=TextEditingController(); final slides=<_Slide>[]; List<Map<String,dynamic>> files=[];
+  final title=TextEditingController(), search=TextEditingController(); final slides=<_Slide>[]; List<Map<String,dynamic>> files=[];
   String? id; int revision=0,selected=0; bool loading=true,saving=false; Timer? timer;
   @override void initState(){super.initState();_load();}
-  @override void dispose(){timer?.cancel();title.dispose();for(final s in slides)s.dispose();super.dispose();}
+  @override void dispose(){timer?.cancel();title.dispose();search.dispose();for(final s in slides)s.dispose();super.dispose();}
   Future<void> _load()async{if(mounted)setState(()=>loading=true);final r=await AppStore.instance.api?.get('/api/office-files?kind=slide');if(r!=null&&r.ok&&r.json is Map)files=[for(final x in ((r.json as Map)['files'] as List? ?? const[]))if(x is Map)x.cast<String,dynamic>()];if(mounted)setState(()=>loading=false);}
   void _reset(){for(final s in slides)s.dispose();slides.clear();}
   void _new(String template){_reset();id='slide-${DateTime.now().microsecondsSinceEpoch}';revision=0;selected=0;title.text=template=='pitch'?'Company Presentation':'Untitled presentation';if(template=='pitch'){slides.addAll([_Slide(title:'M-Tek Fire & Safety Ltd',body:'Professional fire protection solutions'),_Slide(title:'Our Services',body:'• Fire extinguisher supply\n• Inspection and maintenance\n• Safety training\n• Fire risk assessment'),_Slide(title:'Why M-Tek',body:'Reliable service\nQualified personnel\nQuality equipment\nResponsive support'),_Slide(title:'Contact Us',body:'mtekfiresafetyltd@gmail.com\n+2348033498452')]);}else slides.add(_Slide(title:'Presentation title',body:'Subtitle'));setState((){});}
@@ -35,7 +35,7 @@ class _OfficeSlidesScreenState extends State<OfficeSlidesScreen>{
   void _changed([String? _]){timer?.cancel();timer=Timer(const Duration(milliseconds:1000),()=>_save(silent:true));setState((){});}
   Future<bool> _save({bool silent=false})async{if(id==null||saving)return false;setState(()=>saving=true);final r=await AppStore.instance.api?.post('/api/office-files/save',{'id':id,'kind':'slide','title':title.text.trim(),'content':{'slides':[for(final s in slides)s.toJson()]},'base_revision':revision});final ok=r!=null&&r.ok;if(ok&&r.json is Map)revision=((r.json as Map)['revision']as num? ?? revision).toInt();if(mounted){setState(()=>saving=false);if(!silent||!ok)ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor:ok?Mtek.success:Mtek.danger,content:Text(ok?'Presentation saved.':'Presentation could not be saved.')));}if(ok)unawaited(_load());return ok;}
   Future<void> _image()async{final r=await FilePicker.platform.pickFiles(type:FileType.image,withData:true);final f=r?.files.single;if(f?.bytes==null)return;final ext=(f!.extension??'jpg').toLowerCase();slides[selected].image='data:image/${ext=='png'?'png':'jpeg'};base64,${base64Encode(f.bytes!)}';_changed();}
-  Future<void> _pdf() async {
+  Future<void> _pdf({bool share = false}) async {
     if (!await _save()) return;
     await MtekPdfFonts.load();
     final logo = pw.MemoryImage((await rootBundle.load('assets/branding/logo.png')).buffer.asUint8List());
@@ -67,13 +67,39 @@ class _OfficeSlidesScreenState extends State<OfficeSlidesScreen>{
           padding: const pw.EdgeInsets.all(24), child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: widgets)),
       ));
     }
-    final out = await savePdf(bytes: await pdf.save(),
-      filename: '${title.text.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}.pdf');
+    final bytes = await pdf.save();
+    final filename = '${title.text.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}.pdf';
+    final out = share ? await dispatchPdf(bytes: bytes, filename: filename)
+      : await savePdf(bytes: bytes, filename: filename);
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(out.message)));
   }
 
+  Future<void> _delete(Map<String, dynamic> file) async {
+    final response = await AppStore.instance.api?.post('/api/office-files/delete', {'id': '${file['id']}'});
+    if (response != null && response.ok) await _load();
+  }
+
   @override Widget build(BuildContext context)=>id==null?_library():_editor();
-  Widget _library()=>Padding(padding:const EdgeInsets.all(16),child:Column(children:[PageHeader(title:'Office Slides',subtitle:'Create branded cloud presentations and export to PDF',icon:Icons.slideshow_outlined,actions:[PopupMenuButton<String>(tooltip:'New presentation',onSelected:_new,itemBuilder:(_)=>const[PopupMenuItem(value:'blank',child:Text('Blank presentation')),PopupMenuItem(value:'pitch',child:Text('Company profile template'))],icon:const Icon(Icons.add)),IconButton(onPressed:_load,icon:const Icon(Icons.refresh))]),const SizedBox(height:12),Expanded(child:loading?const Center(child:CircularProgressIndicator()):files.isEmpty?const EmptyHint('No presentations yet'):Card(child:ListView.separated(itemCount:files.length,separatorBuilder:(_,__)=>const Divider(height:1),itemBuilder:(_,i){final f=files[i];return ListTile(leading:const Icon(Icons.slideshow),title:Text('${f['title']}'),subtitle:Text('Revision ${f['revision']} · ${f['updated_at']}'),onTap:()=>_open(f));}))) ]));
+  Widget _library() {
+    final query = search.text.trim().toLowerCase();
+    final shown = query.isEmpty ? files : files.where((f) => '${f['title'] ?? ''}'.toLowerCase().contains(query)).toList();
+    return Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      PageHeader(title: 'Office Slides', subtitle: 'Create branded cloud presentations and export to PDF', icon: Icons.slideshow_outlined, actions: [
+        PopupMenuButton<String>(tooltip: 'New presentation', onSelected: _new, icon: const Icon(Icons.add), itemBuilder: (_) => const [
+          PopupMenuItem(value: 'blank', child: Text('Blank presentation')), PopupMenuItem(value: 'pitch', child: Text('Company profile template'))]),
+        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+      ]),
+      const SizedBox(height: 10),
+      TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search presentations')),
+      const SizedBox(height: 12),
+      Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : shown.isEmpty ? const EmptyHint('No matching presentations') : Card(child: ListView.separated(
+        itemCount: shown.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) { final file = shown[i]; return ListTile(
+          leading: const Icon(Icons.slideshow), title: Text('${file['title']}'), subtitle: Text('Revision ${file['revision']} · ${file['updated_at']}'),
+          onTap: () => _open(file), trailing: IconButton(tooltip: 'Delete', onPressed: () => _delete(file), icon: const Icon(Icons.delete_outline)));
+        }))),
+    ]));
+  }
+
   Widget _editor() {
     final slide = slides[selected];
     return Column(children: [
@@ -91,20 +117,33 @@ class _OfficeSlidesScreenState extends State<OfficeSlidesScreen>{
             TextButton.icon(onPressed: () { slides.add(_Slide(title: 'New slide')); selected = slides.length - 1; _changed(); }, icon: const Icon(Icons.add), label: const Text('Slide')),
             TextButton.icon(onPressed: _image, icon: const Icon(Icons.image_outlined), label: const Text('Image')),
             TextButton.icon(onPressed: _save, icon: const Icon(Icons.cloud_upload_outlined), label: const Text('Save')),
-            TextButton.icon(onPressed: _pdf, icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('PDF')),
+            TextButton.icon(onPressed: () => _pdf(), icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('PDF')),
+            TextButton.icon(onPressed: () => _pdf(share: true), icon: const Icon(Icons.share_outlined), label: const Text('Share')),
             IconButton(tooltip: 'Move up', onPressed: selected == 0 ? null : () { final x = slides.removeAt(selected); slides.insert(--selected, x); _changed(); }, icon: const Icon(Icons.arrow_upward)),
             IconButton(tooltip: 'Move down', onPressed: selected == slides.length - 1 ? null : () { final x = slides.removeAt(selected); slides.insert(++selected, x); _changed(); }, icon: const Icon(Icons.arrow_downward)),
             IconButton(tooltip: 'Delete slide', onPressed: slides.length == 1 ? null : () { slides.removeAt(selected).dispose(); if (selected >= slides.length) selected = slides.length - 1; _changed(); }, icon: const Icon(Icons.delete_outline)),
           ])),
         ]),
       )),
-      Expanded(child: Row(children: [
-        SizedBox(width: 190, child: ListView.builder(itemCount: slides.length, itemBuilder: (_, i) => Card(
-          color: i == selected ? Theme.of(context).colorScheme.secondaryContainer : null,
-          child: ListTile(title: Text('${i + 1}. ${slides[i].title.text}', maxLines: 2), onTap: () => setState(() => selected = i))))),
-        const VerticalDivider(width: 1),
-        Expanded(child: _canvas(slide)),
-      ])),
+      Expanded(child: LayoutBuilder(builder: (context, constraints) {
+        final thumbnails = ListView.builder(
+          scrollDirection: constraints.maxWidth < 700 ? Axis.horizontal : Axis.vertical,
+          itemCount: slides.length,
+          itemBuilder: (_, i) => SizedBox(
+            width: constraints.maxWidth < 700 ? 160 : null,
+            child: Card(
+              color: i == selected ? Theme.of(context).colorScheme.secondaryContainer : null,
+              child: ListTile(title: Text('${i + 1}. ${slides[i].title.text}', maxLines: 2),
+                onTap: () => setState(() => selected = i))),
+          ),
+        );
+        if (constraints.maxWidth < 700) {
+          return Column(children: [SizedBox(height: 88, child: thumbnails),
+            const Divider(height: 1), Expanded(child: _canvas(slide))]);
+        }
+        return Row(children: [SizedBox(width: 190, child: thumbnails),
+          const VerticalDivider(width: 1), Expanded(child: _canvas(slide))]);
+      })),
     ]);
   }
 

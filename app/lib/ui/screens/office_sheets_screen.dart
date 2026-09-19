@@ -22,6 +22,7 @@ class OfficeSheetsScreen extends StatefulWidget {
 class _OfficeSheetsScreenState extends State<OfficeSheetsScreen> {
   static const rows = 20, cols = 8;
   final title = TextEditingController();
+  final search = TextEditingController();
   final cells = List.generate(rows, (_) => List.generate(cols, (_) => TextEditingController()));
   List<Map<String, dynamic>> files = [];
   String? id;
@@ -30,7 +31,7 @@ class _OfficeSheetsScreenState extends State<OfficeSheetsScreen> {
   Timer? timer;
 
   @override void initState() { super.initState(); _load(); }
-  @override void dispose() { timer?.cancel(); title.dispose(); for (final r in cells) { for (final c in r) { c.dispose(); } } super.dispose(); }
+  @override void dispose() { timer?.cancel(); title.dispose(); search.dispose(); for (final r in cells) { for (final c in r) { c.dispose(); } } super.dispose(); }
 
   Future<void> _load() async {
     if (mounted) setState(() => loading = true);
@@ -75,13 +76,51 @@ class _OfficeSheetsScreenState extends State<OfficeSheetsScreen> {
   }
 
   String _name(int c)=>String.fromCharCode(65+c);
-  double _number(String ref) { final m=RegExp(r'^([A-H])(\d+)$').firstMatch(ref.toUpperCase()); if(m==null)return 0; final c=m.group(1)!.codeUnitAt(0)-65,r=int.parse(m.group(2)!)-1; if(r<0||r>=rows)return 0; return double.tryParse(_value(r,c))??0; }
-  String _value(int r,int c) {
-    final raw=cells[r][c].text.trim(); if(!raw.startsWith('='))return raw;
-    final sum=RegExp(r'^=SUM\(([A-H]\d+):([A-H]\d+)\)$',caseSensitive:false).firstMatch(raw);
-    if(sum!=null){final a=RegExp(r'([A-H])(\d+)').firstMatch(sum.group(1)!)!,b=RegExp(r'([A-H])(\d+)').firstMatch(sum.group(2)!)!;double n=0;for(var rr=int.parse(a.group(2)!);rr<=int.parse(b.group(2)!);rr++)for(var cc=a.group(1)!.codeUnitAt(0);cc<=b.group(1)!.codeUnitAt(0);cc++)n+=_number('${String.fromCharCode(cc)}$rr');return _fmt(n);}
-    final op=RegExp(r'^=([A-H]\d+)\s*([+\-*/])\s*([A-H]\d+)$',caseSensitive:false).firstMatch(raw); if(op==null)return '#FORMULA'; final a=_number(op.group(1)!),b=_number(op.group(3)!); final n=switch(op.group(2)){'+'=>a+b,'-'=>a-b,'*'=>a*b,'/'=>b==0?double.nan:a/b,_=>0.0}; return n.isNaN?'#DIV/0':_fmt(n);
+  double _number(String ref, Set<String> stack) {
+    final match = RegExp(r'^([A-H])(\d+)$').firstMatch(ref.toUpperCase());
+    if (match == null) return 0;
+    final column = match.group(1)!.codeUnitAt(0) - 65;
+    final row = int.parse(match.group(2)!) - 1;
+    if (row < 0 || row >= rows) return 0;
+    return double.tryParse(_value(row, column, stack)) ?? 0;
   }
+
+  String _value(int row, int column, [Set<String>? ancestors]) {
+    final raw = cells[row][column].text.trim();
+    if (!raw.startsWith('=')) return raw;
+    final key = '${_name(column)}${row + 1}';
+    final stack = {...?ancestors};
+    if (!stack.add(key)) return '#CYCLE';
+    final sum = RegExp(r'^=SUM\(([A-H]\d+):([A-H]\d+)\)$', caseSensitive: false).firstMatch(raw);
+    if (sum != null) {
+      final first = RegExp(r'([A-H])(\d+)').firstMatch(sum.group(1)!)!;
+      final last = RegExp(r'([A-H])(\d+)').firstMatch(sum.group(2)!)!;
+      double value = 0;
+      for (var r = int.parse(first.group(2)!); r <= int.parse(last.group(2)!); r++) {
+        for (var c = first.group(1)!.codeUnitAt(0); c <= last.group(1)!.codeUnitAt(0); c++) {
+          final calculated = _value(r - 1, c - 65, stack);
+          if (calculated == '#CYCLE') return calculated;
+          value += double.tryParse(calculated) ?? 0;
+        }
+      }
+      return _fmt(value);
+    }
+    final operation = RegExp(r'^=([A-H]\d+)\s*([+\-*/])\s*([A-H]\d+)$', caseSensitive: false).firstMatch(raw);
+    if (operation == null) return '#FORMULA';
+    final leftText = _value(int.parse(RegExp(r'\d+').firstMatch(operation.group(1)!)!.group(0)!) - 1,
+      operation.group(1)!.toUpperCase().codeUnitAt(0) - 65, stack);
+    final rightText = _value(int.parse(RegExp(r'\d+').firstMatch(operation.group(3)!)!.group(0)!) - 1,
+      operation.group(3)!.toUpperCase().codeUnitAt(0) - 65, stack);
+    if (leftText == '#CYCLE' || rightText == '#CYCLE') return '#CYCLE';
+    final left = double.tryParse(leftText) ?? 0;
+    final right = double.tryParse(rightText) ?? 0;
+    final value = switch (operation.group(2)) {
+      '+' => left + right, '-' => left - right, '*' => left * right,
+      '/' => right == 0 ? double.nan : left / right, _ => 0.0,
+    };
+    return value.isNaN ? '#DIV/0' : _fmt(value);
+  }
+
   String _fmt(double n)=>n==n.roundToDouble()?n.toInt().toString():n.toStringAsFixed(2);
 
   Future<void> _csv() async {
@@ -104,10 +143,36 @@ class _OfficeSheetsScreenState extends State<OfficeSheetsScreen> {
       SnackBar(content: Text(path == null ? 'Export cancelled.' : 'CSV saved.')));
   }
 
-  Future<void> _pdf() async { await MtekPdfFonts.load(); final logo=pw.MemoryImage((await rootBundle.load('assets/branding/logo.png')).buffer.asUint8List()); final pdf=pw.Document(); pdf.addPage(pw.MultiPage(pageFormat:PdfPageFormat.a4.landscape,margin:const pw.EdgeInsets.all(24),theme:pw.ThemeData.withFont(base:MtekPdfFonts.base,bold:MtekPdfFonts.bold),build:(_)=>[corporateHeader(logo),pw.SizedBox(height:12),pw.Text(title.text,style:pw.TextStyle(fontSize:18,fontWeight:pw.FontWeight.bold)),pw.SizedBox(height:10),pw.TableHelper.fromTextArray(data:[for(var r=0;r<rows;r)[for(var c=0;c<cols;c)_value(r,c)]],headerCount:1,cellStyle:const pw.TextStyle(fontSize:7),headerStyle:pw.TextStyle(fontSize:7,fontWeight:pw.FontWeight.bold))])); final out=await savePdf(bytes:await pdf.save(),filename:'${title.text.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'),'-')}.pdf'); if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(out.message))); }
+  Future<void> _pdf({bool share = false}) async { await MtekPdfFonts.load(); final logo=pw.MemoryImage((await rootBundle.load('assets/branding/logo.png')).buffer.asUint8List()); final pdf=pw.Document(); pdf.addPage(pw.MultiPage(pageFormat:PdfPageFormat.a4.landscape,margin:const pw.EdgeInsets.all(24),theme:pw.ThemeData.withFont(base:MtekPdfFonts.base,bold:MtekPdfFonts.bold),build:(_)=>[corporateHeader(logo),pw.SizedBox(height:12),pw.Text(title.text,style:pw.TextStyle(fontSize:18,fontWeight:pw.FontWeight.bold)),pw.SizedBox(height:10),pw.TableHelper.fromTextArray(data:[for(var r=0;r<rows;r)[for(var c=0;c<cols;c)_value(r,c)]],headerCount:1,cellStyle:const pw.TextStyle(fontSize:7),headerStyle:pw.TextStyle(fontSize:7,fontWeight:pw.FontWeight.bold))])); final bytes=await pdf.save(); final filename='${title.text.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'),'-')}.pdf'; final out=share?await dispatchPdf(bytes:bytes,filename:filename):await savePdf(bytes:bytes,filename:filename); if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(out.message))); }
+
+  Future<void> _delete(Map<String, dynamic> file) async {
+    final response = await AppStore.instance.api?.post('/api/office-files/delete', {'id': '${file['id']}'});
+    if (response != null && response.ok) await _load();
+  }
 
   @override Widget build(BuildContext context)=>id==null?_library():_editor();
-  Widget _library()=>Padding(padding:const EdgeInsets.all(16),child:Column(children:[PageHeader(title:'Office Sheets',subtitle:'Cloud spreadsheets with formulas, templates and export',icon:Icons.grid_on_outlined,actions:[PopupMenuButton<String>(onSelected:(v)=>_new(template:v),itemBuilder:(_)=>const[PopupMenuItem(value:'blank',child:Text('Blank sheet')),PopupMenuItem(value:'stock',child:Text('Stock count template')),PopupMenuItem(value:'expenses',child:Text('Expense tracker template'))],child:FilledButton.icon(onPressed:null,icon:const Icon(Icons.add),label:const Text('New sheet'))),IconButton(onPressed:_load,icon:const Icon(Icons.refresh))]),const SizedBox(height:12),Expanded(child:loading?const Center(child:CircularProgressIndicator()):files.isEmpty?const EmptyHint('No spreadsheets yet'):Card(child:ListView.separated(itemCount:files.length,separatorBuilder:(_,__)=>const Divider(height:1),itemBuilder:(_,i){final f=files[i];return ListTile(leading:const Icon(Icons.table_chart_outlined),title:Text('${f['title']}'),subtitle:Text('Revision ${f['revision']} · ${f['updated_at']}'),onTap:()=>_open(f));}))) ]));
+  Widget _library() {
+    final query = search.text.trim().toLowerCase();
+    final shown = query.isEmpty ? files : files.where((f) => '${f['title'] ?? ''}'.toLowerCase().contains(query)).toList();
+    return Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      PageHeader(title: 'Office Sheets', subtitle: 'Cloud spreadsheets with formulas, templates and export', icon: Icons.grid_on_outlined, actions: [
+        PopupMenuButton<String>(tooltip: 'New spreadsheet', onSelected: (v) => _new(template: v), icon: const Icon(Icons.add), itemBuilder: (_) => const [
+          PopupMenuItem(value: 'blank', child: Text('Blank sheet')), PopupMenuItem(value: 'stock', child: Text('Stock count template')),
+          PopupMenuItem(value: 'expenses', child: Text('Expense tracker template'))]),
+        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+      ]),
+      const SizedBox(height: 10),
+      TextField(controller: search, onChanged: (_) => setState(() {}), decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search spreadsheets')),
+      const SizedBox(height: 12),
+      Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : shown.isEmpty ? const EmptyHint('No matching spreadsheets') : Card(child: ListView.separated(
+        itemCount: shown.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) { final file = shown[i]; return ListTile(
+          leading: const Icon(Icons.table_chart_outlined), title: Text('${file['title']}'),
+          subtitle: Text('Revision ${file['revision']} · ${file['updated_at']}'), onTap: () => _open(file),
+          trailing: IconButton(tooltip: 'Delete', onPressed: () => _delete(file), icon: const Icon(Icons.delete_outline)));
+        }))),
+    ]));
+  }
+
   Widget _editor() => Column(children: [
     Material(color: Theme.of(context).colorScheme.surfaceContainer, child: Padding(
       padding: const EdgeInsets.all(8), child: Column(children: [
