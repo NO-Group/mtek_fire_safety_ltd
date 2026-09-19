@@ -89,26 +89,9 @@ Levels of authority: **CEO > Admin > Sales**.
 
 (One shared Sales login is acceptable at launch; technician self-service view is a future role.)
 
-### 6.1 Digital Signature Passcode (no more paper signing)
+### 6.1 Authenticated document attribution
 
-Every user, **at account creation**, sets two separate secrets:
-
-| Secret | Purpose |
-|---|---|
-| **Account password** | Signs in to the app |
-| **Signature passcode** | Acts as the user's signature — required to *issue/authorise* any document |
-
-Rules:
-
-- The signature passcode is **never** the same field as the password and is hashed separately.
-- Users also draw their signature once (optional but encouraged); it is stored and stamped
-  onto documents next to the verified-passcode mark.
-- Documents requiring a signature passcode before issue: **Receipts, Invoices,
-  invoice payments, completed Sales, MILS service logs, refunds**.
-- Signed documents carry: `✓ Digitally signed by <full name> · <date/time> · <signature image>` .
-- Wrong signature passcode → document is **not** issued.
-- M3: passcodes stored as salted hashes in Supabase (`staff.signature_passcode_hash`);
-  signature images in Supabase Storage; every signature event written to an audit table.
+Documents and protected transactions are attributed to the currently signed-in staff account. Role permissions determine which actions a user may perform. Optional drawn signature images may be stamped on generated documents as a visual mark, but no secondary signing credential is required.
 
 ## 7. Documents, Printing & Sharing
 
@@ -211,7 +194,7 @@ Collector's) + Caution fine print (transcribed, owner to confirm exact wording).
 
 | Blueprint item | Reconciliation |
 |---|---|
-| Digital signing | **Signature Passcode gate (§6.1) runs before PDF generation**; stamp `✓ Digitally signed by <name> + signature image` on every page footer |
+| Digital signing | Authenticated account and role checks apply; stamp `✓ Digitally signed by <name> + signature image` on every page footer |
 | Ad-hoc documents | **Admin only** (decided Aug 2026). Sales staff issue documents only from recorded transactions (sales, invoice payments, MILS jobs); Admin can additionally write up freehand docs, as with the paper books |
 | Local DB "isar or sqflite" | **Drift (SQLite)** — already chosen (§5); type-safe, reactive, **web/PWA-compatible** (Isar's web support is weak) — one DB serves history + inventory + sync queue |
 | Serial formats | Continue `MTK-REC-####` / `MTK-INV-####` / `MTK-MILS-####`; IRN + LPO are additional stored fields |

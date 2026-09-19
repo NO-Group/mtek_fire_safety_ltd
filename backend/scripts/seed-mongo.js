@@ -5,8 +5,7 @@
  *   node scripts/seed-mongo.js
  *
  * Creates the seven section databases, zeroes the serial books (000000001
- * series), writes settings and the CEO profile (signature passcode hashed
- * from .env — never stored in plain text).
+ * series), writes settings and the CEO profile.
  *
  * STOCK IS DELIBERATELY NOT SEEDED (owner directive 2026-08-30): the
  * products collection stays EMPTY and is filled through the apps' own
@@ -15,7 +14,6 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const { MongoClient } = require('mongodb');
 
 const ENV_PATH = path.join(__dirname, '..', '.env');
@@ -25,12 +23,8 @@ const env = Object.fromEntries(
     .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }));
 
 const CEO_UID = env.MTEK_CEO_UID;
-const CEO_SIG = env.MTEK_CEO_SIG;
 if (!env.MONGODB_URI) { console.error('✗ MONGODB_URI missing in backend/.env'); process.exit(1); }
-if (!CEO_UID || !CEO_SIG) { console.error('✗ MTEK_CEO_UID / MTEK_CEO_SIG missing in backend/.env'); process.exit(1); }
-
-const hashPass = (secret, salt) =>
-  crypto.createHmac('sha512', 'mtek-store-salt').update(String(salt) + String(secret)).digest('hex');
+if (!CEO_UID) { console.error('✗ MTEK_CEO_UID missing in backend/.env'); process.exit(1); }
 
 (async () => {
   const c = new MongoClient(env.MONGODB_URI, { appName: 'mtek-seed' });
@@ -46,15 +40,14 @@ const hashPass = (secret, salt) =>
     { $setOnInsert: { vat_enabled: false, vat_rate: 0.075, watermark: true } }, { upsert: true });
   console.log('✓ mtek_core — serials at 0 (books start 000000001), settings written');
 
-  // people: CEO profile (role locked; signature passcode stored HASHED)
-  const salt = crypto.randomBytes(8).toString('hex');
+  // people: CEO profile (role locked)
   await c.db('mtek_people').collection('profiles').updateOne({ _id: CEO_UID }, {
     $set: {
       email: 'mtekfiresafetyltd@gmail.com', full_name: 'CEO', role: 'ceo',
-      sig_salt: salt, sig_hash: hashPass(CEO_SIG, salt), updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     },
   }, { upsert: true });
-  console.log('✓ mtek_people — CEO profile seeded (role=ceo, passcode hashed)');
+  console.log('✓ mtek_people — CEO profile seeded (role=ceo)');
 
   // inventory: left EMPTY by design — products are entered in the app
   await c.db('mtek_inventory').collection('products').createIndex({ name: 1 });

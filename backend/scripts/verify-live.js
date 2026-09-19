@@ -9,14 +9,13 @@
  *   1. Supabase Auth is healthy (auth-only role)
  *   2. the CEO account signs in with the real password (from backend/.env)
  *   3. MongoDB accepts the credentials and all 7 section databases exist
- *   4. the CEO signature passcode verifies against the stored HASH
+ *   4. the CEO profile is present and role-locked
  *   5. a document serial is issued: 000000001 (books start at 1)
  * Exits non-zero on any failure. Never prints secrets.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const ENV_PATH = path.join(__dirname, '..', '.env');
 const env = Object.fromEntries(
@@ -28,9 +27,6 @@ const ok = m => console.log(`  ✓ ${m}`);
 const fail = m => { console.error(`  ✗ ${m}`); process.exitCode = 1; };
 const step = m => console.log(`\n— ${m}`);
 const expect = (c, m) => { if (c) ok(m); else fail(m); };
-
-const hashPass = (secret, salt) =>
-  crypto.createHmac('sha512', 'mtek-store-salt').update(String(salt) + String(secret)).digest('hex');
 
 (async () => {
   console.log('M-TEK live verification\n=======================');
@@ -58,7 +54,7 @@ const hashPass = (secret, salt) =>
     else fail(`sign-in failed: ${j.error_description || j.error || j.msg || 'HTTP ' + r.status}`);
   } catch (e) { fail(`unreachable — ${e.message}`); }
 
-  // ---- 3+4+5. MongoDB + signature + serials (direct, no API host needed)
+  // ---- 3+4+5. MongoDB + CEO profile + serials (direct, no API host needed)
   step('MongoDB cluster + section databases');
   let mongoOk = false;
   try {
@@ -71,14 +67,8 @@ const hashPass = (secret, salt) =>
     for (const s of ['mtek_core', 'mtek_inventory', 'mtek_people', 'mtek_billing', 'mtek_mils', 'mtek_documents', 'mtek_audit']) {
       expect(dbs.includes(s), s);
     }
-    // CEO signature passcode against stored hash
     const prof = await c.db('mtek_people').collection('profiles').findOne({ _id: env.MTEK_CEO_UID });
-    if (prof && prof.sig_hash) {
-      expect(hashPass(env.MTEK_CEO_SIG, prof.sig_salt) === prof.sig_hash,
-        'CEO signature passcode matches the stored hash');
-    } else {
-      fail('CEO profile not seeded — run: node backend/scripts/seed-mongo.js');
-    }
+    expect(prof?.role === 'ceo', 'CEO profile exists with the CEO role');
     // serials start at zero → first document is 000000001
     const serials = await c.db('mtek_core').collection('serials').find({}).toArray();
     const map = Object.fromEntries(serials.map(s => [s._id, s.last_used]));

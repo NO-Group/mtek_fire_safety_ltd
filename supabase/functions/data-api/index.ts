@@ -46,7 +46,7 @@ const CEO_PHONE = '+2348033498452';
 const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-19-remove-signature-passcode';
+const BUNDLE_VERSION = '2026-09-19-auth-cleanup';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -254,7 +254,6 @@ async function ensureCore() {
     await c.updateOne({ _id: 'settings' }, { $setOnInsert: {
       vat_enabled: false, vat_rate: 0.075, watermark: true,
     } }, { upsert: true });
-    await c.updateOne({ _id: 'settings' }, { $unset: { signature_gate_enabled: '' } });
   });
   // Purge obsolete secondary-signing credentials from all staff profiles.
   await (await coll.profiles()).updateMany({}, { $unset: { sig_salt: '', sig_hash: '' } });

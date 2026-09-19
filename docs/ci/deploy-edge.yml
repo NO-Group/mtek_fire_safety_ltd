@@ -9,7 +9,7 @@
 #        SUPABASE_PROJECT_ID    → Supabase dashboard → Project Settings →
 #                                 General → Reference ID (kshuadjcflwlidupnqly)
 #   3. Supabase dashboard → Edge Functions → Secrets → add:
-#        MONGODB_URI, SUPABASE_SECRET_KEY, MTEK_CEO_UID, MTEK_CEO_SIG
+#        MONGODB_URI, SUPABASE_SECRET_KEY, MTEK_CEO_UID
 #   4. Push (or run this workflow) → function goes live:
 #        https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api/health
 # ============================================================================
