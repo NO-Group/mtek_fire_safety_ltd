@@ -8,10 +8,6 @@
 /// (The anon key is a PUBLIC client key by design; all authority is
 /// enforced server-side by the data API.)
 abstract final class Env {
-  /// "Sign to issue" passcode gate. `true` skips the passcode prompt for
-  /// everyone (was used temporarily on 2026-09-03). Keep in step with the
-  /// SIGNATURE_GATE constant in supabase/functions/data-api/index.ts.
-  static const bool signatureGateDisabled = false;
 
   static const supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',

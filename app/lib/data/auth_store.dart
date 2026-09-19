@@ -3,25 +3,18 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
-import '../core/biometric_service.dart';
 import 'api_client.dart';
 import 'env.dart';
 import 'local_store.dart';
 import 'rest_client.dart';
 import 'store.dart';
 
-/// Staff accounts with TWO separate secrets:
-///  • account password  → signs in
-///  • signature passcode → authorises/signs documents (SPEC §6.1)
-///
 /// M1 demo hashing (fnv1a) — replaced in M3 by Supabase Auth + salted
-/// hashes (staff.signature_passcode_hash) + signature images in Storage.
 class StaffUser {
   final String name;
   final String email;
   String role; // 'ceo' | 'admin' | 'sales'
   final String passwordHash;
-  final String signaturePasscodeHash;
   final String? signaturePng; // base64 data-URL of the drawn signature
   final String? passportPhoto; // compulsory for new accounts
   StaffUser({
@@ -29,7 +22,6 @@ class StaffUser {
     required this.email,
     required this.role,
     required this.passwordHash,
-    required this.signaturePasscodeHash,
     this.signaturePng,
     this.passportPhoto,
   });
@@ -37,7 +29,6 @@ class StaffUser {
   Map<String, dynamic> toJson() => {
         'name': name, 'email': email, 'role': role,
         'passwordHash': passwordHash,
-        'signaturePasscodeHash': signaturePasscodeHash,
         'signaturePng': signaturePng,
         'passportPhoto': passportPhoto,
       };
@@ -46,7 +37,6 @@ class StaffUser {
         email: '${j['email'] ?? ''}'.trim().toLowerCase(),
         role: '${j['role'] ?? 'sales'}',
         passwordHash: '${j['passwordHash'] ?? ''}',
-        signaturePasscodeHash: '${j['signaturePasscodeHash'] ?? ''}',
         signaturePng: j['signaturePng'] as String?,
         passportPhoto: j['passportPhoto'] as String?,
       );
@@ -115,9 +105,6 @@ class AuthStore extends ChangeNotifier {
         passwordHash: candidate.passwordHash.isNotEmpty
             ? candidate.passwordHash
             : previous?.passwordHash ?? '',
-        signaturePasscodeHash: candidate.signaturePasscodeHash.isNotEmpty
-            ? candidate.signaturePasscodeHash
-            : previous?.signaturePasscodeHash ?? '',
         signaturePng: candidate.signaturePng ?? previous?.signaturePng,
       );
     }
@@ -178,7 +165,6 @@ class AuthStore extends ChangeNotifier {
     return null;
   }
 
-  /// Creates the account. Enforces password ≠ signature passcode.
   /// OFFLINE-ONLY fallback (no backend configured in this build) — kept so
   /// the app is still usable in a dev/demo checkout with no Supabase set up.
   /// The real, server-backed path is [remoteSignUp] below.
@@ -186,7 +172,6 @@ class AuthStore extends ChangeNotifier {
     required String name,
     required String email,
     required String password,
-    required String signaturePasscode,
     required String role,
     String? signaturePng,
     String? passportPhoto,
@@ -196,12 +181,6 @@ class AuthStore extends ChangeNotifier {
     if (passportPhoto == null || passportPhoto.isEmpty) return 'A passport photograph is required';
     if (!mail.contains('@')) return 'Enter a valid email';
     if (password.length < 6) return 'Password must be at least 6 characters';
-    if (signaturePasscode.length < 4) {
-      return 'Signature passcode must be at least 4 characters';
-    }
-    if (signaturePasscode == password) {
-      return 'Signature passcode must be different from your password';
-    }
     if (mail == ceoEmail) return 'The CEO account is pre-provisioned — sign in directly';
     if (users.any((u) => u.email == mail)) return 'An account with that email already exists';
     users.add(StaffUser(
@@ -209,7 +188,6 @@ class AuthStore extends ChangeNotifier {
       email: mail,
       role: role == 'ceo' ? 'admin' : role,
       passwordHash: demoHash(password),
-      signaturePasscodeHash: demoHash(signaturePasscode),
       signaturePng: signaturePng,
       passportPhoto: passportPhoto,
     ));
@@ -234,7 +212,6 @@ class AuthStore extends ChangeNotifier {
     required String email,
     required String phone,
     required String password,
-    required String signaturePasscode,
     required String recoveryString,
     required String passportPhoto,
   }) async {
@@ -248,7 +225,6 @@ class AuthStore extends ChangeNotifier {
       'email': mail,
       'phone': phone.trim(),
       'password': password,
-      'signature_passcode': signaturePasscode,
       'recovery_string': recoveryString,
       'passport_photo': passportPhoto,
     });
@@ -271,13 +247,10 @@ class AuthStore extends ChangeNotifier {
 
   /// No-email, no-OTP password reset: the user proves ownership with the
   /// recovery phrase they set at sign-up (owner directive 2026-09-01).
-  /// Pass [newSignaturePasscode] to also rotate the signature passcode in
-  /// the same recovery flow (Settings → Account → Recovery).
   Future<String?> resetPasswordWithRecovery({
     required String email,
     required String recoveryString,
     required String newPassword,
-    String? newSignaturePasscode,
   }) async {
     final api = AppStore.instance.api;
     if (!Env.authApiConfigured || api == null) {
@@ -287,8 +260,6 @@ class AuthStore extends ChangeNotifier {
       'email': email.trim().toLowerCase(),
       'recovery_string': recoveryString,
       'new_password': newPassword,
-      if (newSignaturePasscode != null && newSignaturePasscode.isNotEmpty)
-        'new_signature_passcode': newSignaturePasscode,
     });
     if (res == null) return 'Network unreachable — check your connection';
     if (!res.ok) {
@@ -298,13 +269,11 @@ class AuthStore extends ChangeNotifier {
     return null;
   }
 
-  /// Rotates the recovery phrase. Requires BOTH the account password and the
-  /// signature passcode together — either alone is rejected server-side
+  /// Rotates the recovery phrase after verifying the account password
   /// (Settings → Account → Recovery).
   Future<String?> resetRecovery({
     required String email,
     required String password,
-    required String signaturePasscode,
     required String newRecoveryString,
   }) async {
     final api = AppStore.instance.api;
@@ -314,7 +283,6 @@ class AuthStore extends ChangeNotifier {
     final res = await api.postPublic('/api/auth/reset-recovery', {
       'email': email.trim().toLowerCase(),
       'password': password,
-      'signature_passcode': signaturePasscode,
       'new_recovery_string': newRecoveryString,
     });
     if (res == null) return 'Network unreachable — check your connection';
@@ -345,67 +313,6 @@ class AuthStore extends ChangeNotifier {
       return msg is String ? msg : 'Could not change the password';
     }
     return null;
-  }
-
-  /// Changes the signature passcode while signed in (Settings → Account).
-  /// Requires the current passcode. Clears the in-RAM last-verified passcode
-  /// so the next document sign forces a fresh bind against the new hash.
-  Future<String?> changePasscode({
-    required String currentPasscode,
-    required String newPasscode,
-  }) async {
-    final api = AppStore.instance.api;
-    if (!Env.authApiConfigured || api == null || accessToken == null) {
-      return 'You must be signed in to change your signature passcode.';
-    }
-    final res = await api.post('/api/auth/change-passcode', {
-      'current_passcode': currentPasscode,
-      'new_passcode': newPasscode,
-    });
-    if (res == null) return 'Network unreachable — check your connection';
-    if (!res.ok) {
-      final msg = (res.json is Map ? (res.json as Map)['error'] : null);
-      return msg is String ? msg : 'Could not change the signature passcode';
-    }
-    lastVerifiedPasscode = null;
-    return null;
-  }
-
-  /// Verifies the Signature Passcode when issuing a document (local/offline).
-  bool verifySignature(String passcode) {
-    final user = current;
-    if (user == null) return false;
-    return user.signaturePasscodeHash == demoHash(passcode);
-  }
-
-  /// The passcode last verified OK (kept in RAM only) — passed to the data
-  /// API which re-verifies it against the stored hash in MongoDB.
-  String? lastVerifiedPasscode;
-  /// True when the last verification BOUND a new passcode (staff account
-  /// created while the gate was off) — the dialog tells the user to keep it.
-  bool lastSignatureBound = false;
-
-  /// Real backend path: verify against the stored hash (scrypt) in
-  /// MongoDB via the data API. Falls back to the local check only when the
-  /// API is not configured or unreachable.
-  Future<bool> verifySignatureAny(String passcode, {bool force = false}) async {
-    if (!force && !AppStore.instance.settings.signatureGateEnabled) {
-      lastVerifiedPasscode = null;
-      return true;
-    }
-    final api = AppStore.instance.api;
-    if (Env.apiConfigured && api != null && accessToken != null) {
-      final res = await api.post('/api/auth/signature', {'passcode': passcode});
-      if (res != null && res.ok) {
-        lastVerifiedPasscode = passcode;
-        lastSignatureBound = res.json is Map && (res.json as Map)['bound'] == true;
-        return true;
-      }
-      if (res != null) return false; // server actively rejected
-    }
-    final ok = verifySignature(passcode);
-    if (ok) lastVerifiedPasscode = passcode;
-    return ok;
   }
 
   /// Real Supabase Auth sign-in. On success the RestClient carries the
@@ -490,7 +397,6 @@ class AuthStore extends ChangeNotifier {
       // keep the device copy of the password hash so this account can sign
       // in again with the server unreachable (offline-first)
       passwordHash: passwordHash ?? prev?.passwordHash ?? '',
-      signaturePasscodeHash: prev?.signaturePasscodeHash ?? '',
       signaturePng: prev?.signaturePng,
     ));
     notifyListeners();
@@ -603,7 +509,6 @@ class AuthStore extends ChangeNotifier {
       email: _emailKey(mail),
       role: cachedRole,
       passwordHash: previous?.passwordHash ?? '',
-      signaturePasscodeHash: previous?.signaturePasscodeHash ?? '',
       signaturePng: previous?.signaturePng,
     ));
     notifyListeners();

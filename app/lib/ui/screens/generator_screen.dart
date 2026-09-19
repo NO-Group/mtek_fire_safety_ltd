@@ -27,7 +27,7 @@ import '../signature_dialog.dart';
 
 /// DOCUMENT GENERATOR (SPEC §12, Phase A): document-type switcher →
 /// per-type form state (context preserved) → validation → Signature
-/// Passcode gate → PDF build → share via WhatsApp/email (fallback save).
+/// PDF build → share via WhatsApp/email (fallback save).
 class GeneratorScreen extends StatefulWidget {
   final DocType initialType;
   const GeneratorScreen({super.key, this.initialType = DocType.receipt});
@@ -280,7 +280,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
               ),
               const SizedBox(height: 8),
               Text(
-                'Generation requires your Signature Passcode · PDF carries the corporate header, '
+                'PDF carries the corporate header, '
                 'watermark, your signature stamp and a verification QR.',
                 style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
@@ -1216,7 +1216,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
     }
 
     // serial assignment — SERVER-assigned when the backend is configured
-    // (atomic RPC; passcode re-verified against bcrypt server-side). Local
+    // (atomic RPC with server-issued serials). Local
     // counter keeps offline development usable.
     final typeKey = switch (_type) {
       DocType.receipt => 'receipt',
@@ -1251,8 +1251,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       serial = await AppStore.instance.nextDocSerial(
         type: typeKey,
         customer: customer,
-        total: docTotal,
-        passcode: AuthStore.instance.lastVerifiedPasscode ?? '',
+        total: docTotal, ?? '',
         contact: contact,
         issueKey: _issueKeys.putIfAbsent(_type, () =>
           '${AuthStore.instance.remoteSignInUid}:${_type.name}:${DateTime.now().microsecondsSinceEpoch}'),

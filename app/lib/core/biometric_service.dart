@@ -2,7 +2,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
 class BiometricService {
-  BiometricService._();
+  BiometricService._() {
+    // Remove the obsolete secondary-signing credential from upgraded devices.
+    _storage.delete(key: 'bio_${'signature'}');
+  }
   static final instance = BiometricService._();
   final _auth = LocalAuthentication();
   static const _storage = FlutterSecureStorage();
@@ -28,9 +31,6 @@ class BiometricService {
     final e = await _storage.read(key: 'bio_email'), p = await _storage.read(key: 'bio_password');
     return e == null || p == null ? null : (e, p);
   }
-  Future<void> saveSignaturePasscode(String value) => _storage.write(key: 'bio_signature', value: value);
-  Future<String?> signaturePasscode() async =>
-      await authenticate('Authorise your MFSL signature') ? _storage.read(key: 'bio_signature') : null;
 
   /// Session tokens are credentials too. Keep them in the OS credential vault
   /// even when biometric convenience is disabled.
@@ -43,6 +43,5 @@ class BiometricService {
   Future<void> clear() async {
     await _storage.delete(key: 'bio_email');
     await _storage.delete(key: 'bio_password');
-    await _storage.delete(key: 'bio_signature');
   }
 }

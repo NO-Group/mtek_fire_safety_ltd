@@ -17,8 +17,8 @@ import '../widgets.dart';
 /// SETTINGS — visible to EVERY role (owner directive 2026-09-01).
 ///
 /// Every signed-in user sees:
-///   • Account      — profile, change password, change signature passcode,
-///                    recovery (reset password/passcode + reset recovery
+///   • Account      — profile, change password,
+///                    recovery (reset password + reset recovery
 ///                    string), and sign out.
 ///   • Preferences  — mark all notifications read, refresh from the server.
 ///   • About        — app version + live server status.
@@ -74,12 +74,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Change password'),
               trailing: const Icon(Icons.chevron_right, color: Mtek.gray400),
               onTap: () => _changePassword(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.password_outlined),
-              title: const Text('Change signature passcode'),
-              trailing: const Icon(Icons.chevron_right, color: Mtek.gray400),
-              onTap: () => _changePasscode(context),
             ),
             ListTile(
               leading: const Icon(Icons.restore_outlined),
@@ -320,25 +314,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    secondary: const Icon(Icons.draw_outlined),
-                    title: const Text('Require signature passcode'),
-                    subtitle: const Text(
-                      'When disabled, staff can issue documents and complete protected transactions without the signature-code prompt.'),
-                    value: store.settings.signatureGateEnabled,
-                    onChanged: (enabled) async {
-                      try {
-                        await store.updateSettings(signatureGateEnabled: enabled);
-                        _snack(enabled
-                            ? 'Signature passcode protection enabled.'
-                            : 'Signature passcode protection disabled.');
-                      } catch (error) {
-                        _snack(error.toString().replaceFirst('Exception: ', ''));
-                      }
-                    },
-                  ),
-                  const Divider(height: 24),
                   Text('DOCUMENT SERIALS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 4),
                   Text('Set each counter to the number of the last used page in the physical book — digital documents continue the sequence.',
@@ -494,7 +469,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
 
   // ---- server status ----
-  // ---- change password / passcode dialogs ----
+  // ---- change password dialog ----
   Future<void> _changePassword(BuildContext context) async {
     final current = TextEditingController();
     final next = TextEditingController();
@@ -541,54 +516,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       newPassword: next.text,
     );
     _snack(outcome ?? 'Password changed.');
-  }
-
-  Future<void> _changePasscode(BuildContext context) async {
-    final current = TextEditingController();
-    final next = TextEditingController();
-    final confirm = TextEditingController();
-    // Dialog result: null = cancelled · '' = proceed · non-empty = error to show.
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change signature passcode'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: current, obscureText: true, decoration: const InputDecoration(labelText: 'Current passcode')),
-            TextField(controller: next, obscureText: true, decoration: const InputDecoration(labelText: 'New passcode')),
-            TextField(controller: confirm, obscureText: true, decoration: const InputDecoration(labelText: 'Confirm new passcode')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (next.text.length < 4) {
-                Navigator.pop(context, 'Signature passcode must be at least 4 characters');
-                return;
-              }
-              if (next.text != confirm.text) {
-                Navigator.pop(context, 'New passcodes do not match');
-                return;
-              }
-              Navigator.pop(context, '');
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (result == null) return; // cancelled
-    if (result.isNotEmpty) {
-      _snack(result);
-      return;
-    }
-    final outcome = await AuthStore.instance.changePasscode(
-      currentPasscode: current.text,
-      newPasscode: next.text,
-    );
-    _snack(outcome ?? 'Signature passcode changed.');
   }
 
   void _snack(String msg) {
@@ -644,9 +571,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 /// ACCOUNT → RECOVERY — two self-service flows (owner directive 2026-09-01):
-///   1. Reset the account password (and optionally the signature passcode)
-///      using the recovery string chosen at sign-up.
-///   2. Rotate the recovery string itself using the password + passcode.
+///   1. Reset the account password using the recovery string.
+///   2. Rotate the recovery string using the account password.
 /// There is deliberately NO email/OTP flow.
 class RecoveryScreen extends StatefulWidget {
   const RecoveryScreen({super.key});
@@ -672,7 +598,7 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
           Text(
             'Use the recovery string you chose at sign-up to reset a forgotten '
             'password — or reset the recovery string itself using your current '
-            'password and signature passcode.',
+            'password.',
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 16),
           _resetPasswordCard(email),
@@ -687,27 +613,25 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
     final emailC = TextEditingController(text: email);
     final recoveryC = TextEditingController();
     final passC = TextEditingController();
-    final passcodeC = TextEditingController();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('RESET PASSWORD & PASSCODE',
+            Text('RESET PASSWORD',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 10),
             TextField(controller: emailC, decoration: const InputDecoration(labelText: 'Account email')),
             TextField(controller: recoveryC, decoration: const InputDecoration(labelText: 'Recovery string')),
             TextField(controller: passC, obscureText: true, decoration: const InputDecoration(labelText: 'New password (min 6 characters)')),
-            TextField(controller: passcodeC, obscureText: true, decoration: const InputDecoration(labelText: 'New signature passcode (optional, min 4 characters)')),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: _busy
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.lock_reset, size: 18),
               label: const Text('Reset password'),
-              onPressed: _busy ? null : () => _doResetPassword(emailC, recoveryC, passC, passcodeC),
+              onPressed: _busy ? null : () => _doResetPassword(emailC, recoveryC, passC),
             ),
           ],
         ),
@@ -718,7 +642,6 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
   Widget _resetRecoveryCard(String email) {
     final emailC = TextEditingController(text: email);
     final passC = TextEditingController();
-    final passcodeC = TextEditingController();
     final newRecoveryC = TextEditingController();
     return Card(
       child: Padding(
@@ -731,7 +654,6 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
             const SizedBox(height: 10),
             TextField(controller: emailC, decoration: const InputDecoration(labelText: 'Account email')),
             TextField(controller: passC, obscureText: true, decoration: const InputDecoration(labelText: 'Current password')),
-            TextField(controller: passcodeC, obscureText: true, decoration: const InputDecoration(labelText: 'Signature passcode')),
             TextField(controller: newRecoveryC, decoration: const InputDecoration(labelText: 'New recovery string (min 15 characters)')),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -739,7 +661,7 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.key_outlined, size: 18),
               label: const Text('Reset recovery string'),
-              onPressed: _busy ? null : () => _doResetRecovery(emailC, passC, passcodeC, newRecoveryC),
+              onPressed: _busy ? null : () => _doResetRecovery(emailC, passC, newRecoveryC),
             ),
           ],
         ),
@@ -748,19 +670,14 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
   }
 
   Future<void> _doResetPassword(TextEditingController emailC, TextEditingController recoveryC,
-      TextEditingController passC, TextEditingController passcodeC) async {
+      TextEditingController passC) async {
     if (recoveryC.text.trim().isEmpty) return _fail('Enter your recovery string.');
     if (passC.text.length < 6) return _fail('New password must be at least 6 characters.');
-    final passcode = passcodeC.text.trim();
-    if (passcode.isNotEmpty && passcode.length < 4) {
-      return _fail('Signature passcode must be at least 4 characters.');
-    }
     setState(() => _busy = true);
     final result = await AuthStore.instance.resetPasswordWithRecovery(
       email: emailC.text,
       recoveryString: recoveryC.text,
       newPassword: passC.text,
-      newSignaturePasscode: passcode.isEmpty ? null : passcode,
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -768,15 +685,13 @@ class _RecoveryScreenState extends State<RecoveryScreen> {
   }
 
   Future<void> _doResetRecovery(TextEditingController emailC, TextEditingController passC,
-      TextEditingController passcodeC, TextEditingController newRecoveryC) async {
+      TextEditingController newRecoveryC) async {
     if (passC.text.isEmpty) return _fail('Enter your current password.');
-    if (passcodeC.text.isEmpty) return _fail('Enter your signature passcode.');
     if (newRecoveryC.text.length < 15) return _fail('New recovery string must be at least 15 characters.');
     setState(() => _busy = true);
     final result = await AuthStore.instance.resetRecovery(
       email: emailC.text,
       password: passC.text,
-      signaturePasscode: passcodeC.text,
       newRecoveryString: newRecoveryC.text,
     );
     if (!mounted) return;

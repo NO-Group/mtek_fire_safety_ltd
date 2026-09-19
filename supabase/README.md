@@ -21,7 +21,6 @@ anywhere" (0.0.0.0/0) → Confirm.**
 | Name | Value |
 |---|---|
 | `MONGODB_URI` | your Atlas connection string (`mongodb+srv://…@mfsl.w5ifd7x.mongodb.net/…`) |
-| `MTEK_CEO_SIG` | the CEO signature passcode |
 
 **3. Deploy the function — ONE file:** Edge Functions → Create a new
 function → name `data-api` → in the editor open `index.ts` → select all →

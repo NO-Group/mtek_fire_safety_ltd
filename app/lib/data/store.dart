@@ -905,13 +905,12 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Next document serial — SERVER-assigned when the backend is configured
-  /// (atomic RPC, paper-book continuity, passcode re-verified server-side);
+  /// (atomic RPC and paper-book continuity);
   /// local counter otherwise (offline dev).
   Future<int> nextDocSerial({
     required String type,
     required String customer,
     required double total,
-    required String passcode,
     String? verifyHash,
     String contact = '', // customer phone OR email — server rejects documents without one
     String? issueKey,
@@ -919,7 +918,7 @@ class AppStore extends ChangeNotifier {
     if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
       final res = await _api!.post('/api/docs/issue', {
         'type': type, 'customer': customer, 'total': total,
-        'hash': verifyHash ?? '', 'passcode': passcode,
+        'hash': verifyHash ?? '',
         'contact': contact, 'issue_key': issueKey,
       });
       if (res != null && res.ok && res.json is Map) {
@@ -931,7 +930,7 @@ class AppStore extends ChangeNotifier {
       }
       throw Exception(res == null
           ? 'Data API unreachable — document NOT issued offline'
-          : 'Document NOT issued — ${(res.json is Map ? (res.json as Map)['error'] : null) ?? 'server refused (check your Signature Passcode)'}');
+          : 'Document NOT issued — ${(res.json is Map ? (res.json as Map)['error'] : null) ?? 'server refused the request'}');
     }
     return SerialService.instance.next(type);
   }
@@ -1420,15 +1419,14 @@ class AppStore extends ChangeNotifier {
   Future<void> updateSettings({
     bool? vatEnabled,
     double? vatRate,
-    bool? signatureGateEnabled,
     Map<String, int>? serialReseed,
   }) async {
     // CEO-only — enforced again server-side (owner directive 2026-08-30)
     if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
-      if (vatEnabled != null || vatRate != null || signatureGateEnabled != null) {
+      if (vatEnabled != null || vatRate != null) {
         final response = await _api!.post('/api/settings', {
           'vatEnabled': vatEnabled, 'vatRate': vatRate,
-          'signatureGateEnabled': signatureGateEnabled, 'watermark': null,
+          'watermark': null,
         });
         if (response == null || !response.ok) {
           final message = response?.json is Map
@@ -1456,10 +1454,6 @@ class AppStore extends ChangeNotifier {
     }
     if (vatEnabled != null) settings = settings.copyWith(vatEnabled: vatEnabled);
     if (vatRate != null) settings = settings.copyWith(vatRate: vatRate);
-    if (signatureGateEnabled != null) {
-      settings = settings.copyWith(signatureGateEnabled: signatureGateEnabled);
-      if (!signatureGateEnabled) AuthStore.instance.lastVerifiedPasscode = null;
-    }
     if (serialReseed != null) {
       for (final e in serialReseed.entries) {
         SerialService.instance.reseed(e.key, e.value);
@@ -1619,14 +1613,13 @@ class AppStore extends ChangeNotifier {
     int discount = 0,
     required String signedBy,
     String? customerSignature,
-    String? passcode,
     required String issueKey,
   }) async {
     final now = DateTime.now();
     // SERVER-AUTHENTICATED SALE: stock check, pricing (server prices),
     // decrement, transaction + receipt happen in one authoritative cloud
-    // request for CEO, Admin and Sales alike. The passcode is re-verified
-    // server-side. No role receives a misleading local-success fallback.
+    // request for CEO, Admin and Sales alike. No role receives a misleading
+    // local-success fallback.
     String? serverReceiptNo;
     String? serverInvoiceNo;
     String? serverSaleId;
@@ -1646,7 +1639,6 @@ class AppStore extends ChangeNotifier {
         'items': [for (final i in items) {'product_id': i.product.id, 'qty': i.qty}],
         'discount': discount,
         'customer_signature': customerSignature,
-        'passcode': passcode ?? '',
         'issue_key': issueKey,
       });
       if (res == null) {
@@ -1742,14 +1734,13 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<void> payInvoice(Invoice invoice, int amount, {required String signedBy, String? passcode}) async {
+  Future<void> payInvoice(Invoice invoice, int amount, {required String signedBy}) async {
     final idx = invoices.indexOf(invoice);
     final now = DateTime.now();
     String? serverReceiptNo;
     if (Env.apiConfigured && _api != null && AuthStore.instance.accessToken != null) {
       final res = await _api!.post('/api/invoices/pay', {
         'no': invoice.number, 'amount': amount, 'method': 'transfer',
-        'passcode': passcode ?? '',
       });
       if (res != null && res.ok && res.json is Map) {
         serverReceiptNo = '${(res.json as Map)['receipt_no'] ?? ''}';
@@ -2241,32 +2232,26 @@ Map<String, dynamic> milsLogToJson(MaintenanceLog l) => {
 class StoreSettings {
   final bool vatEnabled;
   final double vatRate;
-  final bool signatureGateEnabled;
   StoreSettings({
     this.vatEnabled = false,
     this.vatRate = 0.075,
-    this.signatureGateEnabled = true,
   });
 
   StoreSettings copyWith({
     bool? vatEnabled,
     double? vatRate,
-    bool? signatureGateEnabled,
   }) => StoreSettings(
         vatEnabled: vatEnabled ?? this.vatEnabled,
         vatRate: vatRate ?? this.vatRate,
-        signatureGateEnabled: signatureGateEnabled ?? this.signatureGateEnabled,
       );
 
   Map<String, dynamic> toJson() => {
         'vat_enabled': vatEnabled,
         'vat_rate': vatRate,
-        'signature_gate_enabled': signatureGateEnabled,
       };
   static StoreSettings fromJson(Map<String, dynamic> j) => StoreSettings(
         vatEnabled: j['vat_enabled'] == true,
         vatRate: (j['vat_rate'] as num?)?.toDouble() ?? 0.075,
-        signatureGateEnabled: j['signature_gate_enabled'] != false,
       );
 }
 

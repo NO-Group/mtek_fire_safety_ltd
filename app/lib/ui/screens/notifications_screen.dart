@@ -144,7 +144,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     setState(() => _loading = true);
     final response = await AppStore.instance.api?.post('/api/payment-vouchers/approve', {
       'id': notification.ref,
-      'passcode': AuthStore.instance.lastVerifiedPasscode ?? '',
     });
     if (response != null && response.ok) {
       await AppStore.instance.markNotificationRead(notification.id);
@@ -162,7 +161,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _approveStockReceipt(AppNotification notification) async {
     // Approval is deliberately force-authenticated: the CEO must enter the
-    // signature passcode for every individual Stock Receipt approval.
     final signer = await confirmSignature(context, force: true);
     if (signer == null || !mounted) return;
     setState(() => _loading = true);
@@ -170,7 +168,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       '/api/stock-receipts/approve',
       {
         'id': notification.ref,
-        'passcode': AuthStore.instance.lastVerifiedPasscode ?? '',
         'approval_signature': signer.signaturePng ?? '',
       },
     );

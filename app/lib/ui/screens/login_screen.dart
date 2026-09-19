@@ -13,7 +13,7 @@ import '../signature_pad.dart';
 import '../widgets.dart';
 
 /// Sign-in / create-account. Account creation REQUIRES a Signature
-/// Passcode (separate from the password) + optional drawn signature.
+/// Account authentication and optional drawn signature.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -30,8 +30,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _password = TextEditingController();
   final _name = TextEditingController();
   final _phone = TextEditingController();
-  final _passcode = TextEditingController();
-  final _passcode2 = TextEditingController();
   final _recovery = TextEditingController();
   String _role = 'admin';
   String? _signaturePng;
@@ -45,8 +43,6 @@ class _LoginScreenState extends State<LoginScreen> {
     _password.dispose();
     _name.dispose();
     _phone.dispose();
-    _passcode.dispose();
-    _passcode2.dispose();
     _recovery.dispose();
     super.dispose();
   }
@@ -268,28 +264,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Mtek.goldTint, borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(children: [
-                Icon(Icons.draw_outlined, size: 17, color: Mtek.warn),
-                SizedBox(width: 7),
-                Text('SIGNATURE PASSCODE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Mtek.warn)),
-              ]),
-              const SizedBox(height: 4),
-              const Text('Used to digitally sign receipts, invoices & MILS logs — no more signing on paper. Must differ from your password.',
-                  style: TextStyle(fontSize: 11.5, color: Mtek.gray600)),
-              const SizedBox(height: 10),
-              TextField(controller: _passcode, obscureText: true, decoration: const InputDecoration(labelText: 'Signature passcode (min 4)')),
-              const SizedBox(height: 8),
-              TextField(controller: _passcode2, obscureText: true, decoration: const InputDecoration(labelText: 'Repeat signature passcode')),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
         if (Env.backendConfigured)
           // Real accounts always start as Sales (server-enforced too) — no
           // self-service Admin/CEO, for the same reason a bank teller can't
@@ -322,7 +296,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
         const SizedBox(height: 10),
-        // Drawn signature is optional; the passcode is what authorises documents.
+        // Drawn signature is optional and used as a visual document mark.
         if (_showPad)
           SignaturePad(
             onDone: (bytes) {
@@ -408,10 +382,6 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'A passport photograph is compulsory for registration.');
       return;
     }
-    if (_passcode.text != _passcode2.text) {
-      setState(() => _error = 'Signature passcodes do not match');
-      return;
-    }
     if (Env.backendConfigured) {
       final phoneError = internationalPhoneError(_phone.text, required: true);
       if (phoneError != null) {
@@ -422,8 +392,8 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _error = 'Recovery phrase must be at least 15 characters');
         return;
       }
-      if (_recovery.text.trim() == _password.text || _recovery.text.trim() == _passcode.text) {
-        setState(() => _error = 'Recovery phrase must differ from your password and signature passcode');
+      if (_recovery.text.trim() == _password.text) {
+        setState(() => _error = 'Recovery phrase must differ from your password');
         return;
       }
     }
@@ -437,7 +407,6 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _email.text,
         phone: normalizeInternationalPhone(_phone.text),
         password: _password.text,
-        signaturePasscode: _passcode.text,
         recoveryString: _recovery.text.trim(),
         passportPhoto: _passportPhoto!,
       );
@@ -449,7 +418,6 @@ class _LoginScreenState extends State<LoginScreen> {
       name: _name.text,
       email: _email.text,
       password: _password.text,
-      signaturePasscode: _passcode.text,
       role: _role,
       signaturePng: _signaturePng,
       passportPhoto: _passportPhoto,

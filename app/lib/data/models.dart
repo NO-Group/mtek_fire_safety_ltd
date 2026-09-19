@@ -159,7 +159,7 @@ class Receipt {
   final int amount;
   final PaymentMethod method;
   final String forDoc; // sale id or invoice number
-  final String signedBy; // digitally signed via Signature Passcode
+  final String signedBy;
   final String issuedBy;
   final String customerSignature; // data: URL — customer signs on the device
 

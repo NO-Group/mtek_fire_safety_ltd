@@ -14,7 +14,6 @@
 //
 // Function secrets (dashboard → Edge Functions → Secrets):
 //   MONGODB_URI   (your Atlas connection string)
-//   MTEK_CEO_SIG  (the CEO signature passcode)
 //   SUPABASE_SECRET_KEY(S) — Supabase default, leave as-is
 //
 // The apps call:  https://kshuadjcflwlidupnqly.supabase.co/functions/v1/data-api/...
@@ -45,14 +44,9 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const CEO_EMAIL = 'mtekfiresafetyltd@gmail.com';
 const CEO_PHONE = '+2348033498452';
 const CEO_UID = Deno.env.get('MTEK_CEO_UID') ?? '';
-// Optional bootstrap value for a CEO profile that has never had a signature
-// passcode. It is held only in the Edge Function secret store and is never
-// shipped in source, an APK, an EXE, a response, or a log. Once the hash is
-// created, in-app passcode rotation is authoritative and is never overwritten.
-const CEO_SIG = Deno.env.get('MTEK_CEO_SIG') ?? '';
 // Bundle marker returned by GET /health so a deploy can be VERIFIED from
 // the outside (bump whenever index.ts changes).
-const BUNDLE_VERSION = '2026-09-15-office-docs2';
+const BUNDLE_VERSION = '2026-09-19-remove-signature-passcode';
 // True when this GoTrue user is the locked CEO identity (by UID or email).
 const isCeoUser = (id: unknown, email: unknown) =>
   String(id ?? '') === CEO_UID || String(email ?? '').toLowerCase() === CEO_EMAIL;
@@ -146,17 +140,7 @@ async function notify(kind: string, title: string, message: string, ref: string,
 // ---- auth: Supabase JWT → MongoDB profile ------------------------------------
 interface Profile {
   uid: string; email: string; name: string; role: string;
-  sig_hash: string; sig_salt: string;
 }
-const hashPass = (secret: string, salt: string) => {
-  // scrypt via WebCrypto is unavailable here, so we use HMAC-SHA512
-  // (salt+secret, key='mtek-store-salt') — deterministic and salted.
-  // Kept byte-identical with backend/scripts/seed-mongo.js so a passcode
-  // seeded there verifies correctly here.
-  return hmacHex(`${salt}${secret}`, 'mtek-store-salt');
-};
-// Recovery strings use a SEPARATE HMAC key from signature passcodes so a
-// leaked signature hash can never be replayed as a password-recovery hash.
 const hashRecovery = (secret: string, salt: string) => hmacHex(`${salt}${secret}`, 'mtek-recovery-salt');
 async function hmacHex(message: string, key: string): Promise<string> {
   const enc = new TextEncoder();
@@ -210,14 +194,11 @@ async function auth(req: Request): Promise<Profile> {
   let p = await profiles.findOne({ _id: user.id }) as Record<string, unknown> | null;
   const isCeo = user.id === CEO_UID || String(user.email ?? '').toLowerCase() === CEO_EMAIL;
   if (!p) {
-    const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
     p = {
       _id: user.id,
       email: String(user.email ?? '').toLowerCase(),
       full_name: (user.user_metadata?.full_name as string) || (isCeo ? 'CEO' : String(user.email ?? 'staff').split('@')[0]),
       role: isCeo ? 'ceo' : 'sales', // the CEO identity is locked by hardcode
-      sig_salt: salt,
-      sig_hash: isCeo && CEO_SIG ? await hashPass(CEO_SIG, salt) : null,
       created_at: now(),
     };
     await profiles.insertOne(p as Record<string, unknown>);
@@ -231,7 +212,7 @@ async function auth(req: Request): Promise<Profile> {
   }
   const value: Profile = {
     uid: user.id, email: String(p.email), name: String(p.full_name),
-    role: String(p.role), sig_hash: String(p.sig_hash ?? ''), sig_salt: String(p.sig_salt ?? ''),
+    role: String(p.role),
   };
   profileCache.set(user.id, { value, expires: Date.now() + 60_000 });
   return value;
@@ -244,41 +225,6 @@ function requireRole(user: Profile, roles: string[], what: string) {
     throw new HttpErr(403, roles.length === 1 && roles[0] === 'ceo'
       ? `Only the CEO can ${what}` : `Only CEO or Admin can ${what}`);
   }
-}
-
-// The CEO controls this live from Settings. The backend reads the
-// authoritative value for every protected mutation, so disabling the app
-// prompt can never leave the server unexpectedly demanding a passcode.
-async function signatureGateEnabled() {
-  const settings = await (await coll.settings()).findOne({ _id: 'settings' });
-  return settings?.signature_gate_enabled !== false;
-}
-
-async function verifyPasscode(user: Profile, passcode: string, force = false) {
-  if (!force && !await signatureGateEnabled()) return;
-  if (!passcode) throw new HttpErr(403, 'Not signed — passcode required');
-  const hash = user.sig_hash && user.sig_salt ? await hashPass(passcode, user.sig_salt) : '';
-  if (hash && hash === user.sig_hash) return;
-  // first bind for staff whose profile has NO passcode yet (accounts created
-  // while the gate was switched off): the first passcode they enter becomes
-  // theirs, and they are told so by the app. Min 4 chars like sign-up.
-  if (!user.sig_hash && user.role !== 'ceo' && passcode.length >= 4) {
-    const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-    await (await coll.profiles()).updateOne(
-      { _id: user.uid }, { $set: { sig_salt: salt, sig_hash: await hashPass(passcode, salt) } });
-    profileCache.delete(user.uid);
-    await audit('core', 'bind-passcode', user.uid, user);
-    return;
-  }
-  // first bind: CEO's configured signature seeds the hash on first use
-  if (!user.sig_hash && CEO_SIG && passcode === CEO_SIG && user.role === 'ceo') {
-    const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-    await (await coll.profiles()).updateOne(
-      { _id: user.uid }, { $set: { sig_salt: salt, sig_hash: await hashPass(CEO_SIG, salt) } });
-    profileCache.delete(user.uid);
-    return;
-  }
-  throw new HttpErr(403, 'Signature passcode does not match — action NOT authorised');
 }
 
 const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -304,11 +250,14 @@ async function ensureCore() {
   for (const t of BOOK_TYPES) {
     await s.updateOne({ _id: t }, { $setOnInsert: { last_used: 0 } }, { upsert: true });
   }
-  await coll.settings().then(c =>
-    c.updateOne({ _id: 'settings' }, { $setOnInsert: {
+  await coll.settings().then(async c => {
+    await c.updateOne({ _id: 'settings' }, { $setOnInsert: {
       vat_enabled: false, vat_rate: 0.075, watermark: true,
-      signature_gate_enabled: true,
-    } }, { upsert: true }));
+    } }, { upsert: true });
+    await c.updateOne({ _id: 'settings' }, { $unset: { signature_gate_enabled: '' } });
+  });
+  // Purge obsolete secondary-signing credentials from all staff profiles.
+  await (await coll.profiles()).updateMany({}, { $unset: { sig_salt: '', sig_hash: '' } });
 }
 async function nextSerial(type: string): Promise<number> {
   const out = await (await coll.serials()).findOneAndUpdate(
@@ -467,13 +416,11 @@ Deno.serve(async (req: Request) => {
     // Creates an ACTUAL Supabase Auth user via the Admin API (service-role
     // key, never exposed to the client) and seeds its MongoDB profile with
     // role='sales' — self-signup can never grant admin/CEO authority; an
-    // existing Admin/CEO promotes staff afterwards. The signature-passcode
     // hash is bound immediately (there is no other first-bind path for
     // non-CEO accounts), so a brand-new account can sign documents right away.
     // Also collects a phone number (stored on the real Supabase auth.users
     // row so it shows in the dashboard, AND mirrored into the MongoDB
     // profile) and a RECOVERY STRING (≥15 chars, hashed with its own HMAC
-    // key — never the signature-passcode key) used later by
     // POST /api/auth/reset-password for a mail/OTP-free password reset
     // (owner directive 2026-09-01).
     if (route === 'POST /api/auth/signup') {
@@ -483,7 +430,6 @@ Deno.serve(async (req: Request) => {
       const email = String(b.email ?? '').trim().toLowerCase();
       const phone = String(b.phone ?? '').trim().slice(0, 32);
       const password = String(b.password ?? '');
-      const passcode = String(b.signature_passcode ?? '');
       const recovery = String(b.recovery_string ?? '');
       const passportPhoto = String(b.passport_photo ?? '');
       if (!name) return err(400, 'Enter your full name');
@@ -493,10 +439,8 @@ Deno.serve(async (req: Request) => {
       if (!passportPhoto.startsWith('data:image/') || passportPhoto.length > 2_100_000)
         return err(400, 'A valid passport photograph under 1.5 MB is required');
       if (password.length < 6) return err(400, 'Password must be at least 6 characters');
-      if (passcode.length < 4) return err(400, 'Signature passcode must be at least 4 characters');
-      if (passcode === password) return err(400, 'Signature passcode must be different from your password');
       if (recovery.length < 15) return err(400, 'Recovery string must be at least 15 characters');
-      if (recovery === password || recovery === passcode) return err(400, 'Recovery string must be different from your password and signature passcode');
+      if (recovery === password) return err(400, 'Recovery string must be different from your password');
       if (email === CEO_EMAIL) return err(400, 'The CEO account is pre-provisioned — sign in directly');
 
       // phone_confirm:true marks it pre-verified so GoTrue stores it on
@@ -565,7 +509,6 @@ Deno.serve(async (req: Request) => {
       const uid = String(createdUser.id ?? (createdUser.user as Record<string, unknown> | undefined)?.id ?? '');
       if (!uid) return err(500, 'Account created but no id was returned — try signing in');
 
-      const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
       const recoverySalt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
       const fullName = name || email.split('@')[0];
       await (await coll.profiles()).updateOne(
@@ -574,7 +517,6 @@ Deno.serve(async (req: Request) => {
           email, phone, full_name: fullName, role: 'sales',
           staff_id: `MFSL-${uid.replaceAll('-', '').slice(0, 8).toUpperCase()}`,
           passport_photo: passportPhoto,
-          sig_salt: salt, sig_hash: await hashPass(passcode, salt),
           recovery_salt: recoverySalt, recovery_hash: await hashRecovery(recovery, recoverySalt),
           created_at: now(),
         } },
@@ -609,18 +551,14 @@ Deno.serve(async (req: Request) => {
     // directive 2026-09-01) — NO email/OTP round-trip. The user proves
     // ownership by typing the ≥15-char recovery string they set at sign-up;
     // it is verified against a salted HMAC hash using its own key (never
-    // the signature-passcode key), then the Admin API sets a new password.
     if (route === 'POST /api/auth/reset-password') {
       const b = await req.json().catch(() => ({} as Record<string, unknown>));
       const email = String(b.email ?? '').trim().toLowerCase();
       const recovery = String(b.recovery_string ?? '');
       const newPassword = String(b.new_password ?? '');
-      const newPasscode = String(b.new_signature_passcode ?? ''); // optional
       if (!email.includes('@')) return err(400, 'Enter a valid email');
       if (!recovery) return err(400, 'Enter your recovery string');
       if (newPassword.length < 6) return err(400, 'New password must be at least 6 characters');
-      if (newPasscode && newPasscode.length < 4) return err(400, 'Signature passcode must be at least 4 characters');
-      if (newPasscode && newPasscode === newPassword) return err(400, 'Signature passcode must be different from your password');
 
       const profile = await (await coll.profiles()).findOne({ email }) as Record<string, unknown> | null;
       if (!profile || !profile.recovery_hash || !profile.recovery_salt) {
@@ -647,34 +585,22 @@ Deno.serve(async (req: Request) => {
         const j = await updRes.json().catch(() => ({} as Record<string, unknown>));
         return err(400, String((j as Record<string, unknown>).msg ?? (j as Record<string, unknown>).error_description ?? 'Could not reset the password'));
       }
-      // If a new signature passcode was supplied, rotate its salt+hash too.
-      if (newPasscode) {
-        const sigSalt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-        await (await coll.profiles()).updateOne(
-          { _id: uid },
-          { $set: { sig_salt: sigSalt, sig_hash: await hashPass(newPasscode, sigSalt) } },
-        );
-      }
       profileCache.delete(uid);
       return json({ ok: true });
     }
 
     // ---- public auth: reset the RECOVERY STRING (owner directive
-    // 2026-09-01). Both the account password AND the signature passcode are
     // required together — either alone is rejected. Verifies the password
-    // via a real GoTrue token exchange, the passcode against the stored
     // salted hash, then rotates the recovery salt+hash.
     if (route === 'POST /api/auth/reset-recovery') {
       const b = await req.json().catch(() => ({} as Record<string, unknown>));
       const email = String(b.email ?? '').trim().toLowerCase();
       const password = String(b.password ?? '');
-      const passcode = String(b.signature_passcode ?? '');
       const newRecovery = String(b.new_recovery_string ?? '');
       if (!email.includes('@')) return err(400, 'Enter a valid email');
       if (!password) return err(400, 'Enter your account password');
-      if (!passcode) return err(400, 'Enter your signature passcode');
       if (newRecovery.length < 15) return err(400, 'Recovery string must be at least 15 characters');
-      if (newRecovery === password || newRecovery === passcode) return err(400, 'Recovery string must be different from your password and signature passcode');
+      if (newRecovery === password) return err(400, 'Recovery string must be different from your password');
 
       let gr: Response;
       try {
@@ -691,10 +617,6 @@ Deno.serve(async (req: Request) => {
       const profile = await (await coll.profiles()).findOne({ email }) as Record<string, unknown> | null;
       if (!profile) return err(404, 'No account found for that email');
       const uid = String(profile._id);
-      const sigHash = String(profile.sig_hash ?? '');
-      const sigSalt = String(profile.sig_salt ?? '');
-      if (!sigHash || !sigSalt) return err(401, 'No signature passcode is set on this account');
-      if ((await hashPass(passcode, sigSalt)) !== sigHash) return err(401, 'Signature passcode is incorrect');
 
       const recoverySalt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
       await (await coll.profiles()).updateOne(
@@ -745,17 +667,9 @@ Deno.serve(async (req: Request) => {
             vat_enabled: settings?.vat_enabled ?? false,
             vat_rate: settings?.vat_rate ?? 0.075,
             watermark: settings?.watermark ?? true,
-            signature_gate_enabled: settings?.signature_gate_enabled !== false,
           },
           serials,
         });
-      }
-
-      case 'POST /api/auth/signature': {
-        const b = await req.json();
-        const firstBind = !user.sig_hash && user.role !== 'ceo';
-        await verifyPasscode(user, String(b.passcode ?? ''));
-        return json({ ok: true, bound: firstBind, user: { uid: user.uid, name: user.name, role: user.role } });
       }
 
       // ---- signed-in: change the account password (Settings → Account).
@@ -787,25 +701,6 @@ Deno.serve(async (req: Request) => {
         if (!upd.ok) throw new HttpErr(400, 'Could not update the password right now — please try again shortly');
         profileCache.delete(user.uid);
         await audit('core', 'change-password', user.uid, user);
-        return json({ ok: true });
-      }
-
-      // ---- signed-in: change the signature passcode (Settings → Account).
-      // Verifies the current passcode against the stored salted hash, then
-      // rotates the salt+hash. Also invalidates the in-RAM last-verified
-      // passcode by forcing a fresh bind on the next signature.
-      case 'POST /api/auth/change-passcode': {
-        const b = await req.json();
-        const current = String(b.current_passcode ?? '');
-        const next = String(b.new_passcode ?? '');
-        if (next.length < 4) throw new HttpErr(400, 'Signature passcode must be at least 4 characters');
-        if (next === current) throw new HttpErr(400, 'New signature passcode must be different from your current one');
-        await verifyPasscode(user, current);
-        const salt = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-        await (await coll.profiles()).updateOne(
-          { _id: user.uid }, { $set: { sig_salt: salt, sig_hash: await hashPass(next, salt) } });
-        profileCache.delete(user.uid);
-        await audit('core', 'change-passcode', user.uid, user);
         return json({ ok: true });
       }
 
@@ -970,7 +865,6 @@ Deno.serve(async (req: Request) => {
 
       case 'POST /api/sales': {
         const b = await req.json();
-        await verifyPasscode(user, String(b.passcode ?? ''));
         const issueKey = String(b.issue_key ?? '').trim().slice(0, 180);
         if (!issueKey) throw new HttpErr(400, 'Sale issue key required');
         // Every role uses this same endpoint. A retry after a timeout returns
@@ -1058,7 +952,6 @@ Deno.serve(async (req: Request) => {
 
       case 'POST /api/invoices/pay': {
         const b = await req.json();
-        await verifyPasscode(user, String(b.passcode ?? ''));
         const invoices = await coll.invoices();
         const inv = await invoices.findOne({ no: String(b.no ?? '') }) as Record<string, unknown> | null;
         if (!inv) throw new HttpErr(404, 'Invoice not found');
@@ -1088,7 +981,6 @@ Deno.serve(async (req: Request) => {
       case 'POST /api/payment-vouchers': {
         requireRole(user, ['ceo', 'admin'], 'prepare payment vouchers');
         const b = await req.json();
-        await verifyPasscode(user, String(b.passcode ?? ''));
         const amount = Math.max(0, Math.trunc(Number(b.amount) || 0));
         if (!String(b.payee ?? '').trim() || !String(b.particulars ?? '').trim() || !amount)
           throw new HttpErr(400, 'Payee, particulars and amount are required');
@@ -1108,7 +1000,6 @@ Deno.serve(async (req: Request) => {
       case 'POST /api/payment-vouchers/approve': {
         requireRole(user, ['ceo'], 'approve payment vouchers');
         const b = await req.json();
-        await verifyPasscode(user, String(b.passcode ?? ''), true);
         let id: InstanceType<typeof ObjectId>; try { id = new ObjectId(String(b.id ?? '')); } catch { throw new HttpErr(400, 'Invalid voucher'); }
         const vouchers = await coll.vouchers();
         const voucher = await vouchers.findOneAndUpdate({ _id: id, status: 'pending' },
@@ -1149,7 +1040,6 @@ Deno.serve(async (req: Request) => {
           if (!await (await coll.products()).findOne({ _id: r.product_id }))
             throw new HttpErr(400, `Unknown stock item on row ${r.sno}`);
         }
-        await verifyPasscode(user, String(b.passcode ?? ''));
         const serial = await nextSerial('stockreceipt');
         const record = { serial, receipt_date: String(b.date ?? now()), rows,
           status: 'pending', receiver_id: user.uid, receiver_name: user.name,
@@ -1165,9 +1055,7 @@ Deno.serve(async (req: Request) => {
       case 'POST /api/stock-receipts/approve': {
         requireRole(user, ['ceo'], 'approve stock receipts');
         const b = await req.json();
-        // Stock approval always requires the CEO's passcode, even if the
         // general document signature prompt is disabled in Settings.
-        await verifyPasscode(user, String(b.passcode ?? ''), true);
         let id: InstanceType<typeof ObjectId>;
         try { id = new ObjectId(String(b.id ?? '')); } catch { throw new HttpErr(400, 'Invalid stock receipt'); }
         const c = await coll.stockReceipts();
@@ -1208,9 +1096,6 @@ Deno.serve(async (req: Request) => {
         if (typeof b.vatEnabled === 'boolean') set.vat_enabled = b.vatEnabled;
         if (typeof b.vatRate === 'number' && b.vatRate >= 0 && b.vatRate <= 0.5) set.vat_rate = b.vatRate;
         if (typeof b.watermark === 'boolean') set.watermark = b.watermark;
-        if (typeof b.signatureGateEnabled === 'boolean') {
-          set.signature_gate_enabled = b.signatureGateEnabled;
-        }
         const st = await coll.settings();
         if (Object.keys(set).length) await st.updateOne({ _id: 'settings' }, { $set: set });
         if (b.reseed && BOOK_TYPES.includes(b.reseed.type)) {
@@ -1379,7 +1264,6 @@ Deno.serve(async (req: Request) => {
         const b = await req.json();
         const type = ['receipt', 'invoice', 'mils', 'waybill', 'deliverynote'].includes(b.type) ? b.type : null;
         if (!type) throw new HttpErr(400, 'Unknown document type');
-        await verifyPasscode(user, String(b.passcode ?? ''));
         const contact = String(b.contact ?? '');
         if (!contact && b.requireContact !== false) {
           throw new HttpErr(400, 'Customer phone or email is required on every document');

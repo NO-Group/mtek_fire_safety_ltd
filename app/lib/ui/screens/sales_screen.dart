@@ -437,7 +437,6 @@ class _SalesScreenState extends State<SalesScreen> {
         method: _method,
         signedBy: signer.name,
         customerSignature: customerSig,
-        passcode: AuthStore.instance.lastVerifiedPasscode,
         issueKey: _pendingSaleKey!,
       );
     } catch (error) {

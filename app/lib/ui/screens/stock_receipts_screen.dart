@@ -91,7 +91,7 @@ class _StockReceiptsScreenState extends State<StockReceiptsScreen> {
     for (final r in valid) if ((int.tryParse(r.damaged.text) ?? 0) + (int.tryParse(r.missing.text) ?? 0) > (int.tryParse(r.qty.text) ?? 0)) { _snack('Deficits cannot exceed quantity received.'); return; }
     final signer = await confirmSignature(context); if (signer == null) return;
     final api = AppStore.instance.api;
-    final res = await api?.post('/api/stock-receipts', {'date': DateTime.now().toIso8601String(), 'passcode': AuthStore.instance.lastVerifiedPasscode ?? '', 'receiver_signature': signer.signaturePng ?? '',
+    final res = await api?.post('/api/stock-receipts', {'date': DateTime.now().toIso8601String(), 'receiver_signature': signer.signaturePng ?? '',
       'rows': [for (final r in valid) {'product_id': r.product!.id, 'particulars': r.product!.name, 'quantity': int.parse(r.qty.text), 'damaged': int.tryParse(r.damaged.text) ?? 0, 'missing': int.tryParse(r.missing.text) ?? 0}]});
     for (final r in rows) r.dispose();
     if (res == null || !res.ok) { _snack('${res?.json is Map ? (res!.json as Map)['error'] : 'Cloud unavailable — stock receipt was not submitted'}'); return; }
@@ -100,7 +100,7 @@ class _StockReceiptsScreenState extends State<StockReceiptsScreen> {
 
   Future<void> _approve(Map<String, dynamic> r) async {
     final signer = await confirmSignature(context, force: true); if (signer == null) return;
-    final res = await AppStore.instance.api?.post('/api/stock-receipts/approve', {'id': '${r['_id']}', 'passcode': AuthStore.instance.lastVerifiedPasscode ?? '', 'approval_signature': signer.signaturePng ?? ''});
+    final res = await AppStore.instance.api?.post('/api/stock-receipts/approve', {'id': '${r['_id']}', 'approval_signature': signer.signaturePng ?? ''});
     if (res == null || !res.ok) { _snack('${res?.json is Map ? (res!.json as Map)['error'] : 'Approval failed'}'); return; }
     await AppStore.instance.refreshRemote(); await _load(); _snack('Approved. Net quantities were added to stock.');
   }

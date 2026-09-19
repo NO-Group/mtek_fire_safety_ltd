@@ -138,8 +138,7 @@ class InvoicesScreen extends StatelessWidget {
     }
     try {
       await AppStore.instance.payInvoice(inv, inv.balance,
-          signedBy: signer.name,
-          passcode: AuthStore.instance.lastVerifiedPasscode);
+          signedBy: signer.name,);
     } catch (e) {
       debugPrint('payInvoice failed: $e');
       if (context.mounted) {
