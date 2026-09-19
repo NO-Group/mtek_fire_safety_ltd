@@ -1251,7 +1251,7 @@ class _GeneratorScreenState extends State<GeneratorScreen> with WidgetsBindingOb
       serial = await AppStore.instance.nextDocSerial(
         type: typeKey,
         customer: customer,
-        total: docTotal, ?? '',
+        total: docTotal,
         contact: contact,
         issueKey: _issueKeys.putIfAbsent(_type, () =>
           '${AuthStore.instance.remoteSignInUid}:${_type.name}:${DateTime.now().microsecondsSinceEpoch}'),

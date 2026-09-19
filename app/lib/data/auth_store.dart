@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/biometric_service.dart';
 import 'api_client.dart';
 import 'env.dart';
 import 'local_store.dart';
